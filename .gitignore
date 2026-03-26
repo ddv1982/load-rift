@@ -1,0 +1,21 @@
+node_modules/
+dist/
+.vite/
+target/
+src-tauri/bin/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Local-only env/config files
+*.local
+fakebook-loadtest.postman_collection.json
+
+# Editor / OS noise
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
