@@ -50,7 +50,6 @@ function createApiMock(overrides: Partial<LoadRiftApi> = {}) {
 
   const api: LoadRiftApi = {
     importCollectionFromFile: vi.fn(),
-    importCollectionFromUrl: vi.fn(),
     validateTestConfiguration: vi.fn(),
     startTest: vi.fn(),
     stopTest: vi.fn(),

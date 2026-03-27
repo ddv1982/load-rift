@@ -140,7 +140,6 @@ export function createImportHookState(collection: CollectionInfo | null = import
       collection,
     },
     importFromFile: vi.fn(),
-    importFromUrl: vi.fn(),
     reportError: vi.fn(),
     reset: vi.fn(),
   };
@@ -175,7 +174,6 @@ export function createTestHookState() {
 export function createApiMock(overrides: Partial<LoadRiftApi> = {}): LoadRiftApi {
   return {
     importCollectionFromFile: vi.fn(),
-    importCollectionFromUrl: vi.fn(),
     validateTestConfiguration: vi.fn((_input: { options: K6Options }) =>
       Promise.resolve({
         ready: true,

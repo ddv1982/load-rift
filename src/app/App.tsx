@@ -1,8 +1,6 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { CollectionImportSection } from "./components/CollectionImportSection";
-import { loadImportMode, saveImportMode } from "./persistence";
 import { TestHarnessSection } from "./components/TestHarnessSection";
-import type { ImportMode } from "./types";
 import { buildReportFileName, formatCount, truncateLog } from "./utils";
 import { useCollectionImport } from "../features/import/useCollectionImport";
 import { useTestHarness } from "../features/test/useTestHarness";
@@ -22,7 +20,6 @@ export function App() {
   const {
     state: importState,
     importFromFile,
-    importFromUrl,
     reportError,
     reset,
   } = useCollectionImport();
@@ -32,8 +29,6 @@ export function App() {
     startTest,
     stopTest,
   } = useTestHarness();
-  const [importMode, setImportMode] = useState<ImportMode>(() => loadImportMode("file"));
-  const [urlInput, setUrlInput] = useState("");
   const [isPickingFile, setIsPickingFile] = useState(false);
   const collection = importState.collection;
   const {
@@ -70,10 +65,6 @@ export function App() {
     isRunning: testState.isRunning,
     isStarting: testState.isStarting,
   });
-
-  useEffect(() => {
-    saveImportMode(importMode);
-  }, [importMode]);
 
   const canStartTest = useMemo(
     () =>
@@ -114,10 +105,6 @@ export function App() {
     } finally {
       setIsPickingFile(false);
     }
-  }
-
-  async function handleUrlImport() {
-    await importFromUrl(urlInput);
   }
 
   async function handleRefreshStatus() {
@@ -205,19 +192,13 @@ export function App() {
         }
       >
         <CollectionImportSection
-          importMode={importMode}
           collection={collection}
           selectedRequestIds={runnerOptions.selectedRequestIds}
           error={importState.error}
           isLoading={importState.isLoading}
           isPickingFile={isPickingFile}
-          urlInput={urlInput}
-          onImportModeChange={setImportMode}
-          onUrlInputChange={setUrlInput}
           onFileImport={() => void handleFileImport()}
-          onUrlImport={() => void handleUrlImport()}
           onReset={reset}
-          onClearUrl={() => setUrlInput("")}
           onSelectionChange={updateSelectedRequestIds}
         />
 

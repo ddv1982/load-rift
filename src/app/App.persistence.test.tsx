@@ -53,8 +53,7 @@ describe("App persistence", () => {
     expect(document.querySelector(".workspace-shell")).toHaveStyle("--sidebar-width: 40%");
   });
 
-  it("restores the persisted import mode and current curl draft", () => {
-    window.localStorage.setItem("loadrift.ui.import-mode", JSON.stringify("url"));
+  it("restores the current curl draft", () => {
     window.sessionStorage.setItem(
       "loadrift.ui.curl-input",
       JSON.stringify("curl --location 'https://api.example.com/entities/alpha'"),
@@ -62,7 +61,7 @@ describe("App persistence", () => {
 
     renderApp(createApiMock());
 
-    expect(screen.getByLabelText("Collection URL")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Choose Postman Collection" })).toBeInTheDocument();
     expect((screen.getByLabelText("Postman cURL snippet") as HTMLTextAreaElement).value).toBe(
       "curl --location 'https://api.example.com/entities/alpha'",
     );

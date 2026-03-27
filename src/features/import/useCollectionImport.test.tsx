@@ -25,7 +25,6 @@ const importedCollection: CollectionInfo = {
 function createApiMock(overrides: Partial<LoadRiftApi> = {}): LoadRiftApi {
   return {
     importCollectionFromFile: vi.fn(),
-    importCollectionFromUrl: vi.fn(),
     validateTestConfiguration: vi.fn(),
     startTest: vi.fn(),
     stopTest: vi.fn(),
@@ -46,24 +45,6 @@ function createWrapper(api: LoadRiftApi) {
 }
 
 describe("useCollectionImport", () => {
-  it("reports an error when importing a blank URL", async () => {
-    const api = createApiMock();
-    const { result } = renderHook(() => useCollectionImport(), {
-      wrapper: createWrapper(api),
-    });
-
-    await act(async () => {
-      await result.current.importFromUrl("   ");
-    });
-
-    expect(result.current.state).toEqual({
-      isLoading: false,
-      error: "Enter a collection URL before importing.",
-      collection: null,
-    });
-    expect(api.importCollectionFromUrl).not.toHaveBeenCalled();
-  });
-
   it("stores the imported collection after a successful file import", async () => {
     const api = createApiMock({
       importCollectionFromFile: vi.fn(async () => importedCollection),
@@ -89,7 +70,7 @@ describe("useCollectionImport", () => {
 
   it("normalizes import failures through the Tauri error helper", async () => {
     const api = createApiMock({
-      importCollectionFromUrl: vi.fn(async () => {
+      importCollectionFromFile: vi.fn(async () => {
         throw new Error("HTTP 404");
       }),
     });
@@ -98,7 +79,7 @@ describe("useCollectionImport", () => {
     });
 
     await act(async () => {
-      await result.current.importFromUrl("https://example.com/collection.json");
+      await result.current.importFromFile("/tmp/fixture.postman_collection.json");
     });
 
     expect(result.current.state).toEqual({
@@ -110,7 +91,7 @@ describe("useCollectionImport", () => {
 
   it("keeps the previous collection when a replacement import fails", async () => {
     const api = createApiMock({
-      importCollectionFromUrl: vi
+      importCollectionFromFile: vi
         .fn()
         .mockResolvedValueOnce(importedCollection)
         .mockRejectedValueOnce(new Error("HTTP 404")),
@@ -120,7 +101,7 @@ describe("useCollectionImport", () => {
     });
 
     await act(async () => {
-      await result.current.importFromUrl("https://example.com/fixture.json");
+      await result.current.importFromFile("/tmp/fixture.postman_collection.json");
     });
 
     await waitFor(() => {
@@ -128,7 +109,7 @@ describe("useCollectionImport", () => {
     });
 
     await act(async () => {
-      await result.current.importFromUrl("https://example.com/replacement.json");
+      await result.current.importFromFile("/tmp/replacement.postman_collection.json");
     });
 
     expect(result.current.state).toEqual({

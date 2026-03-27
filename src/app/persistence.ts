@@ -8,7 +8,6 @@ const STORAGE_KEYS = {
   sidebarWidth: "loadrift.ui.sidebar-width",
   activeHarnessTab: "loadrift.ui.active-harness-tab",
   collectionFilters: "loadrift.ui.collection-filters",
-  importMode: "loadrift.ui.import-mode",
   curlInput: "loadrift.ui.curl-input",
   runnerPreferences: "loadrift.ui.runner-preferences",
 } as const;
@@ -198,19 +197,6 @@ export function saveCollectionFilters(filters: PersistedCollectionFilters) {
       },
     },
   });
-}
-
-export function loadImportMode(defaultMode: "file" | "url") {
-  const stored = readStorage<string>(STORAGE_KEYS.importMode);
-  if (stored === "file" || stored === "url") {
-    return stored;
-  }
-
-  return defaultMode;
-}
-
-export function saveImportMode(mode: "file" | "url") {
-  writeStorage(STORAGE_KEYS.importMode, mode);
 }
 
 export function loadCurlInput(defaultValue: string) {

@@ -43,13 +43,9 @@ describe("App accessibility", () => {
 
     const controlsTab = screen.getByRole("tab", { name: "Controls" });
     const variablesTab = screen.getByRole("tab", { name: "Variables" });
-    const fileTab = screen.getByRole("tab", { name: "File" });
-    const urlTab = screen.getByRole("tab", { name: "URL" });
 
     expect(controlsTab).toHaveAttribute("aria-selected", "true");
     expect(variablesTab).toHaveAttribute("aria-selected", "false");
-    expect(fileTab).toHaveAttribute("aria-selected", "true");
-    expect(urlTab).toHaveAttribute("aria-selected", "false");
 
     fireEvent.keyDown(controlsTab, { key: "ArrowRight" });
     expect(variablesTab).toHaveAttribute("aria-selected", "true");
@@ -58,11 +54,5 @@ describe("App accessibility", () => {
       controlsTab.getAttribute("aria-controls") ?? "",
     );
     expect(controlsPanel).not.toBeVisible();
-
-    fireEvent.keyDown(fileTab, { key: "ArrowRight" });
-    expect(urlTab).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tabpanel", { name: "URL" })).toBeInTheDocument();
-    const filePanel = document.getElementById(fileTab.getAttribute("aria-controls") ?? "");
-    expect(filePanel).not.toBeVisible();
   });
 });

@@ -1,14 +1,9 @@
-use std::io::{Read, Write};
-use std::net::{TcpListener, TcpStream};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::{Duration, Instant};
 
 use super::service;
 use crate::models::TestStatus;
 use crate::state::AppState;
 use crate::test_support::{empty_runtime_collection, passed_result};
-use tauri_plugin_http::reqwest;
 
 fn sample_collection() -> &'static str {
     r#"{
@@ -99,88 +94,4 @@ fn import_collection_into_state_rejects_busy_runner() {
         app_state.generated_script.as_deref(),
         Some("existing script")
     );
-}
-
-#[test]
-fn fetch_url_content_rejects_non_http_urls() {
-    let error =
-        tauri::async_runtime::block_on(service::fetch_url_content("file:///tmp/collection.json"))
-            .expect_err("non-http scheme should be rejected");
-    assert_eq!(error, "Collection URL must start with http:// or https://.");
-}
-
-#[test]
-fn fetch_url_content_rejects_oversized_responses() {
-    let server_url = spawn_http_test_server(|mut stream| {
-        let body = "x".repeat(32);
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-            body.len(),
-            body
-        );
-        stream
-            .write_all(response.as_bytes())
-            .expect("response should be written");
-    });
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(1))
-        .build()
-        .expect("client should build");
-
-    let error = tauri::async_runtime::block_on(service::fetch_url_content_with_client(
-        &client,
-        &server_url,
-        16,
-    ))
-    .expect_err("oversized responses should be rejected");
-
-    assert_eq!(
-        error,
-        "Collection download exceeded the 5 MB response limit."
-    );
-}
-
-#[test]
-fn fetch_url_content_times_out_slow_servers() {
-    let server_url = spawn_http_test_server(|_stream| {
-        thread::sleep(Duration::from_millis(200));
-    });
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_millis(50))
-        .timeout(Duration::from_millis(50))
-        .build()
-        .expect("client should build");
-
-    let started_at = Instant::now();
-    let error = tauri::async_runtime::block_on(service::fetch_url_content_with_client(
-        &client,
-        &server_url,
-        1024,
-    ))
-    .expect_err("slow servers should time out");
-
-    assert!(error.contains("Failed to fetch"));
-    assert!(
-        started_at.elapsed() < Duration::from_millis(175),
-        "slow server fetch should fail fast, got error: {error}"
-    );
-}
-
-fn spawn_http_test_server(handler: impl FnOnce(TcpStream) + Send + 'static) -> String {
-    let listener =
-        TcpListener::bind("127.0.0.1:0").expect("test HTTP server should bind to localhost");
-    let address = listener
-        .local_addr()
-        .expect("listener should expose the bound address");
-
-    thread::spawn(move || {
-        let (mut stream, _) = listener
-            .accept()
-            .expect("test HTTP server should accept a connection");
-        let mut request = [0_u8; 1024];
-        let _ = stream.read(&mut request);
-        handler(stream);
-    });
-
-    format!("http://{address}/collection.json")
 }

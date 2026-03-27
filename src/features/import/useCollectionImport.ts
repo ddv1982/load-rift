@@ -54,22 +54,6 @@ export function useCollectionImport() {
     [api, runImport],
   );
 
-  const importFromUrl = useCallback(
-    async (url: string) => {
-      if (!url.trim()) {
-        setState((previous) => ({
-          ...previous,
-          isLoading: false,
-          error: "Enter a collection URL before importing.",
-        }));
-        return;
-      }
-
-      await runImport(() => api.importCollectionFromUrl({ url }));
-    },
-    [api, runImport],
-  );
-
   const reportError = useCallback((message: string) => {
     setState((previous) => ({
       ...previous,
@@ -89,7 +73,6 @@ export function useCollectionImport() {
   return {
     state,
     importFromFile,
-    importFromUrl,
     reportError,
     reset,
   };

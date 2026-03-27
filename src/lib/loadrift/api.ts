@@ -14,7 +14,6 @@ export const K6_ERROR_EVENT = "k6:error";
 
 export interface LoadRiftApi {
   importCollectionFromFile(input: { filePath: string }): Promise<CollectionInfo>;
-  importCollectionFromUrl(input: { url: string }): Promise<CollectionInfo>;
   validateTestConfiguration(input: {
     options: K6Options;
   }): Promise<ValidateTestConfigurationResponse>;

@@ -9,7 +9,7 @@ mod test_support;
 
 use std::sync::{Arc, Mutex};
 
-use commands::collection::{import_collection_from_file, import_collection_from_url};
+use commands::collection::import_collection_from_file;
 use commands::testing::{
     export_report, get_test_status, start_test, stop_test, validate_test_configuration,
 };
@@ -20,7 +20,6 @@ pub fn run() {
     tauri::Builder::default()
         .manage::<SharedAppState>(Arc::new(Mutex::new(AppState::default())))
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_http::init())
         .setup(|app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -36,7 +35,6 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             import_collection_from_file,
-            import_collection_from_url,
             start_test,
             stop_test,
             export_report,

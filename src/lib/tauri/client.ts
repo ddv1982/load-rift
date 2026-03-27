@@ -42,11 +42,6 @@ export function createTauriLoadRiftApi(): LoadRiftApi {
         request: input,
       });
     },
-    importCollectionFromUrl(input: { url: string }) {
-      return command<CollectionInfo>("import_collection_from_url", {
-        request: input,
-      });
-    },
     validateTestConfiguration(input: { options: K6Options }) {
       return command<ValidateTestConfigurationResponse>(
         "validate_test_configuration",
