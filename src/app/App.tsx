@@ -93,7 +93,10 @@ export function App() {
     () => Boolean(importState.collection) && !isHarnessBusy,
     [importState.collection, isHarnessBusy],
   );
-  const collectionToken = useMemo(() => Symbol("collection"), [collection]);
+  const collectionToken = useMemo(
+    () => Symbol(collection?.name ?? "collection"),
+    [collection],
+  );
   const smokeInputSignature = useMemo(
     () =>
       JSON.stringify({
