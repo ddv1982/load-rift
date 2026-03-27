@@ -15,11 +15,13 @@ export async function selectCollectionFile(): Promise<string | null> {
 
     return typeof selected === "string" ? selected : null;
   } catch (error) {
-    throw new Error(
+    const wrappedError = new Error(
       error instanceof Error
         ? `Failed to open the collection file picker: ${error.message}`
         : "Failed to open the collection file picker.",
-    );
+    ) as Error & { cause?: unknown };
+    wrappedError.cause = error;
+    throw wrappedError;
   }
 }
 
@@ -40,10 +42,12 @@ export async function selectReportSavePath(
 
     return typeof selected === "string" ? selected : null;
   } catch (error) {
-    throw new Error(
+    const wrappedError = new Error(
       error instanceof Error
         ? `Failed to open the report save dialog: ${error.message}`
         : "Failed to open the report save dialog.",
-    );
+    ) as Error & { cause?: unknown };
+    wrappedError.cause = error;
+    throw wrappedError;
   }
 }

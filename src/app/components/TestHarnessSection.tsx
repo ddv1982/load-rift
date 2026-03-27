@@ -97,7 +97,7 @@ export function TestHarnessSection({
   }
 
   function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    let nextIndex = index;
+    let nextIndex: number;
 
     if (event.key === "ArrowRight") {
       nextIndex = (index + 1) % tabs.length;
