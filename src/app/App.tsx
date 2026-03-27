@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useMemo, useState, type CSSProperties } from "react";
 import { CollectionImportSection } from "./components/CollectionImportSection";
 import { TestHarnessSection } from "./components/TestHarnessSection";
 import { buildReportFileName, formatCount, truncateLog } from "./utils";
@@ -15,12 +15,12 @@ import { getTauriErrorMessage } from "../lib/tauri/errors";
 import { useCurlImport } from "./hooks/useCurlImport";
 import { useRunnerOptions } from "./hooks/useRunnerOptions";
 import { useWorkspaceLayout } from "./hooks/useWorkspaceLayout";
-import type { CollectionInfo } from "../lib/loadrift/types";
 
 export function App() {
-  const previousSmokeCollectionRef = useRef<CollectionInfo | null>(null);
-  const previousSmokeInputSignatureRef = useRef<string | null>(null);
-  const pendingSmokeInvalidationRef = useRef(false);
+  const [lastSmokeRequestContext, setLastSmokeRequestContext] = useState<{
+    collectionToken: symbol;
+    inputSignature: string;
+  } | null>(null);
   const api = useLoadRiftApi();
   const {
     state: importState,
@@ -93,6 +93,7 @@ export function App() {
     () => Boolean(importState.collection) && !isHarnessBusy,
     [importState.collection, isHarnessBusy],
   );
+  const collectionToken = useMemo(() => Symbol("collection"), [collection]);
   const smokeInputSignature = useMemo(
     () =>
       JSON.stringify({
@@ -128,38 +129,27 @@ export function App() {
       runnerOptions.variableOverrides,
     ],
   );
+  const displayedSmokeTestState = useMemo(() => {
+    if (
+      lastSmokeRequestContext &&
+      !smokeTestState.isRunning &&
+      (lastSmokeRequestContext.inputSignature !== smokeInputSignature ||
+        lastSmokeRequestContext.collectionToken !== collectionToken)
+    ) {
+      return {
+        ...smokeTestState,
+        result: null,
+        error: null,
+      };
+    }
+
+    return smokeTestState;
+  }, [collectionToken, lastSmokeRequestContext, smokeInputSignature, smokeTestState]);
 
   const displayedTestStatus = testState.isStarting ? "starting" : testState.status;
   const displayedVerdict = testState.result
     ? testState.result.status.toUpperCase()
     : displayedTestStatus.toUpperCase();
-
-  useEffect(() => {
-    const previousCollection = previousSmokeCollectionRef.current;
-    const previousSignature = previousSmokeInputSignatureRef.current;
-    previousSmokeCollectionRef.current = collection;
-    previousSmokeInputSignatureRef.current = smokeInputSignature;
-
-    if (previousSignature === null && previousCollection === null) {
-      return;
-    }
-
-    if (previousCollection !== collection || previousSignature !== smokeInputSignature) {
-      if (smokeTestState.isRunning) {
-        pendingSmokeInvalidationRef.current = true;
-        return;
-      }
-
-      pendingSmokeInvalidationRef.current = false;
-      clearSmokeTest();
-      return;
-    }
-
-    if (!smokeTestState.isRunning && pendingSmokeInvalidationRef.current) {
-      pendingSmokeInvalidationRef.current = false;
-      clearSmokeTest();
-    }
-  }, [clearSmokeTest, smokeInputSignature, smokeTestState.isRunning]);
 
   async function handleFileImport() {
     setIsPickingFile(true);
@@ -190,10 +180,16 @@ export function App() {
   }
 
   async function handleStartTest() {
+    setLastSmokeRequestContext(null);
+    clearSmokeTest();
     await startTest(runnerOptions);
   }
 
   async function handleSmokeTest() {
+    setLastSmokeRequestContext({
+      collectionToken,
+      inputSignature: smokeInputSignature,
+    });
     await runSmokeTest(runnerOptions);
   }
 
@@ -301,7 +297,7 @@ export function App() {
           displayedTestStatus={displayedTestStatus}
           displayedVerdict={displayedVerdict}
           runnerOptions={runnerOptions}
-          smokeTestState={smokeTestState}
+          smokeTestState={displayedSmokeTestState}
           emptyRuntimeVariables={emptyRuntimeVariables}
           curlInput={curlInput}
           curlImportState={curlImportState}
