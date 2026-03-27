@@ -1,8 +1,12 @@
 mod logic;
+mod smoke;
 
 use tauri::{AppHandle, State};
 
-use crate::models::{GetTestStatusResponse, K6Options, ValidateTestConfigurationResponse};
+use crate::importing::resolve_test_requests;
+use crate::models::{
+    GetTestStatusResponse, K6Options, SmokeTestResponse, ValidateTestConfigurationResponse,
+};
 use crate::state::SharedAppState;
 
 #[derive(Debug, serde::Deserialize)]
@@ -15,6 +19,12 @@ pub struct StartTestRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ExportReportRequest {
     pub save_path: String,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmokeTestRequest {
+    pub options: K6Options,
 }
 
 #[tauri::command]
@@ -60,6 +70,19 @@ pub async fn stop_test(state: State<'_, SharedAppState>) -> Result<(), String> {
     crate::k6::stop_k6_process(state.inner())?;
     logic::wait_for_test_stop(state.inner())?;
     logic::mark_test_stopped(state.inner())
+}
+
+#[tauri::command]
+pub async fn smoke_test_requests(
+    state: State<'_, SharedAppState>,
+    request: SmokeTestRequest,
+) -> Result<SmokeTestResponse, String> {
+    let runtime_collection = logic::runtime_collection_for_smoke_test(state.inner())?;
+    let resolved_requests = resolve_test_requests(&runtime_collection, &request.options)?;
+
+    tauri::async_runtime::spawn_blocking(move || smoke::run_smoke_test(resolved_requests))
+        .await
+        .map_err(|error| format!("Smoke test task failed unexpectedly: {error}"))?
 }
 
 #[tauri::command]

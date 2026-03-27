@@ -18,6 +18,10 @@ const RUNNER_BUSY_VALIDATE_ERROR: &str =
 const IMPORT_BEFORE_START_ERROR: &str = "Import a Postman collection before starting a k6 test.";
 const IMPORT_BEFORE_VALIDATE_ERROR: &str =
     "Import a Postman collection before validating the k6 settings.";
+const IMPORT_BEFORE_SMOKE_TEST_ERROR: &str =
+    "Import a Postman collection before running a smoke test.";
+const RUNNER_BUSY_SMOKE_TEST_ERROR: &str =
+    "A k6 test is already running or still shutting down. Wait a moment before running a smoke test.";
 const CANCELLED_START_ERROR: &str = "The pending k6 test start was cancelled before launch.";
 const WAIT_FOR_STOP_TIMEOUT_ERROR: &str =
     "Timed out while waiting for the active k6 test to shut down.";
@@ -149,6 +153,21 @@ pub(super) fn validate_test_configuration_inner(
             }
         }
     }
+}
+
+pub(super) fn runtime_collection_for_smoke_test(
+    state: &SharedAppState,
+) -> Result<RuntimeCollection, String> {
+    let app_state = state.lock().map_err(|_| READ_STATE_ERROR.to_string())?;
+
+    if app_state.test_is_busy() {
+        return Err(RUNNER_BUSY_SMOKE_TEST_ERROR.to_string());
+    }
+
+    app_state
+        .runtime_collection
+        .clone()
+        .ok_or(IMPORT_BEFORE_SMOKE_TEST_ERROR.to_string())
 }
 
 pub(super) fn validate_test_configuration_for_collection(

@@ -162,3 +162,25 @@ pub struct ValidateTestConfigurationResponse {
     pub ready: bool,
     pub message: Option<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmokeTestResponse {
+    pub responses: Vec<SmokeTestResult>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SmokeTestResult {
+    pub request_id: String,
+    pub request_name: String,
+    pub method: String,
+    pub url: String,
+    pub status_code: Option<u16>,
+    pub duration_ms: u64,
+    pub ok: bool,
+    pub content_type: Option<String>,
+    pub response_headers: BTreeMap<String, String>,
+    pub body_preview: Option<String>,
+    pub error_message: Option<String>,
+}

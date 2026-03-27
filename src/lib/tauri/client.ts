@@ -13,6 +13,7 @@ import type {
   GetTestStatusResponse,
   K6Options,
   LiveMetrics,
+  SmokeTestResponse,
   TestCompletion,
   ValidateTestConfigurationResponse,
 } from "../loadrift/types";
@@ -49,6 +50,11 @@ export function createTauriLoadRiftApi(): LoadRiftApi {
           request: input,
         },
       );
+    },
+    smokeTestRequests(input: { options: K6Options }) {
+      return command<SmokeTestResponse>("smoke_test_requests", {
+        request: input,
+      });
     },
     startTest(input: { options: K6Options }) {
       return command<void>("start_test", {

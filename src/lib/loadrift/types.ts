@@ -97,6 +97,24 @@ export interface ValidateTestConfigurationResponse {
   message: string | null;
 }
 
+export interface SmokeTestResult {
+  requestId: string;
+  requestName: string;
+  method: string;
+  url: string;
+  statusCode: number | null;
+  durationMs: number;
+  ok: boolean;
+  contentType: string | null;
+  responseHeaders: Record<string, string>;
+  bodyPreview: string | null;
+  errorMessage: string | null;
+}
+
+export interface SmokeTestResponse {
+  responses: SmokeTestResult[];
+}
+
 export const DEFAULT_K6_OPTIONS: K6Options = {
   vus: 10,
   duration: "1m",

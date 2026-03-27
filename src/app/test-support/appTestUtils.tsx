@@ -3,7 +3,7 @@ import { vi } from "vitest";
 import { App } from "../App";
 import { LoadRiftApiProvider } from "../../lib/loadrift/context";
 import type { LoadRiftApi } from "../../lib/loadrift/api";
-import type { CollectionInfo, K6Options } from "../../lib/loadrift/types";
+import type { CollectionInfo, K6Options, SmokeTestResponse } from "../../lib/loadrift/types";
 
 export const importedCollection: CollectionInfo = {
   name: "Fixture Collection",
@@ -171,7 +171,23 @@ export function createTestHookState() {
   };
 }
 
+export function createSmokeHookState() {
+  return {
+    state: {
+      isRunning: false,
+      result: null as SmokeTestResponse | null,
+      error: null,
+    },
+    runSmokeTest: vi.fn(),
+    clearSmokeTest: vi.fn(),
+  };
+}
+
 export function createApiMock(overrides: Partial<LoadRiftApi> = {}): LoadRiftApi {
+  const emptySmokeTestResponse: SmokeTestResponse = {
+    responses: [],
+  };
+
   return {
     importCollectionFromFile: vi.fn(),
     validateTestConfiguration: vi.fn((_input: { options: K6Options }) =>
@@ -180,6 +196,7 @@ export function createApiMock(overrides: Partial<LoadRiftApi> = {}): LoadRiftApi
         message: "Configuration looks ready to run.",
       })
     ),
+    smokeTestRequests: vi.fn(() => Promise.resolve(emptySmokeTestResponse)),
     startTest: vi.fn(),
     stopTest: vi.fn(),
     exportReport: vi.fn(),

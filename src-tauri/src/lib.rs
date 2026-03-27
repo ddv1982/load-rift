@@ -11,7 +11,8 @@ use std::sync::{Arc, Mutex};
 
 use commands::collection::import_collection_from_file;
 use commands::testing::{
-    export_report, get_test_status, start_test, stop_test, validate_test_configuration,
+    export_report, get_test_status, smoke_test_requests, start_test, stop_test,
+    validate_test_configuration,
 };
 use state::{AppState, SharedAppState};
 
@@ -37,6 +38,7 @@ pub fn run() {
             import_collection_from_file,
             start_test,
             stop_test,
+            smoke_test_requests,
             export_report,
             get_test_status,
             validate_test_configuration

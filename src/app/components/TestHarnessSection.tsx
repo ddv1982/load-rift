@@ -15,21 +15,26 @@ import { LatestResultCard } from "./LatestResultCard";
 import { LiveRunMonitorCard } from "./LiveRunMonitorCard";
 import { RunnerSettingsCard } from "./RunnerSettingsCard";
 import { RuntimeVariablesCard } from "./RuntimeVariablesCard";
+import { SmokeTestCard } from "./SmokeTestCard";
+import type { SmokeTestState } from "../../features/test/useSmokeTest";
 
 interface TestHarnessSectionProps {
   collection: CollectionInfo | null;
   testState: TestHarnessState;
   configValidation: ConfigValidationState;
   canStartTest: boolean;
+  canSmokeTest: boolean;
   displayedTestStatus: string;
   displayedVerdict: string;
   runnerOptions: K6Options;
+  smokeTestState: SmokeTestState;
   emptyRuntimeVariables: RuntimeVariable[];
   curlInput: string;
   curlImportState: CurlImportState;
   eventLogRef: RefObject<HTMLPreElement | null>;
   resultSummaryRef: RefObject<HTMLDivElement | null>;
   onStartTest: () => void;
+  onSmokeTest: () => void;
   onStopTest: () => void;
   onValidateConfiguration: () => void;
   onRefreshStatus: () => void;
@@ -51,15 +56,18 @@ export function TestHarnessSection({
   testState,
   configValidation,
   canStartTest,
+  canSmokeTest,
   displayedTestStatus,
   displayedVerdict,
   runnerOptions,
+  smokeTestState,
   emptyRuntimeVariables,
   curlInput,
   curlImportState,
   eventLogRef,
   resultSummaryRef,
   onStartTest,
+  onSmokeTest,
   onStopTest,
   onValidateConfiguration,
   onRefreshStatus,
@@ -133,6 +141,14 @@ export function TestHarnessSection({
             disabled={!canStartTest}
           >
             {testState.isStarting ? "Starting..." : "Start Test"}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={onSmokeTest}
+            disabled={!canSmokeTest}
+          >
+            {smokeTestState.isRunning ? "Smoking..." : "Smoke Test"}
           </button>
           <button
             type="button"
@@ -297,6 +313,11 @@ export function TestHarnessSection({
         </div>
 
         <div className="harness-column">
+          <SmokeTestCard
+            result={smokeTestState.result}
+            error={smokeTestState.error}
+            isRunning={smokeTestState.isRunning}
+          />
           <LiveRunMonitorCard
             output={testState.output}
             error={testState.error}

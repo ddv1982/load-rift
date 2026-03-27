@@ -3,6 +3,7 @@ import type {
   GetTestStatusResponse,
   K6Options,
   LiveMetrics,
+  SmokeTestResponse,
   TestCompletion,
   ValidateTestConfigurationResponse,
 } from "./types";
@@ -17,6 +18,7 @@ export interface LoadRiftApi {
   validateTestConfiguration(input: {
     options: K6Options;
   }): Promise<ValidateTestConfigurationResponse>;
+  smokeTestRequests(input: { options: K6Options }): Promise<SmokeTestResponse>;
   startTest(input: { options: K6Options }): Promise<void>;
   stopTest(): Promise<void>;
   exportReport(input: { savePath: string }): Promise<void>;

@@ -5,6 +5,7 @@ import {
   createAppElement,
   createApiMock,
   createImportHookState,
+  createSmokeHookState,
   createTestHookState,
   importedCollection,
   renderApp,
@@ -13,6 +14,7 @@ import {
 
 let importHookState = createImportHookState();
 let testHookState = createTestHookState();
+let smokeHookState = createSmokeHookState();
 
 vi.mock("../features/import/useCollectionImport", () => ({
   useCollectionImport: () => importHookState,
@@ -20,6 +22,10 @@ vi.mock("../features/import/useCollectionImport", () => ({
 
 vi.mock("../features/test/useTestHarness", () => ({
   useTestHarness: () => testHookState,
+}));
+
+vi.mock("../features/test/useSmokeTest", () => ({
+  useSmokeTest: () => smokeHookState,
 }));
 
 vi.mock("../lib/tauri/dialog", () => ({
@@ -36,6 +42,7 @@ describe("App persistence", () => {
     window.sessionStorage.clear();
     importHookState = createImportHookState();
     testHookState = createTestHookState();
+    smokeHookState = createSmokeHookState();
   });
 
   afterEach(() => {

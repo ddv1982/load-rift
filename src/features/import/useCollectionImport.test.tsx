@@ -26,6 +26,7 @@ function createApiMock(overrides: Partial<LoadRiftApi> = {}): LoadRiftApi {
   return {
     importCollectionFromFile: vi.fn(),
     validateTestConfiguration: vi.fn(),
+    smokeTestRequests: vi.fn(),
     startTest: vi.fn(),
     stopTest: vi.fn(),
     exportReport: vi.fn(),

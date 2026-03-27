@@ -2,20 +2,26 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::models::K6Options;
 
-use super::{RuntimeCollection, RuntimeRequest};
+use super::{ResolvedRuntimeRequest, RuntimeCollection, RuntimeRequest};
 
 pub(crate) fn validate_test_run(
     collection: &RuntimeCollection,
     options: &K6Options,
 ) -> Result<(), String> {
+    resolve_test_requests(collection, options).map(|_| ())
+}
+
+pub(crate) fn resolve_test_requests(
+    collection: &RuntimeCollection,
+    options: &K6Options,
+) -> Result<Vec<ResolvedRuntimeRequest>, String> {
     let context = build_runtime_context(collection, options)?;
     let selected_requests = select_requests(collection, options)?;
 
-    for request in selected_requests {
-        validate_request(request, &context)?;
-    }
-
-    Ok(())
+    selected_requests
+        .into_iter()
+        .map(|request| resolve_request(request, &context))
+        .collect()
 }
 
 fn select_requests<'a>(
@@ -46,7 +52,10 @@ fn select_requests<'a>(
     Ok(selected_requests)
 }
 
-fn validate_request(request: &RuntimeRequest, context: &RuntimeContext) -> Result<(), String> {
+fn resolve_request(
+    request: &RuntimeRequest,
+    context: &RuntimeContext,
+) -> Result<ResolvedRuntimeRequest, String> {
     if let Some(missing) = first_unresolved_field(&request.headers, context) {
         return Err(format!(
             "Request {:?} still contains unresolved variables in headers: {}",
@@ -55,8 +64,8 @@ fn validate_request(request: &RuntimeRequest, context: &RuntimeContext) -> Resul
         ));
     }
 
-    if let Some(body) = request.body.as_deref() {
-        let (_, missing) = resolve_template(body, &context.values);
+    let resolved_body = if let Some(body) = request.body.as_deref() {
+        let (resolved_body, missing) = resolve_template(body, &context.values);
         if !missing.is_empty() {
             return Err(format!(
                 "Request {:?} still contains unresolved variables in the body: {}",
@@ -64,7 +73,10 @@ fn validate_request(request: &RuntimeRequest, context: &RuntimeContext) -> Resul
                 join_keys(&missing)
             ));
         }
-    }
+        Some(resolved_body)
+    } else {
+        None
+    };
 
     let (resolved_url, missing_url_variables) = resolve_template(&request.url, &context.values);
     if !missing_url_variables.is_empty() {
@@ -106,7 +118,14 @@ fn validate_request(request: &RuntimeRequest, context: &RuntimeContext) -> Resul
         ));
     }
 
-    Ok(())
+    Ok(ResolvedRuntimeRequest {
+        id: request.id.clone(),
+        name: request.name.clone(),
+        method: request.method.clone(),
+        url: effective_url,
+        headers: resolve_headers(&request.headers, context),
+        body: resolved_body,
+    })
 }
 
 fn first_unresolved_field(
@@ -121,6 +140,33 @@ fn first_unresolved_field(
     }
 
     None
+}
+
+fn resolve_headers(
+    headers: &BTreeMap<String, String>,
+    context: &RuntimeContext,
+) -> BTreeMap<String, String> {
+    let mut resolved = BTreeMap::new();
+
+    for (key, value) in headers {
+        let (resolved_value, _) = resolve_template(value, &context.values);
+        resolved.insert(key.clone(), resolved_value);
+    }
+
+    let has_authorization = resolved
+        .keys()
+        .any(|key| key.eq_ignore_ascii_case("authorization"));
+    if !has_authorization && context.auth_token.is_some() {
+        resolved.insert(
+            "Authorization".to_string(),
+            format!(
+                "Bearer {}",
+                context.auth_token.as_deref().unwrap_or_default()
+            ),
+        );
+    }
+
+    resolved
 }
 
 pub(crate) fn build_runtime_context(
@@ -297,6 +343,5 @@ fn join_keys(keys: &BTreeSet<String>) -> String {
 pub(crate) struct RuntimeContext {
     pub(crate) values: BTreeMap<String, String>,
     pub(crate) base_url: Option<String>,
-    #[allow(dead_code)]
     pub(crate) auth_token: Option<String>,
 }

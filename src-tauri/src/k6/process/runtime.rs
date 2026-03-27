@@ -15,12 +15,12 @@ use crate::events::{emit_k6_complete, emit_k6_error, emit_k6_metrics, emit_k6_ou
 use crate::models::{K6Options, LiveMetrics, TestCompletion};
 use crate::state::{RunningTest, SharedAppState};
 
+use super::super::summary::parse_summary;
 use super::live_metrics::spawn_metrics_forwarder;
 use super::state::{
     completion_status, mark_stopped, record_failure, store_completion, store_started_state,
     UPDATE_STATE_ERROR,
 };
-use super::super::summary::{parse_summary};
 
 pub fn start_k6_process(
     app: AppHandle,
@@ -166,9 +166,7 @@ pub(crate) fn validate_advanced_options_json(
 
 pub fn stop_k6_process(state: &SharedAppState) -> Result<(), String> {
     let running = {
-        let app_state = state
-            .lock()
-            .map_err(|_| UPDATE_STATE_ERROR.to_string())?;
+        let app_state = state.lock().map_err(|_| UPDATE_STATE_ERROR.to_string())?;
         app_state.active_test.clone()
     };
 

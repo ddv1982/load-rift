@@ -440,8 +440,11 @@ fn validation_treats_blank_collection_defaults_as_missing_values() {
     )
     .expect("collection should import");
 
-    let error = validate_test_run(&imported.runtime_collection, &imported_test_k6_options(&imported, None))
-        .expect_err("blank collection defaults should not count as usable values");
+    let error = validate_test_run(
+        &imported.runtime_collection,
+        &imported_test_k6_options(&imported, None),
+    )
+    .expect_err("blank collection defaults should not count as usable values");
     assert!(error.contains("relative URL") || error.contains("unresolved variables"));
 }
 

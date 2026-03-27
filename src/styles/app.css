@@ -892,6 +892,83 @@ button {
   color: var(--danger);
 }
 
+.smoke-test-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.smoke-test-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.smoke-test-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.9rem;
+  border-radius: 0.9rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(145, 214, 164, 0.14);
+}
+
+.smoke-test-item.is-failed {
+  border-color: rgba(255, 122, 89, 0.28);
+  background: rgba(255, 122, 89, 0.06);
+}
+
+.smoke-test-item-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.smoke-test-item-header strong,
+.smoke-test-item-header p,
+.smoke-test-meta,
+.smoke-test-error {
+  margin: 0;
+}
+
+.smoke-test-item-header p,
+.smoke-test-meta {
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.smoke-test-item-stats {
+  display: flex;
+  gap: 0.65rem;
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.smoke-test-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.smoke-test-details summary {
+  cursor: pointer;
+  color: var(--accent-cool);
+  font-size: 0.84rem;
+}
+
+.smoke-test-headers {
+  height: auto;
+  max-height: 10rem;
+}
+
+.smoke-test-error {
+  color: var(--danger);
+  font-size: 0.84rem;
+}
+
 @media (max-width: 960px) {
   .app-shell {
     padding: 1rem;

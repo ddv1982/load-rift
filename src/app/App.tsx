@@ -1,8 +1,9 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { CollectionImportSection } from "./components/CollectionImportSection";
 import { TestHarnessSection } from "./components/TestHarnessSection";
 import { buildReportFileName, formatCount, truncateLog } from "./utils";
 import { useCollectionImport } from "../features/import/useCollectionImport";
+import { useSmokeTest } from "../features/test/useSmokeTest";
 import { useTestHarness } from "../features/test/useTestHarness";
 import { useConfigValidation } from "../features/test/useConfigValidation";
 import { useLoadRiftApi } from "../lib/loadrift/context";
@@ -14,8 +15,12 @@ import { getTauriErrorMessage } from "../lib/tauri/errors";
 import { useCurlImport } from "./hooks/useCurlImport";
 import { useRunnerOptions } from "./hooks/useRunnerOptions";
 import { useWorkspaceLayout } from "./hooks/useWorkspaceLayout";
+import type { CollectionInfo } from "../lib/loadrift/types";
 
 export function App() {
+  const previousSmokeCollectionRef = useRef<CollectionInfo | null>(null);
+  const previousSmokeInputSignatureRef = useRef<string | null>(null);
+  const pendingSmokeInvalidationRef = useRef(false);
   const api = useLoadRiftApi();
   const {
     state: importState,
@@ -29,6 +34,11 @@ export function App() {
     startTest,
     stopTest,
   } = useTestHarness();
+  const {
+    state: smokeTestState,
+    runSmokeTest,
+    clearSmokeTest,
+  } = useSmokeTest();
   const [isPickingFile, setIsPickingFile] = useState(false);
   const collection = importState.collection;
   const {
@@ -66,19 +76,56 @@ export function App() {
     isStarting: testState.isStarting,
   });
 
+  const isHarnessBusy =
+    testState.isBusy ||
+    testState.isRunning ||
+    testState.isStarting ||
+    smokeTestState.isRunning;
+
   const canStartTest = useMemo(
     () =>
       Boolean(importState.collection) &&
       configValidation.status === "ready" &&
-      !testState.isBusy &&
-      !testState.isRunning &&
-      !testState.isStarting,
+      !isHarnessBusy,
+    [configValidation.status, importState.collection, isHarnessBusy],
+  );
+  const canSmokeTest = useMemo(
+    () => Boolean(importState.collection) && !isHarnessBusy,
+    [importState.collection, isHarnessBusy],
+  );
+  const smokeInputSignature = useMemo(
+    () =>
+      JSON.stringify({
+        collection: collection
+          ? {
+              name: collection.name,
+              requestCount: collection.requestCount,
+              requests: collection.requests.map((request) => ({
+                id: request.id,
+                name: request.name,
+                method: request.method,
+                url: request.url,
+                folderPath: request.folderPath,
+              })),
+              runtimeVariables: collection.runtimeVariables.map((variable) => ({
+                key: variable.key,
+                defaultValue: variable.defaultValue ?? "",
+              })),
+            }
+          : null,
+        baseUrl: runnerOptions.baseUrl?.trim() ?? "",
+        authToken: runnerOptions.authToken?.trim() ?? "",
+        variableOverrides: Object.entries(runnerOptions.variableOverrides).sort(
+          ([leftKey], [rightKey]) => leftKey.localeCompare(rightKey),
+        ),
+        selectedRequestIds: [...runnerOptions.selectedRequestIds].sort(),
+      }),
     [
-      configValidation.status,
-      importState.collection,
-      testState.isBusy,
-      testState.isRunning,
-      testState.isStarting,
+      collection,
+      runnerOptions.authToken,
+      runnerOptions.baseUrl,
+      runnerOptions.selectedRequestIds,
+      runnerOptions.variableOverrides,
     ],
   );
 
@@ -86,6 +133,33 @@ export function App() {
   const displayedVerdict = testState.result
     ? testState.result.status.toUpperCase()
     : displayedTestStatus.toUpperCase();
+
+  useEffect(() => {
+    const previousCollection = previousSmokeCollectionRef.current;
+    const previousSignature = previousSmokeInputSignatureRef.current;
+    previousSmokeCollectionRef.current = collection;
+    previousSmokeInputSignatureRef.current = smokeInputSignature;
+
+    if (previousSignature === null && previousCollection === null) {
+      return;
+    }
+
+    if (previousCollection !== collection || previousSignature !== smokeInputSignature) {
+      if (smokeTestState.isRunning) {
+        pendingSmokeInvalidationRef.current = true;
+        return;
+      }
+
+      pendingSmokeInvalidationRef.current = false;
+      clearSmokeTest();
+      return;
+    }
+
+    if (!smokeTestState.isRunning && pendingSmokeInvalidationRef.current) {
+      pendingSmokeInvalidationRef.current = false;
+      clearSmokeTest();
+    }
+  }, [clearSmokeTest, smokeInputSignature, smokeTestState.isRunning]);
 
   async function handleFileImport() {
     setIsPickingFile(true);
@@ -117,6 +191,10 @@ export function App() {
 
   async function handleStartTest() {
     await startTest(runnerOptions);
+  }
+
+  async function handleSmokeTest() {
+    await runSmokeTest(runnerOptions);
   }
 
   async function handleStopTest() {
@@ -219,15 +297,18 @@ export function App() {
           }}
           configValidation={configValidation}
           canStartTest={canStartTest}
+          canSmokeTest={canSmokeTest}
           displayedTestStatus={displayedTestStatus}
           displayedVerdict={displayedVerdict}
           runnerOptions={runnerOptions}
+          smokeTestState={smokeTestState}
           emptyRuntimeVariables={emptyRuntimeVariables}
           curlInput={curlInput}
           curlImportState={curlImportState}
           eventLogRef={eventLogRef}
           resultSummaryRef={resultSummaryRef}
           onStartTest={() => void handleStartTest()}
+          onSmokeTest={() => void handleSmokeTest()}
           onStopTest={() => void handleStopTest()}
           onValidateConfiguration={() => void handleValidateConfiguration()}
           onRefreshStatus={() => void handleRefreshStatus()}

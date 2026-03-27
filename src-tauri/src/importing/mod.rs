@@ -32,6 +32,16 @@ pub struct RuntimeRequest {
     pub body: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ResolvedRuntimeRequest {
+    pub id: String,
+    pub name: String,
+    pub method: String,
+    pub url: String,
+    pub headers: BTreeMap<String, String>,
+    pub body: Option<String>,
+}
+
 #[derive(Debug)]
 pub(crate) struct ParsedCollection {
     pub(crate) name: String,
@@ -87,6 +97,13 @@ pub fn validate_test_run(
     options: &K6Options,
 ) -> Result<(), String> {
     runtime::validate_test_run(collection, options)
+}
+
+pub fn resolve_test_requests(
+    collection: &RuntimeCollection,
+    options: &K6Options,
+) -> Result<Vec<ResolvedRuntimeRequest>, String> {
+    runtime::resolve_test_requests(collection, options)
 }
 
 #[cfg(test)]
