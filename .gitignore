@@ -2,7 +2,8 @@ node_modules/
 dist/
 .vite/
 target/
-src-tauri/bin/
+src-tauri/bin/*
+!src-tauri/bin/README.md
 
 # Logs
 *.log
