@@ -1,4 +1,4 @@
-import { useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { CollectionImportSection } from "./components/CollectionImportSection";
 import { TestHarnessSection } from "./components/TestHarnessSection";
 import { buildReportFileName, formatCount, truncateLog } from "./utils";
@@ -7,6 +7,7 @@ import { useSmokeTest } from "../features/test/useSmokeTest";
 import { useTestHarness } from "../features/test/useTestHarness";
 import { useConfigValidation } from "../features/test/useConfigValidation";
 import { useLoadRiftApi } from "../lib/loadrift/context";
+import type { CollectionInfo, K6Options } from "../lib/loadrift/types";
 import {
   selectCollectionFile,
   selectReportSavePath,
@@ -16,11 +17,42 @@ import { useCurlImport } from "./hooks/useCurlImport";
 import { useRunnerOptions } from "./hooks/useRunnerOptions";
 import { useWorkspaceLayout } from "./hooks/useWorkspaceLayout";
 
+function buildSmokeInputKey(
+  collection: CollectionInfo | null,
+  runnerOptions: K6Options,
+  collectionRevision: number,
+) {
+  return JSON.stringify({
+    collectionRevision,
+    collection: collection
+      ? {
+          name: collection.name,
+          requestCount: collection.requestCount,
+          requests: collection.requests.map((request) => ({
+            id: request.id,
+            name: request.name,
+            method: request.method,
+            url: request.url,
+            folderPath: request.folderPath,
+          })),
+          runtimeVariables: collection.runtimeVariables.map((variable) => ({
+            key: variable.key,
+            defaultValue: variable.defaultValue ?? "",
+          })),
+        }
+      : null,
+    baseUrl: runnerOptions.baseUrl?.trim() ?? "",
+    authToken: runnerOptions.authToken?.trim() ?? "",
+    variableOverrides: Object.entries(runnerOptions.variableOverrides).sort(
+      ([leftKey], [rightKey]) => leftKey.localeCompare(rightKey),
+    ),
+    selectedRequestIds: [...runnerOptions.selectedRequestIds].sort(),
+  });
+}
+
 export function App() {
-  const [lastSmokeRequestContext, setLastSmokeRequestContext] = useState<{
-    collectionToken: symbol;
-    inputSignature: string;
-  } | null>(null);
+  const [lastSmokeInputKey, setLastSmokeInputKey] = useState<string | null>(null);
+  const [collectionRevision, setCollectionRevision] = useState(0);
   const api = useLoadRiftApi();
   const {
     state: importState,
@@ -93,51 +125,20 @@ export function App() {
     () => Boolean(importState.collection) && !isHarnessBusy,
     [importState.collection, isHarnessBusy],
   );
-  const collectionToken = useMemo(
-    () => Symbol(collection?.name ?? "collection"),
-    [collection],
-  );
-  const smokeInputSignature = useMemo(
+  const smokeInputKey = useMemo(
     () =>
-      JSON.stringify({
-        collection: collection
-          ? {
-              name: collection.name,
-              requestCount: collection.requestCount,
-              requests: collection.requests.map((request) => ({
-                id: request.id,
-                name: request.name,
-                method: request.method,
-                url: request.url,
-                folderPath: request.folderPath,
-              })),
-              runtimeVariables: collection.runtimeVariables.map((variable) => ({
-                key: variable.key,
-                defaultValue: variable.defaultValue ?? "",
-              })),
-            }
-          : null,
-        baseUrl: runnerOptions.baseUrl?.trim() ?? "",
-        authToken: runnerOptions.authToken?.trim() ?? "",
-        variableOverrides: Object.entries(runnerOptions.variableOverrides).sort(
-          ([leftKey], [rightKey]) => leftKey.localeCompare(rightKey),
-        ),
-        selectedRequestIds: [...runnerOptions.selectedRequestIds].sort(),
-      }),
-    [
-      collection,
-      runnerOptions.authToken,
-      runnerOptions.baseUrl,
-      runnerOptions.selectedRequestIds,
-      runnerOptions.variableOverrides,
-    ],
+      buildSmokeInputKey(
+        collection,
+        runnerOptions,
+        collectionRevision,
+      ),
+    [collection, collectionRevision, runnerOptions],
   );
   const displayedSmokeTestState = useMemo(() => {
     if (
-      lastSmokeRequestContext &&
+      lastSmokeInputKey &&
       !smokeTestState.isRunning &&
-      (lastSmokeRequestContext.inputSignature !== smokeInputSignature ||
-        lastSmokeRequestContext.collectionToken !== collectionToken)
+      lastSmokeInputKey !== smokeInputKey
     ) {
       return {
         ...smokeTestState,
@@ -147,12 +148,62 @@ export function App() {
     }
 
     return smokeTestState;
-  }, [collectionToken, lastSmokeRequestContext, smokeInputSignature, smokeTestState]);
+  }, [lastSmokeInputKey, smokeInputKey, smokeTestState]);
 
   const displayedTestStatus = testState.isStarting ? "starting" : testState.status;
   const displayedVerdict = testState.result
     ? testState.result.status.toUpperCase()
     : displayedTestStatus.toUpperCase();
+  const displayedTestState = {
+    ...testState,
+    output: truncateLog(testState.output),
+  };
+
+  const harnessStatus = {
+    collection,
+    testState: displayedTestState,
+    smokeTestState: displayedSmokeTestState,
+    configValidation,
+    canStartTest,
+    canSmokeTest,
+    displayedTestStatus,
+    displayedVerdict,
+  };
+
+  const harnessControls = {
+    runnerOptions,
+    emptyRuntimeVariables,
+    curlInput,
+    curlImportState,
+    eventLogRef,
+    resultSummaryRef,
+  };
+
+  const harnessActions = {
+    onStartTest: () => void handleStartTest(),
+    onSmokeTest: () => void handleSmokeTest(),
+    onStopTest: () => void handleStopTest(),
+    onValidateConfiguration: () => void handleValidateConfiguration(),
+    onRefreshStatus: () => void handleRefreshStatus(),
+    onExportLatestReport: () => void handleExportLatestReport(),
+    onVusChange: (value: number) => updateRunnerOption("vus", value),
+    onDurationChange: (value: string) => updateRunnerOption("duration", value),
+    onRampUpChange: (value: K6Options["rampUp"]) =>
+      updateRunnerOption("rampUp", value),
+    onRampUpTimeChange: (value: string) =>
+      updateRunnerOption("rampUpTime", value),
+    onThresholdChange: updateThreshold,
+    onAuthTokenChange: (value: string) => updateRunnerOption("authToken", value),
+    onCurlInputChange: handleCurlInputChange,
+    onApplyCurlCommand: applyCurlCommand,
+    onRuntimeVariableChange: updateRuntimeVariable,
+    onAdvancedOptionsChange: (value: string) =>
+      updateRunnerOption("advancedOptionsJson", value),
+  };
+
+  useEffect(() => {
+    setCollectionRevision((previous) => previous + 1);
+  }, [collection]);
 
   async function handleFileImport() {
     setIsPickingFile(true);
@@ -183,16 +234,13 @@ export function App() {
   }
 
   async function handleStartTest() {
-    setLastSmokeRequestContext(null);
+    setLastSmokeInputKey(null);
     clearSmokeTest();
     await startTest(runnerOptions);
   }
 
   async function handleSmokeTest() {
-    setLastSmokeRequestContext({
-      collectionToken,
-      inputSignature: smokeInputSignature,
-    });
+    setLastSmokeInputKey(smokeInputKey);
     await runSmokeTest(runnerOptions);
   }
 
@@ -289,41 +337,9 @@ export function App() {
         </button>
 
         <TestHarnessSection
-          collection={collection}
-          testState={{
-            ...testState,
-            output: truncateLog(testState.output),
-          }}
-          configValidation={configValidation}
-          canStartTest={canStartTest}
-          canSmokeTest={canSmokeTest}
-          displayedTestStatus={displayedTestStatus}
-          displayedVerdict={displayedVerdict}
-          runnerOptions={runnerOptions}
-          smokeTestState={displayedSmokeTestState}
-          emptyRuntimeVariables={emptyRuntimeVariables}
-          curlInput={curlInput}
-          curlImportState={curlImportState}
-          eventLogRef={eventLogRef}
-          resultSummaryRef={resultSummaryRef}
-          onStartTest={() => void handleStartTest()}
-          onSmokeTest={() => void handleSmokeTest()}
-          onStopTest={() => void handleStopTest()}
-          onValidateConfiguration={() => void handleValidateConfiguration()}
-          onRefreshStatus={() => void handleRefreshStatus()}
-          onExportLatestReport={() => void handleExportLatestReport()}
-          onVusChange={(value) => updateRunnerOption("vus", value)}
-          onDurationChange={(value) => updateRunnerOption("duration", value)}
-          onRampUpChange={(value) => updateRunnerOption("rampUp", value)}
-          onRampUpTimeChange={(value) => updateRunnerOption("rampUpTime", value)}
-          onThresholdChange={updateThreshold}
-          onAuthTokenChange={(value) => updateRunnerOption("authToken", value)}
-          onCurlInputChange={handleCurlInputChange}
-          onApplyCurlCommand={applyCurlCommand}
-          onRuntimeVariableChange={updateRuntimeVariable}
-          onAdvancedOptionsChange={(value) =>
-            updateRunnerOption("advancedOptionsJson", value)
-          }
+          status={harnessStatus}
+          controls={harnessControls}
+          actions={harnessActions}
         />
       </main>
     </div>

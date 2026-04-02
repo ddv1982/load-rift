@@ -31,11 +31,11 @@ pub struct SmokeTestRequest {
 pub fn validate_test_configuration(
     state: State<'_, SharedAppState>,
     request: StartTestRequest,
-) -> Result<ValidateTestConfigurationResponse, String> {
-    Ok(logic::validate_test_configuration_inner(
+) -> ValidateTestConfigurationResponse {
+    logic::validate_test_configuration_inner(
         state.inner(),
         &request.options,
-    ))
+    )
 }
 
 #[tauri::command]
@@ -69,7 +69,12 @@ pub async fn start_test(
 pub async fn stop_test(state: State<'_, SharedAppState>) -> Result<(), String> {
     crate::k6::stop_k6_process(state.inner())?;
     logic::wait_for_test_stop(state.inner())?;
-    logic::mark_test_stopped(state.inner())
+    if let Ok(mut app_state) = state.inner().lock() {
+        app_state.test_status = crate::models::TestStatus::Stopped;
+        return Ok(());
+    }
+
+    Err("Failed to update the shared Tauri app state.".to_string())
 }
 
 #[tauri::command]
@@ -90,8 +95,8 @@ pub async fn export_report(
     state: State<'_, SharedAppState>,
     request: ExportReportRequest,
 ) -> Result<(), String> {
-    let path = crate::k6::export_report_file(state.inner(), &request.save_path)?;
-    logic::store_report_path(state.inner(), path)
+    crate::k6::export_report_file(state.inner(), &request.save_path)?;
+    Ok(())
 }
 
 #[tauri::command]

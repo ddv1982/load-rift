@@ -113,8 +113,6 @@ pub fn start_k6_process(
         let initial_metrics = LiveMetrics::default();
         let running_test = RunningTest {
             child: child.clone(),
-            script_path: script_path.clone(),
-            summary_path: summary_path.clone(),
             stop_requested: stop_requested.clone(),
         };
 

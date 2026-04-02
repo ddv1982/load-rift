@@ -8,6 +8,7 @@ import {
   getVariableValue,
   isHostVariableKey,
 } from "../utils";
+import { SettingsCardHeader } from "./SettingsCardHeader";
 
 interface RuntimeVariablesCardProps {
   collection: CollectionInfo | null;
@@ -24,17 +25,11 @@ export function RuntimeVariablesCard({
 }: RuntimeVariablesCardProps) {
   return (
     <div className="settings-card">
-      <div className="settings-heading">
-        <div>
-          <p className="eyebrow">Runtime Variables</p>
-          <h3>Collection Overrides</h3>
-        </div>
-        <p className="field-hint">
-          Detected from `{"{{...}}"}` placeholders in the imported collection.
-          Host-style variables will use the derived base URL from the Postman
-          cURL snippet when one is available.
-        </p>
-      </div>
+      <SettingsCardHeader
+        eyebrow="Runtime Variables"
+        title="Collection Overrides"
+        hint='Detected from `{{...}}` placeholders in the imported collection. Host-style variables will use the derived base URL from the Postman cURL snippet when one is available.'
+      />
 
       {collection?.runtimeVariables.length ? (
         <div className="settings-grid">

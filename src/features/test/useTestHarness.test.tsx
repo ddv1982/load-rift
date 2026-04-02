@@ -1,7 +1,5 @@
-import type { PropsWithChildren } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { LoadRiftApiProvider } from "../../lib/loadrift/context";
 import type { LoadRiftApi } from "../../lib/loadrift/api";
 import type {
   GetTestStatusResponse,
@@ -9,6 +7,7 @@ import type {
   TestCompletion,
   TestResult,
 } from "../../lib/loadrift/types";
+import { createLoadRiftApiWrapper as createWrapper } from "../../test/loadRiftApiTestUtils";
 import { useTestHarness } from "./useTestHarness";
 
 const metrics: LiveMetrics = {
@@ -84,12 +83,6 @@ function createApiMock(overrides: Partial<LoadRiftApi> = {}) {
   };
 
   return { api, listeners };
-}
-
-function createWrapper(api: LoadRiftApi) {
-  return function Wrapper({ children }: PropsWithChildren) {
-    return <LoadRiftApiProvider api={api}>{children}</LoadRiftApiProvider>;
-  };
 }
 
 describe("useTestHarness", () => {

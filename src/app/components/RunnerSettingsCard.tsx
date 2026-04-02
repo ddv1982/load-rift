@@ -1,5 +1,6 @@
 import type { K6Options } from "../../lib/loadrift/types";
 import type { CurlImportState } from "../types";
+import { SettingsCardHeader } from "./SettingsCardHeader";
 
 interface RunnerSettingsCardProps {
   runnerOptions: K6Options;
@@ -30,16 +31,11 @@ export function RunnerSettingsCard({
 }: RunnerSettingsCardProps) {
   return (
     <div className="settings-card">
-      <div className="settings-heading">
-        <div>
-          <p className="eyebrow">Runner Settings</p>
-          <h3>Basic k6 Controls</h3>
-        </div>
-        <p className="field-hint">
-          Configure the common load profile here. Use advanced JSON below for
-          the full k6 options surface.
-        </p>
-      </div>
+      <SettingsCardHeader
+        eyebrow="Runner Settings"
+        title="Basic k6 Controls"
+        hint="Configure the common load profile here. Use advanced JSON below for the full k6 options surface."
+      />
 
       <div className="settings-grid">
         <label className="field">

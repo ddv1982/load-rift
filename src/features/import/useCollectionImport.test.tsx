@@ -1,9 +1,10 @@
-import type { PropsWithChildren } from "react";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
-import { LoadRiftApiProvider } from "../../lib/loadrift/context";
-import type { LoadRiftApi } from "../../lib/loadrift/api";
 import type { CollectionInfo } from "../../lib/loadrift/types";
+import {
+  createLoadRiftApiMock as createApiMock,
+  createLoadRiftApiWrapper as createWrapper,
+} from "../../test/loadRiftApiTestUtils";
 import { useCollectionImport } from "./useCollectionImport";
 
 const importedCollection: CollectionInfo = {
@@ -21,29 +22,6 @@ const importedCollection: CollectionInfo = {
   ],
   runtimeVariables: [],
 };
-
-function createApiMock(overrides: Partial<LoadRiftApi> = {}): LoadRiftApi {
-  return {
-    importCollectionFromFile: vi.fn(),
-    validateTestConfiguration: vi.fn(),
-    smokeTestRequests: vi.fn(),
-    startTest: vi.fn(),
-    stopTest: vi.fn(),
-    exportReport: vi.fn(),
-    getTestStatus: vi.fn(),
-    onK6Output: vi.fn(async () => () => {}),
-    onK6Metrics: vi.fn(async () => () => {}),
-    onK6Complete: vi.fn(async () => () => {}),
-    onK6Error: vi.fn(async () => () => {}),
-    ...overrides,
-  };
-}
-
-function createWrapper(api: LoadRiftApi) {
-  return function Wrapper({ children }: PropsWithChildren) {
-    return <LoadRiftApiProvider api={api}>{children}</LoadRiftApiProvider>;
-  };
-}
 
 describe("useCollectionImport", () => {
   it("stores the imported collection after a successful file import", async () => {

@@ -54,43 +54,44 @@ export function useCollectionSummaryState({
     () => (collection ? createCollectionStorageKey(collection) : null),
     [collection],
   );
-  const requests = useMemo(() => collection?.requests ?? [], [collection?.requests]);
-  const selectedRequestSet = useMemo(
-    () => new Set(selectedRequestIds),
-    [selectedRequestIds],
-  );
-  const availableMethods = useMemo(
-    () => [...new Set(requests.map((request) => request.method))].sort(),
-    [requests],
-  );
-  const filteredRequests = useMemo(
-    () => filterRequests(requests, methodFilter, deferredSearchQuery),
-    [deferredSearchQuery, methodFilter, requests],
-  );
-  const rows = useMemo(() => buildCollectionRows(filteredRequests), [filteredRequests]);
-  const folderRows = useMemo(
-    () =>
-      rows.filter(
-        (row): row is Extract<CollectionRow, { kind: "folder" }> => row.kind === "folder",
-      ),
-    [rows],
-  );
-  const collapsedFolderSet = useMemo(
-    () => new Set(collapsedFolderIds),
-    [collapsedFolderIds],
-  );
-  const visibleRows = useMemo(
-    () => getVisibleRows(rows, collapsedFolderSet),
-    [collapsedFolderSet, rows],
-  );
-  const allRequestIds = useMemo(() => requests.map((request) => request.id), [requests]);
-  const visibleRequestIds = useMemo(
-    () =>
-      visibleRows
-        .filter((row): row is Extract<CollectionRow, { kind: "request" }> => row.kind === "request")
-        .map((row) => row.request.id),
-    [visibleRows],
-  );
+  const selectedRequestSet = useMemo(() => new Set(selectedRequestIds), [selectedRequestIds]);
+  const {
+    availableMethods,
+    filteredRequests,
+    rows,
+    folderRows,
+    allRequestIds,
+  } = useMemo(() => {
+    const requests = collection?.requests ?? [];
+    const availableMethods = [...new Set(requests.map((request) => request.method))].sort();
+    const filteredRequests = filterRequests(requests, methodFilter, deferredSearchQuery);
+    const rows = buildCollectionRows(filteredRequests);
+    const folderRows = rows.filter(
+      (row): row is Extract<CollectionRow, { kind: "folder" }> => row.kind === "folder",
+    );
+    const allRequestIds = requests.map((request) => request.id);
+
+    return {
+      availableMethods,
+      filteredRequests,
+      rows,
+      folderRows,
+      allRequestIds,
+    };
+  }, [collection, deferredSearchQuery, methodFilter]);
+  const { collapsedFolderSet, visibleRows, visibleRequestIds } = useMemo(() => {
+    const collapsedFolderSet = new Set(collapsedFolderIds);
+    const visibleRows = getVisibleRows(rows, collapsedFolderSet);
+    const visibleRequestIds = visibleRows
+      .filter((row): row is Extract<CollectionRow, { kind: "request" }> => row.kind === "request")
+      .map((row) => row.request.id);
+
+    return {
+      collapsedFolderSet,
+      visibleRows,
+      visibleRequestIds,
+    };
+  }, [collapsedFolderIds, rows]);
 
   useEffect(() => {
     if (!collectionKey) {
@@ -111,17 +112,16 @@ export function useCollectionSummaryState({
   }, [collectionKey]);
 
   useEffect(() => {
-    if (!collection?.name || !collectionKey) {
+    if (!collectionKey) {
       return;
     }
 
     saveCollectionFilters({
       collectionKey,
-      collectionName: collection.name,
       methodFilter,
       searchQuery,
     });
-  }, [collection?.name, collectionKey, methodFilter, searchQuery]);
+  }, [collectionKey, methodFilter, searchQuery]);
 
   useEffect(() => {
     const folderIds = new Set(folderRows.map((row) => row.id));

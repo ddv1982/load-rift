@@ -3,27 +3,41 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadRiftApi } from "../lib/loadrift/api";
 import type { K6Options, SmokeTestResponse } from "../lib/loadrift/types";
 import {
+  appHookTestState,
+  resetAppTestEnvironment,
+} from "./test-support/appTestState";
+import {
   createAppElement,
   createApiMock,
   createImportHookState,
-  createTestHookState,
   deferred,
   importedCollection,
   renderApp,
 } from "./test-support/appTestUtils";
 
-let importHookState = createImportHookState();
-let testHookState = createTestHookState();
+const DEFAULT_CURL_SNIPPET =
+  "curl --location 'https://api.example.com/entities/alpha' --header 'Authorization: Bearer integration-token'";
+const BASE_URL_ONLY_CURL_SNIPPET =
+  "curl --location 'https://api.example.com/entities/alpha'";
+const CHANGED_BASE_URL_CURL_SNIPPET =
+  "curl --location 'https://api.changed.example.com/entities/alpha'";
+const TOKEN_ONLY_CURL_SNIPPET =
+  "curl --header 'Authorization: Bearer token-only'";
+const SOAP_RESPONSE_URL = "https://api.example.com/soap/login";
+const SOAP_RESPONSE_PREVIEW = "<Envelope>ok</Envelope>";
+const EMPTY_SMOKE_TEST_MESSAGE =
+  "Run a smoke test to execute the selected requests once and inspect the response body, headers, and status before starting load.";
+
 const dialogMocks = vi.hoisted(() => ({
   selectReportSavePath: vi.fn(),
 }));
 
 vi.mock("../features/import/useCollectionImport", () => ({
-  useCollectionImport: () => importHookState,
+  useCollectionImport: () => appHookTestState.importHookState,
 }));
 
 vi.mock("../features/test/useTestHarness", () => ({
-  useTestHarness: () => testHookState,
+  useTestHarness: () => appHookTestState.testHookState,
 }));
 
 vi.mock("../lib/tauri/dialog", () => ({
@@ -31,15 +45,57 @@ vi.mock("../lib/tauri/dialog", () => ({
   selectReportSavePath: dialogMocks.selectReportSavePath,
 }));
 
+function createSoapSmokeResponse(
+  overrides: Partial<SmokeTestResponse["responses"][number]> = {},
+): SmokeTestResponse {
+  return {
+    responses: [
+      {
+        requestId: "request-0",
+        requestName: "SOAP login",
+        method: "POST",
+        url: SOAP_RESPONSE_URL,
+        statusCode: 200,
+        durationMs: 42,
+        ok: true,
+        contentType: "text/xml; charset=utf-8",
+        responseHeaders: {
+          "content-type": "text/xml; charset=utf-8",
+        },
+        bodyPreview: SOAP_RESPONSE_PREVIEW,
+        errorMessage: null,
+        ...overrides,
+      },
+    ],
+  };
+}
+
+function applyCurlSnippet(snippet: string) {
+  fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
+    target: {
+      value: snippet,
+    },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+}
+
+async function advanceValidationTimer() {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(250);
+  });
+}
+
+async function flushMicrotasks(count = 1) {
+  await act(async () => {
+    for (let index = 0; index < count; index += 1) {
+      await Promise.resolve();
+    }
+  });
+}
+
 describe("App validation lifecycle", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-25T15:13:32Z"));
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    importHookState = createImportHookState();
-    testHookState = createTestHookState();
+    resetAppTestEnvironment();
   });
 
   afterEach(() => {
@@ -117,14 +173,7 @@ describe("App validation lifecycle", () => {
   it("applies base URL and bearer token from a pasted curl command", () => {
     renderApp(createApiMock());
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value:
-          "curl --location 'https://api.example.com/entities/alpha' --header 'Authorization: Bearer integration-token'",
-      },
-    });
-
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(DEFAULT_CURL_SNIPPET);
 
     expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
@@ -148,22 +197,12 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
+    await advanceValidationTimer();
     vi.mocked(api.validateTestConfiguration).mockClear();
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value:
-          "curl --location 'https://api.example.com/entities/alpha' --header 'Authorization: Bearer integration-token'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(DEFAULT_CURL_SNIPPET);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
+    await advanceValidationTimer();
 
     expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
@@ -185,12 +224,7 @@ describe("App validation lifecycle", () => {
     expect(screen.getByText(/Empty variables:\s*environment\./)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --location 'https://api.example.com/entities/alpha'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
     fireEvent.click(screen.getByRole("tab", { name: "Variables" }));
     expect(screen.queryByText(/Empty variables:\s*environment\./)).not.toBeInTheDocument();
@@ -216,25 +250,7 @@ describe("App validation lifecycle", () => {
   });
 
   it("runs a smoke test, disables conflicting actions, and shows the returned SOAP preview", async () => {
-    const smokeResponse: SmokeTestResponse = {
-      responses: [
-        {
-          requestId: "request-0",
-          requestName: "SOAP login",
-          method: "POST",
-          url: "https://api.example.com/soap/login",
-          statusCode: 200,
-          durationMs: 42,
-          ok: true,
-          contentType: "text/xml; charset=utf-8",
-          responseHeaders: {
-            "content-type": "text/xml; charset=utf-8",
-          },
-          bodyPreview: "<Envelope>ok</Envelope>",
-          errorMessage: null,
-        },
-      ],
-    };
+    const smokeResponse = createSoapSmokeResponse();
     const smokeRequest = deferred<SmokeTestResponse>();
     const api = createApiMock({
       smokeTestRequests: vi.fn(() => smokeRequest.promise),
@@ -242,9 +258,7 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
+    await advanceValidationTimer();
 
     const startButton = screen.getByRole("button", { name: "Start Test" });
     const smokeButton = screen.getByRole("button", { name: "Smoke Test" });
@@ -264,57 +278,31 @@ describe("App validation lifecycle", () => {
     });
 
     expect(screen.getByText("SOAP login")).toBeInTheDocument();
-    expect(screen.getByText("POST https://api.example.com/soap/login")).toBeInTheDocument();
-    expect(screen.getByText("<Envelope>ok</Envelope>")).toBeInTheDocument();
+    expect(screen.getByText(`POST ${SOAP_RESPONSE_URL}`)).toBeInTheDocument();
+    expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
   });
 
   it("clears smoke test results when starting a load test", async () => {
-    const smokeResponse: SmokeTestResponse = {
-      responses: [
-        {
-          requestId: "request-0",
-          requestName: "SOAP login",
-          method: "POST",
-          url: "https://api.example.com/soap/login",
-          statusCode: 200,
-          durationMs: 42,
-          ok: true,
-          contentType: "text/xml; charset=utf-8",
-          responseHeaders: {
-            "content-type": "text/xml; charset=utf-8",
-          },
-          bodyPreview: "<Envelope>ok</Envelope>",
-          errorMessage: null,
-        },
-      ],
-    };
+    const smokeResponse = createSoapSmokeResponse();
     const api = createApiMock({
       smokeTestRequests: vi.fn(async () => smokeResponse),
     });
 
     renderApp(api);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
+    await advanceValidationTimer();
 
     fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushMicrotasks();
 
-    expect(screen.getByText("<Envelope>ok</Envelope>")).toBeInTheDocument();
+    expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Start Test" }));
 
-    expect(testHookState.startTest).toHaveBeenCalledTimes(1);
-    expect(screen.queryByText("<Envelope>ok</Envelope>")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Run a smoke test to execute the selected requests once and inspect the response body, headers, and status before starting load.",
-      ),
-    ).toBeInTheDocument();
+    expect(appHookTestState.testHookState.startTest).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
+    expect(screen.getByText(EMPTY_SMOKE_TEST_MESSAGE)).toBeInTheDocument();
   });
 
   it("keeps the harness busy when smoke-test inputs change mid-flight", async () => {
@@ -325,97 +313,42 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
+    await advanceValidationTimer();
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --location 'https://api.example.com/entities/alpha'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
     fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
 
     expect(screen.getByRole("button", { name: "Smoking..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start Test" })).toBeDisabled();
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --location 'https://api.changed.example.com/entities/alpha'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(CHANGED_BASE_URL_CURL_SNIPPET);
 
     expect(screen.getByRole("button", { name: "Smoking..." })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Start Test" })).toBeDisabled();
 
     await act(async () => {
-      smokeRequest.resolve({
-        responses: [
-          {
-            requestId: "request-0",
-            requestName: "SOAP login",
-            method: "POST",
-            url: "https://api.example.com/soap/login",
-            statusCode: 200,
-            durationMs: 42,
-            ok: true,
-            contentType: "text/xml; charset=utf-8",
-            responseHeaders: {
-              "content-type": "text/xml; charset=utf-8",
-            },
-            bodyPreview: "<Envelope>ok</Envelope>",
-            errorMessage: null,
-          },
-        ],
-      });
+      smokeRequest.resolve(createSoapSmokeResponse());
       await smokeRequest.promise;
     });
 
-    expect(screen.queryByText("<Envelope>ok</Envelope>")).not.toBeInTheDocument();
+    expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Smoke Test" })).toBeEnabled();
   });
 
   it("keeps smoke test results visible when only load settings change", async () => {
     const api = createApiMock({
-      smokeTestRequests: vi.fn(async () => ({
-        responses: [
-          {
-            requestId: "request-0",
-            requestName: "SOAP login",
-            method: "POST",
-            url: "https://api.example.com/soap/login",
-            statusCode: 200,
-            durationMs: 42,
-            ok: true,
-            contentType: "text/xml; charset=utf-8",
-            responseHeaders: {
-              "content-type": "text/xml; charset=utf-8",
-            },
-            bodyPreview: "<Envelope>ok</Envelope>",
-            errorMessage: null,
-          },
-        ],
-      })),
+      smokeTestRequests: vi.fn(async () => createSoapSmokeResponse()),
     });
 
     renderApp(api);
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --location 'https://api.example.com/entities/alpha'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
     fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushMicrotasks();
 
-    expect(screen.getByText("<Envelope>ok</Envelope>")).toBeInTheDocument();
+    expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
 
     fireEvent.change(screen.getByLabelText("Virtual users"), {
       target: {
@@ -428,66 +361,32 @@ describe("App validation lifecycle", () => {
       },
     });
 
-    expect(screen.getByText("<Envelope>ok</Envelope>")).toBeInTheDocument();
+    expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
   });
 
   it("clears stale smoke test results when smoke-request inputs change", async () => {
     const api = createApiMock({
-      smokeTestRequests: vi.fn(async () => ({
-        responses: [
-          {
-            requestId: "request-0",
-            requestName: "SOAP login",
-            method: "POST",
-            url: "https://api.example.com/soap/login",
-            statusCode: 200,
-            durationMs: 42,
-            ok: true,
-            contentType: "text/xml; charset=utf-8",
-            responseHeaders: {
-              "content-type": "text/xml; charset=utf-8",
-            },
-            bodyPreview: "<Envelope>ok</Envelope>",
-            errorMessage: null,
-          },
-        ],
-      })),
+      smokeTestRequests: vi.fn(async () => createSoapSmokeResponse()),
     });
 
     renderApp(api);
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --location 'https://api.example.com/entities/alpha'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
     fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushMicrotasks();
 
-    expect(screen.getByText("<Envelope>ok</Envelope>")).toBeInTheDocument();
+    expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
 
     await act(async () => {
-      fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-        target: {
-          value: "curl --location 'https://api.changed.example.com/entities/alpha'",
-        },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+      applyCurlSnippet(CHANGED_BASE_URL_CURL_SNIPPET);
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(screen.queryByText("<Envelope>ok</Envelope>")).not.toBeInTheDocument();
-    expect(
-      screen.getByText(
-        "Run a smoke test to execute the selected requests once and inspect the response body, headers, and status before starting load.",
-      ),
-    ).toBeInTheDocument();
+    expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
+    expect(screen.getByText(EMPTY_SMOKE_TEST_MESSAGE)).toBeInTheDocument();
   });
 
   it("discards smoke test results when inputs change before the response returns", async () => {
@@ -498,76 +397,28 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --location 'https://api.example.com/entities/alpha'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
     fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
 
     await act(async () => {
-      fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-        target: {
-          value: "curl --location 'https://api.changed.example.com/entities/alpha'",
-        },
-      });
-      fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
-      smokeRequest.resolve({
-        responses: [
-          {
-            requestId: "request-0",
-            requestName: "SOAP login",
-            method: "POST",
-            url: "https://api.example.com/soap/login",
-            statusCode: 200,
-            durationMs: 42,
-            ok: true,
-            contentType: "text/xml; charset=utf-8",
-            responseHeaders: {
-              "content-type": "text/xml; charset=utf-8",
-            },
-            bodyPreview: "<Envelope>ok</Envelope>",
-            errorMessage: null,
-          },
-        ],
-      });
+      applyCurlSnippet(CHANGED_BASE_URL_CURL_SNIPPET);
+      smokeRequest.resolve(createSoapSmokeResponse());
       await smokeRequest.promise;
       await Promise.resolve();
     });
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushMicrotasks();
 
-    expect(screen.queryByText("<Envelope>ok</Envelope>")).not.toBeInTheDocument();
+    expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
   });
 
   it("clears smoke test results after re-import when collection defaults change", async () => {
     const api = createApiMock({
-      smokeTestRequests: vi.fn(async () => ({
-        responses: [
-          {
-            requestId: "request-0",
-            requestName: "SOAP login",
-            method: "POST",
-            url: "https://api.example.com/soap/login",
-            statusCode: 200,
-            durationMs: 42,
-            ok: true,
-            contentType: "text/xml; charset=utf-8",
-            responseHeaders: {
-              "content-type": "text/xml; charset=utf-8",
-            },
-            bodyPreview: "<Envelope>ok</Envelope>",
-            errorMessage: null,
-          },
-        ],
-      })),
+      smokeTestRequests: vi.fn(async () => createSoapSmokeResponse()),
     });
 
-    importHookState = createImportHookState({
+    appHookTestState.importHookState = createImportHookState({
       ...importedCollection,
       runtimeVariables: [
         {
@@ -581,13 +432,11 @@ describe("App validation lifecycle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushMicrotasks();
 
-    expect(screen.getByText("<Envelope>ok</Envelope>")).toBeInTheDocument();
+    expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
 
-    importHookState = createImportHookState({
+    appHookTestState.importHookState = createImportHookState({
       ...importedCollection,
       runtimeVariables: [
         {
@@ -598,37 +447,17 @@ describe("App validation lifecycle", () => {
     });
     view.rerender(createAppElement(api));
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushMicrotasks();
 
-    expect(screen.queryByText("<Envelope>ok</Envelope>")).not.toBeInTheDocument();
+    expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
   });
 
   it("clears smoke test results after re-import even when the visible summary is unchanged", async () => {
     const api = createApiMock({
-      smokeTestRequests: vi.fn(async () => ({
-        responses: [
-          {
-            requestId: "request-0",
-            requestName: "SOAP login",
-            method: "POST",
-            url: "https://api.example.com/soap/login",
-            statusCode: 200,
-            durationMs: 42,
-            ok: true,
-            contentType: "text/xml; charset=utf-8",
-            responseHeaders: {
-              "content-type": "text/xml; charset=utf-8",
-            },
-            bodyPreview: "<Envelope>ok</Envelope>",
-            errorMessage: null,
-          },
-        ],
-      })),
+      smokeTestRequests: vi.fn(async () => createSoapSmokeResponse()),
     });
 
-    importHookState = createImportHookState({
+    appHookTestState.importHookState = createImportHookState({
       ...importedCollection,
       requests: importedCollection.requests.map((request) => ({ ...request })),
       runtimeVariables: importedCollection.runtimeVariables.map((variable) => ({
@@ -640,13 +469,11 @@ describe("App validation lifecycle", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushMicrotasks();
 
-    expect(screen.getByText("<Envelope>ok</Envelope>")).toBeInTheDocument();
+    expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
 
-    importHookState = createImportHookState({
+    appHookTestState.importHookState = createImportHookState({
       ...importedCollection,
       requests: importedCollection.requests.map((request) => ({ ...request })),
       runtimeVariables: importedCollection.runtimeVariables.map((variable) => ({
@@ -655,33 +482,21 @@ describe("App validation lifecycle", () => {
     });
     view.rerender(createAppElement(api));
 
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await flushMicrotasks();
 
-    expect(screen.queryByText("<Envelope>ok</Envelope>")).not.toBeInTheDocument();
+    expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
   });
 
   it("clears the derived base URL when a later snippet does not contain one", () => {
     renderApp(createApiMock());
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --location 'https://api.example.com/entities/alpha'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
     expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
     );
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --header 'Authorization: Bearer token-only'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(TOKEN_ONLY_CURL_SNIPPET);
 
     expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Bearer token") as HTMLInputElement).value).toBe(
@@ -697,12 +512,7 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
-      target: {
-        value: "curl --location 'https://api.example.com/entities/alpha'",
-      },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+    applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
     fireEvent.click(screen.getByRole("button", { name: "Export Latest Report" }));
 

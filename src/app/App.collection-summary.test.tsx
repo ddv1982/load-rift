@@ -1,30 +1,28 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  appHookTestState,
+  resetAppTestEnvironment,
+} from "./test-support/appTestState";
+import {
   anotherCollection,
   createApiMock,
   createImportHookState,
-  createSmokeHookState,
-  createTestHookState,
   orderedCollection,
   renderApp,
   separatorFolderCollection,
 } from "./test-support/appTestUtils";
 
-let importHookState = createImportHookState();
-let testHookState = createTestHookState();
-let smokeHookState = createSmokeHookState();
-
 vi.mock("../features/import/useCollectionImport", () => ({
-  useCollectionImport: () => importHookState,
+  useCollectionImport: () => appHookTestState.importHookState,
 }));
 
 vi.mock("../features/test/useTestHarness", () => ({
-  useTestHarness: () => testHookState,
+  useTestHarness: () => appHookTestState.testHookState,
 }));
 
 vi.mock("../features/test/useSmokeTest", () => ({
-  useSmokeTest: () => smokeHookState,
+  useSmokeTest: () => appHookTestState.smokeHookState,
 }));
 
 vi.mock("../lib/tauri/dialog", () => ({
@@ -34,14 +32,7 @@ vi.mock("../lib/tauri/dialog", () => ({
 
 describe("App collection summary", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-25T15:13:32Z"));
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    importHookState = createImportHookState();
-    testHookState = createTestHookState();
-    smokeHookState = createSmokeHookState();
+    resetAppTestEnvironment();
   });
 
   afterEach(() => {
@@ -49,7 +40,7 @@ describe("App collection summary", () => {
   });
 
   it("collapses and expands folder rows in the collection summary", () => {
-    importHookState = createImportHookState(anotherCollection);
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
 
     renderApp(createApiMock());
 
@@ -69,7 +60,7 @@ describe("App collection summary", () => {
   });
 
   it("preserves imported request order when rendering folder rows", () => {
-    importHookState = createImportHookState(orderedCollection);
+    appHookTestState.importHookState = createImportHookState(orderedCollection);
 
     renderApp(createApiMock());
 
@@ -91,7 +82,7 @@ describe("App collection summary", () => {
   });
 
   it("keeps folders with separator characters isolated from nested folder paths", () => {
-    importHookState = createImportHookState(separatorFolderCollection);
+    appHookTestState.importHookState = createImportHookState(separatorFolderCollection);
 
     renderApp(createApiMock());
 
@@ -105,7 +96,7 @@ describe("App collection summary", () => {
   });
 
   it("selects only visible requests when using filtered bulk selection", async () => {
-    importHookState = createImportHookState(anotherCollection);
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
 
     renderApp(createApiMock());
 
@@ -135,7 +126,7 @@ describe("App collection summary", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Start Test" }));
 
-    expect(testHookState.startTest).toHaveBeenCalledWith(
+    expect(appHookTestState.testHookState.startTest).toHaveBeenCalledWith(
       expect.objectContaining({
         selectedRequestIds: ["request-1"],
       }),

@@ -16,7 +16,6 @@ export type HarnessTab = "controls" | "variables" | "advanced";
 
 interface PersistedCollectionFilters {
   collectionKey: string;
-  collectionName: string;
   methodFilter: string;
   searchQuery: string;
 }
@@ -24,10 +23,6 @@ interface PersistedCollectionFilters {
 interface PersistedCollectionFilterStore {
   version: 2;
   entries: Record<string, PersistedCollectionFilters>;
-}
-
-interface NormalizedCollectionFilterStore {
-  store: PersistedCollectionFilterStore;
 }
 
 interface PersistedRunnerPreferences {
@@ -125,7 +120,7 @@ export function createCollectionStorageKey(collection: CollectionInfo): string {
 
 function normalizeCollectionFilterStore(
   stored: unknown,
-): NormalizedCollectionFilterStore | null {
+): PersistedCollectionFilterStore | null {
   if (!stored || typeof stored !== "object") {
     return null;
   }
@@ -133,9 +128,7 @@ function normalizeCollectionFilterStore(
   if ("version" in stored && "entries" in stored) {
     const versionedStore = stored as PersistedCollectionFilterStore;
     if (versionedStore.version === 2 && versionedStore.entries) {
-      return {
-        store: versionedStore,
-      };
+      return versionedStore;
     }
   }
 
@@ -171,27 +164,22 @@ export function saveHarnessTab(tab: HarnessTab) {
 export function loadCollectionFilters(
   collectionKey: string,
 ): PersistedCollectionFilters | null {
-  const stored = normalizeCollectionFilterStore(
-    readStorage<unknown>(STORAGE_KEYS.collectionFilters),
-  );
+  const stored = normalizeCollectionFilterStore(readStorage(STORAGE_KEYS.collectionFilters));
   if (!stored) {
     return null;
   }
 
-  return stored.store.entries[collectionKey] ?? null;
+  return stored.entries[collectionKey] ?? null;
 }
 
 export function saveCollectionFilters(filters: PersistedCollectionFilters) {
-  const stored = normalizeCollectionFilterStore(
-    readStorage<unknown>(STORAGE_KEYS.collectionFilters),
-  );
+  const stored = normalizeCollectionFilterStore(readStorage(STORAGE_KEYS.collectionFilters));
   writeStorage<PersistedCollectionFilterStore>(STORAGE_KEYS.collectionFilters, {
     version: 2,
     entries: {
-      ...(stored?.store.entries ?? {}),
+      ...(stored?.entries ?? {}),
       [filters.collectionKey]: {
         collectionKey: filters.collectionKey,
-        collectionName: filters.collectionName,
         methodFilter: filters.methodFilter,
         searchQuery: filters.searchQuery,
       },

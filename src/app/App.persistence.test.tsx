@@ -1,31 +1,28 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  appHookTestState,
+  resetAppTestEnvironment,
+} from "./test-support/appTestState";
+import {
   anotherCollection,
   createAppElement,
   createApiMock,
-  createImportHookState,
-  createSmokeHookState,
-  createTestHookState,
   importedCollection,
   renderApp,
   sameNameDifferentCollection,
 } from "./test-support/appTestUtils";
 
-let importHookState = createImportHookState();
-let testHookState = createTestHookState();
-let smokeHookState = createSmokeHookState();
-
 vi.mock("../features/import/useCollectionImport", () => ({
-  useCollectionImport: () => importHookState,
+  useCollectionImport: () => appHookTestState.importHookState,
 }));
 
 vi.mock("../features/test/useTestHarness", () => ({
-  useTestHarness: () => testHookState,
+  useTestHarness: () => appHookTestState.testHookState,
 }));
 
 vi.mock("../features/test/useSmokeTest", () => ({
-  useSmokeTest: () => smokeHookState,
+  useSmokeTest: () => appHookTestState.smokeHookState,
 }));
 
 vi.mock("../lib/tauri/dialog", () => ({
@@ -35,14 +32,7 @@ vi.mock("../lib/tauri/dialog", () => ({
 
 describe("App persistence", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-25T15:13:32Z"));
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    importHookState = createImportHookState();
-    testHookState = createTestHookState();
-    smokeHookState = createSmokeHookState();
+    resetAppTestEnvironment();
   });
 
   afterEach(() => {
@@ -110,10 +100,10 @@ describe("App persistence", () => {
       target: { value: "users" },
     });
 
-    importHookState = {
-      ...importHookState,
+    appHookTestState.importHookState = {
+      ...appHookTestState.importHookState,
       state: {
-        ...importHookState.state,
+        ...appHookTestState.importHookState.state,
         collection: anotherCollection,
       },
     };
@@ -124,10 +114,10 @@ describe("App persistence", () => {
       target: { value: "login" },
     });
 
-    importHookState = {
-      ...importHookState,
+    appHookTestState.importHookState = {
+      ...appHookTestState.importHookState,
       state: {
-        ...importHookState.state,
+        ...appHookTestState.importHookState.state,
         collection: importedCollection,
       },
     };
@@ -145,10 +135,10 @@ describe("App persistence", () => {
       target: { value: "users" },
     });
 
-    importHookState = {
-      ...importHookState,
+    appHookTestState.importHookState = {
+      ...appHookTestState.importHookState,
       state: {
-        ...importHookState.state,
+        ...appHookTestState.importHookState.state,
         collection: sameNameDifferentCollection,
       },
     };
@@ -161,10 +151,10 @@ describe("App persistence", () => {
       target: { value: "login" },
     });
 
-    importHookState = {
-      ...importHookState,
+    appHookTestState.importHookState = {
+      ...appHookTestState.importHookState,
       state: {
-        ...importHookState.state,
+        ...appHookTestState.importHookState.state,
         collection: importedCollection,
       },
     };

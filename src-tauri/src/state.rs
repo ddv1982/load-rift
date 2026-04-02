@@ -1,6 +1,3 @@
-#![allow(dead_code)]
-
-use std::path::PathBuf;
 use std::process::Child;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -11,13 +8,10 @@ use crate::models::{LiveMetrics, TestResult, TestStatus};
 #[derive(Clone)]
 pub struct RunningTest {
     pub child: Arc<Mutex<Child>>,
-    pub script_path: PathBuf,
-    pub summary_path: PathBuf,
     pub stop_requested: Arc<AtomicBool>,
 }
 
 pub struct AppState {
-    pub collection_name: Option<String>,
     pub generated_script: Option<String>,
     pub runtime_collection: Option<RuntimeCollection>,
     pub latest_metrics: Option<LiveMetrics>,
@@ -26,7 +20,6 @@ pub struct AppState {
     pub latest_error_message: Option<String>,
     pub latest_output: String,
     pub test_status: TestStatus,
-    pub report_path: Option<PathBuf>,
     pub launch_in_progress: bool,
     pub active_test: Option<RunningTest>,
 }
@@ -42,14 +35,12 @@ impl AppState {
         self.latest_finish_reason = None;
         self.latest_error_message = None;
         self.latest_output.clear();
-        self.report_path = None;
     }
 }
 
 impl Default for AppState {
     fn default() -> Self {
         Self {
-            collection_name: None,
             generated_script: None,
             runtime_collection: None,
             latest_metrics: None,
@@ -58,7 +49,6 @@ impl Default for AppState {
             latest_error_message: None,
             latest_output: String::new(),
             test_status: TestStatus::Idle,
-            report_path: None,
             launch_in_progress: false,
             active_test: None,
         }

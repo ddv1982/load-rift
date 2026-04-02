@@ -6,7 +6,7 @@ This repository currently contains the first working Tauri vertical slice:
 - Tauri 2 backend setup
 - React + TypeScript frontend setup
 - A typed frontend API layer
-- Postman collection import from file and URL
+- Postman collection import from file
 - Local k6 execution with live output, metrics/status tracking, and report export
 - Bundled project-local k6 binary for Linux and macOS desktop builds
 
@@ -73,7 +73,7 @@ must be built on Linux and macOS bundles must be built on macOS.
 ## Current Behavior
 
 The app currently provides a slim migration shell with:
-- File / URL import entry points
+- File import entry point
 - A test harness panel for start / stop / status
 - Event listeners for:
   - `k6:output`
@@ -88,7 +88,6 @@ The app currently provides a slim migration shell with:
 - Tauri bundles those binaries as application resources, so packaged Linux and
   macOS artifacts do not rely on a system-wide k6 install.
 - At runtime the app still honors `LOADRIFT_K6_BIN` first, which is useful for local overrides or debugging.
-- URL import uses Tauri's HTTP client instead of host `curl`/`wget` binaries.
 
 ## Licensing
 

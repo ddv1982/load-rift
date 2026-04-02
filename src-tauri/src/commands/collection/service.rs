@@ -18,7 +18,6 @@ pub(super) fn import_collection_into_state(
         return Err(ACTIVE_TEST_IMPORT_ERROR.to_string());
     }
 
-    app_state.collection_name = Some(collection.name.clone());
     app_state.generated_script = Some(imported.script);
     app_state.runtime_collection = Some(imported.runtime_collection);
     app_state.clear_test_run_state();

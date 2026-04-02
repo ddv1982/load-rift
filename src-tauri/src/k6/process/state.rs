@@ -35,7 +35,6 @@ pub(crate) fn store_started_state(
     Ok(())
 }
 
-#[cfg_attr(test, allow(dead_code))]
 pub(crate) fn mark_stopped(state: &SharedAppState) {
     if let Ok(mut app_state) = state.lock() {
         clear_active_run(&mut app_state);
@@ -45,7 +44,6 @@ pub(crate) fn mark_stopped(state: &SharedAppState) {
     }
 }
 
-#[cfg_attr(test, allow(dead_code))]
 pub(crate) fn store_completion(
     state: &SharedAppState,
     metrics: &LiveMetrics,
@@ -71,7 +69,6 @@ fn clear_active_run(app_state: &mut AppState) {
     }
 }
 
-#[cfg_attr(test, allow(dead_code))]
 pub(crate) fn completion_status(
     exited_successfully: bool,
     exit_code: Option<i32>,

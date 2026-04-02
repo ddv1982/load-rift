@@ -2,6 +2,7 @@ node_modules/
 dist/
 .vite/
 target/
+.omx/
 src-tauri/bin/*
 !src-tauri/bin/README.md
 

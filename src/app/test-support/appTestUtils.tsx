@@ -3,7 +3,11 @@ import { vi } from "vitest";
 import { App } from "../App";
 import { LoadRiftApiProvider } from "../../lib/loadrift/context";
 import type { LoadRiftApi } from "../../lib/loadrift/api";
-import type { CollectionInfo, K6Options, SmokeTestResponse } from "../../lib/loadrift/types";
+import type { CollectionInfo, SmokeTestResponse } from "../../lib/loadrift/types";
+export {
+  createLoadRiftApiMock as createApiMock,
+  deferred,
+} from "../../test/loadRiftApiTestUtils";
 
 export const importedCollection: CollectionInfo = {
   name: "Fixture Collection",
@@ -183,32 +187,6 @@ export function createSmokeHookState() {
   };
 }
 
-export function createApiMock(overrides: Partial<LoadRiftApi> = {}): LoadRiftApi {
-  const emptySmokeTestResponse: SmokeTestResponse = {
-    responses: [],
-  };
-
-  return {
-    importCollectionFromFile: vi.fn(),
-    validateTestConfiguration: vi.fn((_input: { options: K6Options }) =>
-      Promise.resolve({
-        ready: true,
-        message: "Configuration looks ready to run.",
-      })
-    ),
-    smokeTestRequests: vi.fn(() => Promise.resolve(emptySmokeTestResponse)),
-    startTest: vi.fn(),
-    stopTest: vi.fn(),
-    exportReport: vi.fn(),
-    getTestStatus: vi.fn(),
-    onK6Output: vi.fn(() => Promise.resolve(() => {})),
-    onK6Metrics: vi.fn(() => Promise.resolve(() => {})),
-    onK6Complete: vi.fn(() => Promise.resolve(() => {})),
-    onK6Error: vi.fn(() => Promise.resolve(() => {})),
-    ...overrides,
-  };
-}
-
 export function createAppElement(api: LoadRiftApi) {
   return (
     <LoadRiftApiProvider api={api}>
@@ -219,15 +197,4 @@ export function createAppElement(api: LoadRiftApi) {
 
 export function renderApp(api: LoadRiftApi) {
   return render(createAppElement(api));
-}
-
-export function deferred<T>() {
-  let resolve!: (value: T) => void;
-  let reject!: (error?: unknown) => void;
-  const promise = new Promise<T>((innerResolve, innerReject) => {
-    resolve = innerResolve;
-    reject = innerReject;
-  });
-
-  return { promise, resolve, reject };
 }

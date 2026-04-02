@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -10,7 +9,6 @@ use crate::models::{
 use crate::state::SharedAppState;
 
 const READ_STATE_ERROR: &str = "Failed to read the shared Tauri app state.";
-const UPDATE_STATE_ERROR: &str = "Failed to update the shared Tauri app state.";
 const RUNNER_BUSY_START_ERROR: &str =
     "A k6 test is already running or still shutting down. Wait a moment and try again.";
 const RUNNER_BUSY_VALIDATE_ERROR: &str =
@@ -33,15 +31,16 @@ pub(super) fn get_test_status_response(
     state: &SharedAppState,
 ) -> Result<GetTestStatusResponse, String> {
     let state = state.lock().map_err(|_| READ_STATE_ERROR.to_string())?;
-    let status = if state.test_is_busy() {
+    let is_running = state.test_is_busy();
+    let status = if is_running {
         TestStatus::Running
     } else {
         state.test_status.clone()
     };
 
     Ok(GetTestStatusResponse {
-        status: status.clone(),
-        is_running: state.test_is_busy(),
+        status,
+        is_running,
         metrics: state.latest_metrics.clone(),
         result: state.latest_result.clone(),
         finish_reason: state.latest_finish_reason.clone(),
@@ -100,18 +99,6 @@ pub(super) fn release_failed_start(state: &SharedAppState) {
             app_state.test_status = TestStatus::Failed;
         }
     }
-}
-
-pub(super) fn mark_test_stopped(state: &SharedAppState) -> Result<(), String> {
-    let mut app_state = state.lock().map_err(|_| UPDATE_STATE_ERROR.to_string())?;
-    app_state.test_status = TestStatus::Stopped;
-    Ok(())
-}
-
-pub(super) fn store_report_path(state: &SharedAppState, path: PathBuf) -> Result<(), String> {
-    let mut app_state = state.lock().map_err(|_| UPDATE_STATE_ERROR.to_string())?;
-    app_state.report_path = Some(path);
-    Ok(())
 }
 
 pub(super) fn validate_test_configuration_inner(

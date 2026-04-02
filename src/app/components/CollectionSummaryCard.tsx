@@ -66,8 +66,8 @@ export function CollectionSummaryCard({
       <article className="summary-card is-empty">
         <p>No imported collection yet.</p>
         <span>
-          Import a Postman collection from disk or URL to inspect the
-          extracted request summary here.
+          Import a Postman collection from disk to inspect the extracted
+          request summary here.
         </span>
       </article>
     );

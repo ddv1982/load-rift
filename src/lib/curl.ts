@@ -2,7 +2,6 @@ export interface ParsedCurlCommand {
   url: string | null;
   baseUrl: string | null;
   authToken: string | null;
-  headers: Record<string, string>;
 }
 
 export function normalizeBearerTokenInput(value: string | null | undefined): string | null {
@@ -29,8 +28,8 @@ export function normalizeBearerTokenInput(value: string | null | undefined): str
 
 export function parseCurlCommand(command: string): ParsedCurlCommand {
   const tokens = tokenizeShellWords(command);
-  const headers: Record<string, string> = {};
   let url: string | null = null;
+  let authToken: string | null = null;
 
   for (let index = 0; index < tokens.length; index += 1) {
     const token = tokens[index];
@@ -48,8 +47,8 @@ export function parseCurlCommand(command: string): ParsedCurlCommand {
       if (separatorIndex > 0) {
         const key = rawHeader.slice(0, separatorIndex).trim();
         const value = rawHeader.slice(separatorIndex + 1).trim();
-        if (key) {
-          headers[key.toLowerCase()] = value;
+        if (key.toLowerCase() === "authorization") {
+          authToken = normalizeBearerTokenInput(value);
         }
       }
       index += 1;
@@ -84,8 +83,7 @@ export function parseCurlCommand(command: string): ParsedCurlCommand {
   return {
     url,
     baseUrl,
-    authToken: normalizeBearerTokenInput(headers.authorization) ?? null,
-    headers,
+    authToken,
   };
 }
 

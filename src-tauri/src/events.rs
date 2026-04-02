@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use tauri::{AppHandle, Emitter};
 
 use crate::models::{LiveMetrics, TestCompletion};

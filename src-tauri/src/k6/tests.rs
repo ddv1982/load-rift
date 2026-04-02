@@ -426,8 +426,6 @@ fn test_running_test() -> RunningTest {
 
     RunningTest {
         child: Arc::new(Mutex::new(child)),
-        script_path: PathBuf::from("/tmp/script.js"),
-        summary_path: PathBuf::from("/tmp/summary.json"),
         stop_requested: Arc::new(AtomicBool::new(false)),
     }
 }

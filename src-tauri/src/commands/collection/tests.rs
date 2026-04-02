@@ -31,10 +31,6 @@ fn import_collection_into_state_persists_collection_and_script() {
     let app_state = state.lock().expect("state should remain readable");
     assert_eq!(collection.name, "Demo Collection");
     assert_eq!(collection.request_count, 1);
-    assert_eq!(
-        app_state.collection_name.as_deref(),
-        Some("Demo Collection")
-    );
     assert!(app_state.generated_script.is_some());
     assert_eq!(
         app_state
@@ -54,7 +50,6 @@ fn import_collection_into_state_clears_previous_run_artifacts() {
         latest_finish_reason: Some("completed".to_string()),
         latest_error_message: Some("old error".to_string()),
         latest_output: "previous output".to_string(),
-        report_path: Some("/tmp/old-report.html".into()),
         test_status: TestStatus::Completed,
         ..AppState::default()
     }));
@@ -67,7 +62,6 @@ fn import_collection_into_state_clears_previous_run_artifacts() {
     assert!(app_state.latest_finish_reason.is_none());
     assert!(app_state.latest_error_message.is_none());
     assert!(app_state.latest_output.is_empty());
-    assert!(app_state.report_path.is_none());
     assert!(matches!(app_state.test_status, TestStatus::Idle));
 }
 
@@ -75,7 +69,6 @@ fn import_collection_into_state_clears_previous_run_artifacts() {
 fn import_collection_into_state_rejects_busy_runner() {
     let state = Arc::new(Mutex::new(AppState {
         launch_in_progress: true,
-        collection_name: Some("Existing Collection".to_string()),
         generated_script: Some("existing script".to_string()),
         runtime_collection: Some(empty_runtime_collection()),
         ..AppState::default()
@@ -86,10 +79,6 @@ fn import_collection_into_state_rejects_busy_runner() {
     assert!(error.contains("Stop the active k6 test before importing a different collection."));
 
     let app_state = state.lock().expect("state should remain readable");
-    assert_eq!(
-        app_state.collection_name.as_deref(),
-        Some("Existing Collection")
-    );
     assert_eq!(
         app_state.generated_script.as_deref(),
         Some("existing script")

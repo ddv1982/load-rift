@@ -18,7 +18,7 @@ import { RuntimeVariablesCard } from "./RuntimeVariablesCard";
 import { SmokeTestCard } from "./SmokeTestCard";
 import type { SmokeTestState } from "../../features/test/useSmokeTest";
 
-interface TestHarnessSectionProps {
+interface TestHarnessStatusProps {
   collection: CollectionInfo | null;
   testState: TestHarnessState;
   configValidation: ConfigValidationState;
@@ -26,13 +26,19 @@ interface TestHarnessSectionProps {
   canSmokeTest: boolean;
   displayedTestStatus: string;
   displayedVerdict: string;
-  runnerOptions: K6Options;
   smokeTestState: SmokeTestState;
+}
+
+interface TestHarnessControlsProps {
+  runnerOptions: K6Options;
   emptyRuntimeVariables: RuntimeVariable[];
   curlInput: string;
   curlImportState: CurlImportState;
   eventLogRef: RefObject<HTMLPreElement | null>;
   resultSummaryRef: RefObject<HTMLDivElement | null>;
+}
+
+interface TestHarnessActionsProps {
   onStartTest: () => void;
   onSmokeTest: () => void;
   onStopTest: () => void;
@@ -51,38 +57,53 @@ interface TestHarnessSectionProps {
   onAdvancedOptionsChange: (value: string) => void;
 }
 
+interface TestHarnessSectionProps {
+  status: TestHarnessStatusProps;
+  controls: TestHarnessControlsProps;
+  actions: TestHarnessActionsProps;
+}
+
 export function TestHarnessSection({
-  collection,
-  testState,
-  configValidation,
-  canStartTest,
-  canSmokeTest,
-  displayedTestStatus,
-  displayedVerdict,
-  runnerOptions,
-  smokeTestState,
-  emptyRuntimeVariables,
-  curlInput,
-  curlImportState,
-  eventLogRef,
-  resultSummaryRef,
-  onStartTest,
-  onSmokeTest,
-  onStopTest,
-  onValidateConfiguration,
-  onRefreshStatus,
-  onExportLatestReport,
-  onVusChange,
-  onDurationChange,
-  onRampUpChange,
-  onRampUpTimeChange,
-  onThresholdChange,
-  onAuthTokenChange,
-  onCurlInputChange,
-  onApplyCurlCommand,
-  onRuntimeVariableChange,
-  onAdvancedOptionsChange,
+  status,
+  controls,
+  actions,
 }: TestHarnessSectionProps) {
+  const {
+    collection,
+    testState,
+    configValidation,
+    canStartTest,
+    canSmokeTest,
+    displayedTestStatus,
+    displayedVerdict,
+    smokeTestState,
+  } = status;
+  const {
+    runnerOptions,
+    emptyRuntimeVariables,
+    curlInput,
+    curlImportState,
+    eventLogRef,
+    resultSummaryRef,
+  } = controls;
+  const {
+    onStartTest,
+    onSmokeTest,
+    onStopTest,
+    onValidateConfiguration,
+    onRefreshStatus,
+    onExportLatestReport,
+    onVusChange,
+    onDurationChange,
+    onRampUpChange,
+    onRampUpTimeChange,
+    onThresholdChange,
+    onAuthTokenChange,
+    onCurlInputChange,
+    onApplyCurlCommand,
+    onRuntimeVariableChange,
+    onAdvancedOptionsChange,
+  } = actions;
   const tabListId = useId();
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [activeTab, setActiveTab] = useState<HarnessTab>(() => loadHarnessTab("controls"));

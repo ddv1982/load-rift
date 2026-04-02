@@ -1,4 +1,3 @@
-use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -34,7 +33,6 @@ fn state_with_stale_run_artifacts() -> Arc<Mutex<AppState>> {
         runtime_collection: Some(empty_runtime_collection()),
         latest_result: Some(passed_result()),
         latest_output: "previous output".to_string(),
-        report_path: Some("/tmp/old-report.html".into()),
         ..AppState::default()
     }))
 }
@@ -68,7 +66,6 @@ fn finalize_test_start_reservation_clears_previous_run_artifacts() {
     assert!(app_state.launch_in_progress);
     assert!(app_state.latest_result.is_none());
     assert!(app_state.latest_output.is_empty());
-    assert!(app_state.report_path.is_none());
 }
 
 #[test]
@@ -82,7 +79,6 @@ fn failed_start_leaves_backend_in_failed_state_without_artifacts() {
     assert!(!app_state.launch_in_progress);
     assert!(matches!(app_state.test_status, TestStatus::Failed));
     assert!(app_state.latest_result.is_none());
-    assert!(app_state.report_path.is_none());
 }
 
 #[test]
@@ -110,8 +106,6 @@ fn wait_for_test_stop_returns_when_active_test_clears() {
     let state = Arc::new(Mutex::new(AppState {
         active_test: Some(RunningTest {
             child: Arc::new(Mutex::new(child)),
-            script_path: PathBuf::from("/tmp/script.js"),
-            summary_path: PathBuf::from("/tmp/summary.json"),
             stop_requested: Arc::new(AtomicBool::new(false)),
         }),
         ..AppState::default()

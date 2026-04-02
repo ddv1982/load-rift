@@ -1,27 +1,24 @@
 import { fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
+  appHookTestState,
+  resetAppTestEnvironment,
+} from "./test-support/appTestState";
+import {
   createApiMock,
-  createImportHookState,
-  createSmokeHookState,
-  createTestHookState,
   renderApp,
 } from "./test-support/appTestUtils";
 
-let importHookState = createImportHookState();
-let testHookState = createTestHookState();
-let smokeHookState = createSmokeHookState();
-
 vi.mock("../features/import/useCollectionImport", () => ({
-  useCollectionImport: () => importHookState,
+  useCollectionImport: () => appHookTestState.importHookState,
 }));
 
 vi.mock("../features/test/useTestHarness", () => ({
-  useTestHarness: () => testHookState,
+  useTestHarness: () => appHookTestState.testHookState,
 }));
 
 vi.mock("../features/test/useSmokeTest", () => ({
-  useSmokeTest: () => smokeHookState,
+  useSmokeTest: () => appHookTestState.smokeHookState,
 }));
 
 vi.mock("../lib/tauri/dialog", () => ({
@@ -31,14 +28,7 @@ vi.mock("../lib/tauri/dialog", () => ({
 
 describe("App accessibility", () => {
   beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-03-25T15:13:32Z"));
-    vi.clearAllMocks();
-    window.localStorage.clear();
-    window.sessionStorage.clear();
-    importHookState = createImportHookState();
-    testHookState = createTestHookState();
-    smokeHookState = createSmokeHookState();
+    resetAppTestEnvironment();
   });
 
   afterEach(() => {

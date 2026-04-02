@@ -1,13 +1,24 @@
+#[cfg(target_os = "linux")]
 use std::fs;
+#[cfg(target_os = "linux")]
 use std::io::{Read, Write};
+#[cfg(target_os = "linux")]
 use std::net::SocketAddr;
+#[cfg(target_os = "linux")]
 use std::net::{TcpListener, TcpStream};
+#[cfg(target_os = "linux")]
 use std::path::PathBuf;
+#[cfg(target_os = "linux")]
 use std::process::Command;
-use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "linux")]
 use std::sync::Arc;
+#[cfg(target_os = "linux")]
 use std::sync::Mutex;
+#[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "linux")]
 use std::thread;
+#[cfg(target_os = "linux")]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{import_collection, runtime, validate_test_run};
