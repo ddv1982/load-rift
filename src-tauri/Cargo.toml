@@ -6,7 +6,7 @@ authors = ["Douwe de Vries"]
 license = "MIT"
 repository = "https://github.com/ddv1982/load-rift"
 edition = "2021"
-rust-version = "1.77.2"
+rust-version = "1.88.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
