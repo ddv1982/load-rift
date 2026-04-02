@@ -21,7 +21,7 @@ permissions:
 jobs:
   verify:
     name: Verify (Ubuntu)
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
@@ -93,7 +93,7 @@ jobs:
           - platform: macos-latest
             platform_label: macOS
             args: --target aarch64-apple-darwin
-          - platform: ubuntu-22.04
+          - platform: ubuntu-latest
             platform_label: Linux
             args: ""
 
@@ -125,7 +125,7 @@ jobs:
           } >> "$GITHUB_OUTPUT"
 
       - name: Install Tauri Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
