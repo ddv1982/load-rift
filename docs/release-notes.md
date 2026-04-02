@@ -5,19 +5,18 @@ GitHub Releases.
 
 The GitHub Actions release workflow reads `docs/releases/<tag>.md` when it
 exists, and falls back to `.github/RELEASE_TEMPLATE.md` otherwise. For a tagged
-release like `v0.2.1`, prefer adding `docs/releases/v0.2.1.md` before pushing
+release like `v0.2.2`, prefer adding `docs/releases/v0.2.2.md` before pushing
 the tag so the CI-built Linux packages publish with the correct notes and
 bundled third-party notice.
 
-## Suggested Release Notes for v0.2.1
+## Suggested Release Notes for v0.2.2
 
 ```md
 ## Summary
 
-- Made exported HTML reports resilient when structured k6 summary parsing fails by falling back to captured live metrics.
-- Improved k6 summary parsing to support additional summary payload shapes.
-- Constrained the live run monitor to a fixed-height scrollable panel and added explicit report export success feedback.
-- Updated the app metadata to version `0.2.1`.
+- Rebuilt Linux release packaging on Ubuntu 22.04 to improve `.deb` compatibility on target systems.
+- Kept the Linux release pipeline aligned with the verified CI runner image.
+- Updated the app metadata to version `0.2.2`.
 
 ## Downloads
 
