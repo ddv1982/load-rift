@@ -32,10 +32,7 @@ pub fn validate_test_configuration(
     state: State<'_, SharedAppState>,
     request: StartTestRequest,
 ) -> ValidateTestConfigurationResponse {
-    logic::validate_test_configuration_inner(
-        state.inner(),
-        &request.options,
-    )
+    logic::validate_test_configuration_inner(state.inner(), &request.options)
 }
 
 #[tauri::command]

@@ -69,8 +69,10 @@ pub struct LiveMetrics {
     pub total_requests: u64,
     pub failed_requests: u64,
     pub error_rate: f64,
+    pub avg_response_time: u64,
     pub p50_response_time: u64,
     pub p95_response_time: u64,
+    pub max_response_time: u64,
     pub requests_per_second: f64,
 }
 
@@ -81,8 +83,10 @@ impl Default for LiveMetrics {
             total_requests: 0,
             failed_requests: 0,
             error_rate: 0.0,
+            avg_response_time: 0,
             p50_response_time: 0,
             p95_response_time: 0,
+            max_response_time: 0,
             requests_per_second: 0.0,
         }
     }

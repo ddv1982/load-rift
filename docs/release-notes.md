@@ -5,19 +5,19 @@ GitHub Releases.
 
 The GitHub Actions release workflow reads `docs/releases/<tag>.md` when it
 exists, and falls back to `.github/RELEASE_TEMPLATE.md` otherwise. For a tagged
-release like `v0.2.0`, prefer adding `docs/releases/v0.2.0.md` before pushing
+release like `v0.2.1`, prefer adding `docs/releases/v0.2.1.md` before pushing
 the tag so the CI-built macOS and Linux packages publish with the correct notes
 and bundled third-party notice.
 
-## Suggested Release Notes for v0.2.0
+## Suggested Release Notes for v0.2.1
 
 ```md
 ## Summary
 
-- Added support for advanced k6 load profiles through the Raw k6 Options JSON area.
-- Advanced top-level `scenarios`, `stages`, and `iterations` now override the basic runner controls instead of conflicting with them.
-- Improved the exported HTML report with summary cards, threshold results, structured metrics, raw k6 summary JSON, and the final console summary from k6.
-- Updated the app metadata to version `0.2.0`.
+- Made exported HTML reports resilient when structured k6 summary parsing fails by falling back to captured live metrics.
+- Improved k6 summary parsing to support additional summary payload shapes.
+- Constrained the live run monitor to a fixed-height scrollable panel and added explicit report export success feedback.
+- Updated the app metadata to version `0.2.1`.
 
 ## Downloads
 

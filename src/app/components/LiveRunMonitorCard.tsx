@@ -1,8 +1,14 @@
 import type { RefObject } from "react";
 
+interface MonitorNotice {
+  tone: "error" | "success";
+  message: string;
+}
+
 interface LiveRunMonitorCardProps {
   output: string;
   error: string | null;
+  notice: MonitorNotice | null;
   eventLogRef: RefObject<HTMLPreElement | null>;
   onExportLatestReport: () => void;
 }
@@ -10,6 +16,7 @@ interface LiveRunMonitorCardProps {
 export function LiveRunMonitorCard({
   output,
   error,
+  notice,
   eventLogRef,
   onExportLatestReport,
 }: LiveRunMonitorCardProps) {
@@ -39,6 +46,14 @@ export function LiveRunMonitorCard({
       </pre>
 
       {error ? <p className="inline-error">{error}</p> : null}
+      {notice ? (
+        <p
+          className={`inline-note${notice.tone === "success" ? " is-success" : " is-error"}`}
+          aria-live="polite"
+        >
+          {notice.message}
+        </p>
+      ) : null}
     </div>
   );
 }

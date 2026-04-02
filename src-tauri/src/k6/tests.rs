@@ -70,6 +70,52 @@ fn sample_machine_summary_json() -> &'static str {
     }"#
 }
 
+fn sample_v1_machine_summary_json() -> &'static str {
+    r#"{
+      "config": {
+        "duration": 20
+      },
+      "results": {
+        "checks": {
+          "metrics": [],
+          "results": []
+        },
+        "metrics": [
+          {
+            "name": "http_reqs",
+            "type": "counter",
+            "contains": "default",
+            "values": { "count": 100 }
+          },
+          {
+            "name": "http_req_failed",
+            "type": "rate",
+            "contains": "default",
+            "values": { "matches": 10, "rate": 0.1, "total": 100 }
+          },
+          {
+            "name": "http_req_duration",
+            "type": "trend",
+            "contains": "time",
+            "values": {
+              "avg": 150,
+              "med": 120,
+              "p95": 300,
+              "max": 450
+            }
+          },
+          {
+            "name": "vus",
+            "type": "gauge",
+            "contains": "default",
+            "values": { "value": 1 }
+          }
+        ]
+      },
+      "version": "1.0.0"
+    }"#
+}
+
 fn basic_load_shape_override_test_script() -> &'static str {
     r#"import { sleep } from "k6";
 
@@ -178,8 +224,10 @@ fn store_completion_persists_result_and_clears_running_state() {
         total_requests: 10,
         failed_requests: 2,
         error_rate: 0.2,
+        avg_response_time: 100,
         p50_response_time: 90,
         p95_response_time: 150,
+        max_response_time: 200,
         requests_per_second: 5.0,
     };
 
@@ -326,6 +374,133 @@ fn parse_summary_supports_machine_readable_summary_shape() {
 }
 
 #[test]
+fn parse_summary_supports_v1_machine_summary_schema() {
+    let (result, metrics) = summary::parse_summary(sample_v1_machine_summary_json(), 10)
+        .expect("v1 machine summary should parse");
+
+    assert_eq!(result.metrics.total_requests, 100);
+    assert_eq!(result.metrics.failed_requests, 10);
+    assert_eq!(result.metrics.avg_response_time, 150);
+    assert_eq!(result.metrics.p50_response_time, 120);
+    assert_eq!(result.metrics.p95_response_time, 300);
+    assert_eq!(result.metrics.max_response_time, 450);
+    assert_eq!(result.metrics.requests_per_second, 5.0);
+    assert_eq!(metrics.total_requests, 100);
+    assert_eq!(metrics.failed_requests, 10);
+    assert_eq!(metrics.requests_per_second, 5.0);
+    assert_eq!(metrics.error_rate, 0.1);
+    assert!(result.thresholds.is_empty());
+    assert!(matches!(result.status, TestResultStatus::Warning));
+}
+
+#[test]
+fn parse_summary_supports_root_level_metrics_shape() {
+    let summary_json = r#"{
+      "http_reqs": {
+        "type": "counter",
+        "contains": "default",
+        "values": { "count": 24, "rate": 4 }
+      },
+      "http_req_failed": {
+        "type": "rate",
+        "contains": "default",
+        "values": { "rate": 0.25 }
+      },
+      "http_req_duration": {
+        "type": "trend",
+        "contains": "time",
+        "values": {
+          "avg": 190,
+          "med": 150,
+          "p(95)": 410,
+          "max": 620
+        }
+      }
+    }"#;
+
+    let (result, metrics) =
+        summary::parse_summary(summary_json, 10).expect("root-level metric maps should parse");
+
+    assert_eq!(result.metrics.total_requests, 24);
+    assert_eq!(result.metrics.failed_requests, 6);
+    assert_eq!(result.metrics.avg_response_time, 190);
+    assert_eq!(result.metrics.p95_response_time, 410);
+    assert_eq!(metrics.requests_per_second, 4.0);
+    assert!(matches!(result.status, TestResultStatus::Warning));
+}
+
+#[test]
+fn fallback_result_from_live_metrics_preserves_exportable_totals() {
+    let metrics = LiveMetrics {
+        active_vus: 0,
+        total_requests: 48,
+        failed_requests: 3,
+        error_rate: 0.0625,
+        avg_response_time: 220,
+        p50_response_time: 140,
+        p95_response_time: 360,
+        max_response_time: 890,
+        requests_per_second: 6.2,
+    };
+
+    let result = summary::result_from_live_metrics(&metrics, None);
+
+    assert_eq!(result.metrics.total_requests, 48);
+    assert_eq!(result.metrics.failed_requests, 3);
+    assert_eq!(result.metrics.avg_response_time, 220);
+    assert_eq!(result.metrics.p50_response_time, 140);
+    assert_eq!(result.metrics.p95_response_time, 360);
+    assert_eq!(result.metrics.max_response_time, 890);
+    assert_eq!(result.metrics.requests_per_second, 6.2);
+    assert!(result.thresholds.is_empty());
+    assert!(matches!(result.status, TestResultStatus::Warning));
+}
+
+#[test]
+fn parse_summary_supports_nested_metrics_wrappers() {
+    let summary_json = r#"{
+      "data": {
+        "summary": {
+          "metrics": {
+            "http_reqs": {
+              "type": "counter",
+              "contains": "default",
+              "values": { "count": 42, "rate": 2.5 }
+            },
+            "http_req_failed": {
+              "type": "rate",
+              "contains": "default",
+              "values": { "rate": 0.05 }
+            },
+            "http_req_duration": {
+              "type": "trend",
+              "contains": "time",
+              "values": {
+                "avg": 180,
+                "med": 140,
+                "p(95)": 360,
+                "max": 420
+              }
+            }
+          }
+        }
+      }
+    }"#;
+
+    let (result, metrics) =
+        summary::parse_summary(summary_json, 10).expect("nested summary wrapper should parse");
+
+    assert_eq!(result.metrics.total_requests, 42);
+    assert_eq!(result.metrics.failed_requests, 2);
+    assert_eq!(result.metrics.avg_response_time, 180);
+    assert_eq!(result.metrics.p50_response_time, 140);
+    assert_eq!(result.metrics.p95_response_time, 360);
+    assert_eq!(result.metrics.max_response_time, 420);
+    assert_eq!(metrics.total_requests, 42);
+    assert_eq!(metrics.failed_requests, 2);
+}
+
+#[test]
 fn analyze_advanced_options_detects_when_basic_load_shape_must_be_skipped() {
     let config = process::analyze_advanced_options_json(Some(
         r#"{"scenarios":{"steady":{"executor":"shared-iterations","vus":1,"iterations":1}}}"#,
@@ -448,8 +623,10 @@ fn live_metrics_aggregator_tracks_vus_and_request_totals() {
     assert_eq!(snapshot.total_requests, 1);
     assert_eq!(snapshot.failed_requests, 1);
     assert_eq!(snapshot.error_rate, 1.0);
+    assert_eq!(snapshot.avg_response_time, 300);
     assert_eq!(snapshot.p50_response_time, 280);
     assert_eq!(snapshot.p95_response_time, 500);
+    assert_eq!(snapshot.max_response_time, 500);
 }
 
 #[test]
@@ -460,7 +637,9 @@ fn live_metrics_aggregator_clamps_outlier_durations_to_configured_histogram_rang
         .apply_line(r#"{"type":"Point","metric":"http_req_duration","data":{"value":172800000}}"#));
 
     let snapshot = aggregator.snapshot();
+    assert_eq!(snapshot.avg_response_time, 86_400_000);
     assert_eq!(snapshot.p95_response_time, 86_400_000);
+    assert_eq!(snapshot.max_response_time, 86_400_000);
 }
 
 #[test]
@@ -498,6 +677,43 @@ fn render_report_preserves_full_console_summary_sections() {
     assert!(rendered.contains("Raw k6 summary JSON"));
     assert!(rendered.contains("Type: counter"));
     assert!(!rendered.contains("banner"));
+}
+
+#[test]
+fn render_report_reads_nested_metrics_wrappers() {
+    let result = summary_report_result();
+    let summary_json = r#"{
+      "exported": {
+        "metrics": {
+          "http_reqs": {
+            "type": "counter",
+            "contains": "default",
+            "values": { "count": 12, "rate": 3.5 }
+          }
+        }
+      }
+    }"#;
+
+    let rendered = report::render_report(&result, "plain output", Some(summary_json));
+
+    assert!(rendered.contains("Type: counter"));
+    assert!(rendered.contains("count"));
+}
+
+#[test]
+fn render_report_supports_v1_machine_summary_schema() {
+    let result = summary_report_result();
+
+    let rendered = report::render_report(
+        &result,
+        "header\n█ TOTAL RESULTS\nhttp_req_duration.............: avg=82 min=70 med=70 max=120 p(95)=110",
+        Some(sample_v1_machine_summary_json()),
+    );
+
+    assert!(rendered.contains("HTTP"));
+    assert!(rendered.contains("http_req_duration"));
+    assert!(rendered.contains("p(95)"));
+    assert!(rendered.contains("300"));
 }
 
 #[test]

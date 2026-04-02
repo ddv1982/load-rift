@@ -15,7 +15,7 @@ use crate::events::{emit_k6_complete, emit_k6_error, emit_k6_metrics, emit_k6_ou
 use crate::models::{K6Options, LiveMetrics, TestCompletion};
 use crate::state::{RunningTest, SharedAppState};
 
-use super::super::summary::parse_summary;
+use super::super::summary::{parse_summary, result_from_live_metrics};
 use super::live_metrics::spawn_metrics_forwarder;
 use super::state::{
     completion_status, mark_stopped, record_failure, store_completion, store_started_state,
@@ -262,55 +262,121 @@ fn spawn_waiter(
         match fs::read_to_string(&summary_path) {
             Ok(summary_json) => match parse_summary(&summary_json, configured_vus) {
                 Ok((result, metrics)) => {
-                    let completion =
-                        completion_status(exit_status.success(), exit_status.code(), &result);
-                    store_completion(
+                    emit_completion(
+                        &app,
                         &state,
-                        &metrics,
-                        &result,
-                        completion.run_state.clone(),
-                        &completion.finish_reason,
+                        exit_status.success(),
+                        exit_status.code(),
+                        metrics,
+                        result,
                         Some(summary_json.clone()),
                     );
-
-                    let _ = emit_k6_metrics(&app, metrics.clone());
-                    let _ = emit_k6_complete(
-                        &app,
-                        TestCompletion {
-                            run_state: completion.run_state.clone(),
-                            finish_reason: completion.finish_reason.clone(),
-                            metrics: metrics.clone(),
-                            result,
-                        },
-                    );
-
-                    if completion.threshold_failure_exit {
-                        let _ = emit_k6_output(
-                            &app,
-                            "k6 finished with failed thresholds. Review the latest result for the final metrics.\n",
-                        );
-                    } else if !exit_status.success() {
-                        let _ = emit_k6_error(
-                            &app,
-                            "k6 exited with a non-zero status for a reason other than threshold failures.",
-                        );
-                    }
                 }
                 Err(error) => {
-                    record_failure(&state, &app, &error);
+                    emit_live_metrics_fallback_completion(
+                        &app,
+                        &state,
+                        exit_status.success(),
+                        exit_status.code(),
+                        Some(summary_json.clone()),
+                        &error,
+                    );
                 }
             },
             Err(error) => {
-                let message = format!(
-                    "k6 finished without a readable summary file at {}: {error}",
-                    summary_path.display()
+                emit_live_metrics_fallback_completion(
+                    &app,
+                    &state,
+                    exit_status.success(),
+                    exit_status.code(),
+                    None,
+                    &format!(
+                        "k6 finished without a readable summary file at {}: {error}",
+                        summary_path.display()
+                    ),
                 );
-                record_failure(&state, &app, &message);
             }
         }
 
         let _ = fs::remove_file(&summary_path);
     });
+}
+
+fn emit_completion(
+    app: &AppHandle,
+    state: &SharedAppState,
+    exited_successfully: bool,
+    exit_code: Option<i32>,
+    metrics: LiveMetrics,
+    mut result: crate::models::TestResult,
+    summary_json: Option<String>,
+) {
+    let completion = completion_status(exited_successfully, exit_code, &result);
+    if completion.threshold_failure_exit {
+        result.status = crate::models::TestResultStatus::Failed;
+    }
+    store_completion(
+        state,
+        &metrics,
+        &result,
+        completion.run_state.clone(),
+        &completion.finish_reason,
+        summary_json,
+    );
+
+    let _ = emit_k6_metrics(app, metrics.clone());
+    let _ = emit_k6_complete(
+        app,
+        TestCompletion {
+            run_state: completion.run_state.clone(),
+            finish_reason: completion.finish_reason.clone(),
+            metrics,
+            result,
+        },
+    );
+
+    if completion.threshold_failure_exit {
+        let _ = emit_k6_output(
+            app,
+            "k6 finished with failed thresholds. Review the latest result for the final metrics.\n",
+        );
+    } else if !exited_successfully {
+        let _ = emit_k6_error(
+            app,
+            "k6 exited with a non-zero status for a reason other than threshold failures.",
+        );
+    }
+}
+
+fn emit_live_metrics_fallback_completion(
+    app: &AppHandle,
+    state: &SharedAppState,
+    exited_successfully: bool,
+    exit_code: Option<i32>,
+    summary_json: Option<String>,
+    summary_issue: &str,
+) {
+    let metrics = state
+        .lock()
+        .ok()
+        .and_then(|app_state| app_state.latest_metrics.clone())
+        .unwrap_or_default();
+    let result = result_from_live_metrics(&metrics, exit_code);
+
+    emit_completion(
+        app,
+        state,
+        exited_successfully,
+        exit_code,
+        metrics,
+        result,
+        summary_json,
+    );
+
+    let message = format!(
+        "Load Rift used live metrics because the structured k6 summary could not be processed: {summary_issue}\n"
+    );
+    let _ = emit_k6_output(app, &message);
 }
 
 fn wait_for_output_forwarders(forwarders: [Option<JoinHandle<()>>; 2]) {

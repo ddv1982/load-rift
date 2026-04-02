@@ -58,11 +58,15 @@ function AppIcon() {
 export function App() {
   const [lastSmokeInputKey, setLastSmokeInputKey] = useState<string | null>(null);
   const [collectionRevision, setCollectionRevision] = useState(0);
+  const [exportNotice, setExportNotice] = useState<{
+    tone: "error" | "success";
+    message: string;
+  } | null>(null);
   const api = useLoadRiftApi();
   const {
     state: importState,
     importFromFile,
-    reportError,
+    reportError: reportImportError,
     reset,
   } = useCollectionImport();
   const {
@@ -159,6 +163,7 @@ export function App() {
   const harnessStatus = {
     collection,
     testState: displayedTestState,
+    exportNotice,
     smokeTestState: displayedSmokeTestState,
     configValidation,
     canStartTest,
@@ -214,7 +219,7 @@ export function App() {
 
       await importFromFile(filePath);
     } catch (error) {
-      reportError(
+      reportImportError(
         getTauriErrorMessage(error, "Failed to open the collection file picker."),
       );
     } finally {
@@ -232,21 +237,25 @@ export function App() {
 
   async function handleStartTest() {
     setLastSmokeInputKey(null);
+    setExportNotice(null);
     clearSmokeTest();
     await startTest(runnerOptions);
   }
 
   async function handleSmokeTest() {
     setLastSmokeInputKey(smokeInputKey);
+    setExportNotice(null);
     await runSmokeTest(runnerOptions);
   }
 
   async function handleStopTest() {
+    setExportNotice(null);
     await stopTest();
   }
 
   async function handleExportLatestReport() {
     try {
+      setExportNotice(null);
       const savePath = await selectReportSavePath(
         buildReportFileName(runnerOptions.baseUrl),
       );
@@ -255,10 +264,15 @@ export function App() {
       }
 
       await api.exportReport({ savePath });
+      setExportNotice({
+        tone: "success",
+        message: `Report saved to ${savePath}.`,
+      });
     } catch (error) {
-      reportError(
-        getTauriErrorMessage(error, "Failed to export the latest k6 report."),
-      );
+      setExportNotice({
+        tone: "error",
+        message: getTauriErrorMessage(error, "Failed to export the latest k6 report."),
+      });
     }
   }
 

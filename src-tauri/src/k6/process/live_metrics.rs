@@ -94,6 +94,7 @@ pub(crate) struct LiveMetricsAggregator {
     active_vus: u32,
     total_requests: u64,
     failed_requests: u64,
+    total_duration_ms: u128,
     request_durations_ms: Option<Histogram<u64>>,
     started_at: Option<Instant>,
 }
@@ -147,6 +148,9 @@ impl LiveMetricsAggregator {
             "http_req_duration" => {
                 let value = record.data.value.max(0.0).round() as u64;
                 let clamped_value = value.clamp(1, MAX_TRACKED_RESPONSE_TIME_MS);
+                self.total_duration_ms = self
+                    .total_duration_ms
+                    .saturating_add(u128::from(clamped_value));
                 if self.latency_histogram().record(clamped_value).is_err() {
                     return false;
                 }
@@ -157,6 +161,19 @@ impl LiveMetricsAggregator {
     }
 
     pub(crate) fn snapshot(&self) -> LiveMetrics {
+        let avg = self
+            .request_durations_ms
+            .as_ref()
+            .map(|histogram| {
+                let count = histogram.len();
+                if count == 0 {
+                    0
+                } else {
+                    (self.total_duration_ms / u128::from(count))
+                        .min(u128::from(MAX_TRACKED_RESPONSE_TIME_MS)) as u64
+                }
+            })
+            .unwrap_or(0);
         let p50 = self
             .request_durations_ms
             .as_ref()
@@ -175,6 +192,11 @@ impl LiveMetricsAggregator {
                     .min(MAX_TRACKED_RESPONSE_TIME_MS)
             })
             .unwrap_or(0);
+        let max = self
+            .request_durations_ms
+            .as_ref()
+            .map(|histogram| histogram.max().min(MAX_TRACKED_RESPONSE_TIME_MS))
+            .unwrap_or(0);
         let error_rate = if self.total_requests == 0 {
             0.0
         } else {
@@ -192,8 +214,10 @@ impl LiveMetricsAggregator {
             total_requests: self.total_requests,
             failed_requests: self.failed_requests,
             error_rate,
+            avg_response_time: avg,
             p50_response_time: p50,
             p95_response_time: p95,
+            max_response_time: max,
             requests_per_second,
         }
     }

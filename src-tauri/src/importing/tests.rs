@@ -11,11 +11,11 @@ use std::path::PathBuf;
 #[cfg(target_os = "linux")]
 use std::process::Command;
 #[cfg(target_os = "linux")]
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "linux")]
 use std::sync::Arc;
 #[cfg(target_os = "linux")]
 use std::sync::Mutex;
-#[cfg(target_os = "linux")]
-use std::sync::atomic::{AtomicBool, Ordering};
 #[cfg(target_os = "linux")]
 use std::thread;
 #[cfg(target_os = "linux")]

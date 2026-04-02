@@ -15,8 +15,10 @@ const metrics: LiveMetrics = {
   totalRequests: 10,
   failedRequests: 1,
   errorRate: 0.1,
+  avgResponseTime: 100,
   p50ResponseTime: 90,
   p95ResponseTime: 150,
+  maxResponseTime: 180,
   requestsPerSecond: 5,
 };
 

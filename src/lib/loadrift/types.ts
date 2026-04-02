@@ -46,8 +46,10 @@ export interface LiveMetrics {
   totalRequests: number;
   failedRequests: number;
   errorRate: number;
+  avgResponseTime: number;
   p50ResponseTime: number;
   p95ResponseTime: number;
+  maxResponseTime: number;
   requestsPerSecond: number;
 }
 
@@ -134,7 +136,9 @@ export const DEFAULT_LIVE_METRICS: LiveMetrics = {
   totalRequests: 0,
   failedRequests: 0,
   errorRate: 0,
+  avgResponseTime: 0,
   p50ResponseTime: 0,
   p95ResponseTime: 0,
+  maxResponseTime: 0,
   requestsPerSecond: 0,
 };

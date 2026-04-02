@@ -529,5 +529,27 @@ describe("App validation lifecycle", () => {
     expect(api.exportReport).toHaveBeenCalledWith({
       savePath: "/tmp/loadrift-report.html",
     });
+    expect(
+      screen.getByText("Report saved to /tmp/loadrift-report.html."),
+    ).toBeInTheDocument();
+  });
+
+  it("shows export failures in the live run monitor", async () => {
+    dialogMocks.selectReportSavePath.mockResolvedValue("/tmp/loadrift-report.html");
+    const api = createApiMock({
+      exportReport: vi.fn(async () => {
+        throw new Error("Run a k6 test before exporting a report.");
+      }),
+    });
+
+    renderApp(api);
+
+    fireEvent.click(screen.getByRole("button", { name: "Export Latest Report" }));
+
+    await flushMicrotasks(2);
+
+    expect(
+      screen.getByText("Run a k6 test before exporting a report."),
+    ).toBeInTheDocument();
   });
 });

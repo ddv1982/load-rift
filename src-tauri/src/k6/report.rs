@@ -2,10 +2,13 @@ use std::env;
 use std::fs;
 use std::path::PathBuf;
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 use crate::models::{TestResult, ThresholdResult};
 use crate::state::SharedAppState;
+
+use super::summary::summary_metrics_map;
+use super::summary_format::SummaryMetricsMap;
 
 const REPORT_TITLE: &str = "k6 Detailed Test Report";
 const BASE_STYLES: &str = r#"
@@ -183,8 +186,6 @@ const DETAIL_STYLES: &str = r#"
 "#;
 const METRIC_CATEGORY_ORDER: [&str; 4] = ["HTTP", "Execution", "Network", "Checks & Other"];
 
-type SummaryMetricsMap = Map<String, Value>;
-
 pub fn export_report_file(state: &SharedAppState, save_path: &str) -> Result<PathBuf, String> {
     let (result, output, summary_json) = {
         let app_state = state
@@ -256,6 +257,7 @@ pub(crate) fn render_report(
     summary_json: Option<&str>,
 ) -> String {
     let view = ReportView::new(result, output, summary_json);
+    let summary_metrics = view.summary_metrics();
 
     format!(
         r#"<!doctype html>
@@ -281,7 +283,7 @@ pub(crate) fn render_report(
         styles = report_styles(),
         header_section = view.render_header_section(),
         threshold_section = render_threshold_section(&result.thresholds),
-        metrics_section = render_structured_metrics(view.summary_metrics()),
+        metrics_section = render_structured_metrics(summary_metrics.as_ref()),
         raw_summary_section = render_raw_summary(view.summary_json),
         console_summary_section = view.render_console_summary_section(),
     )
@@ -322,8 +324,14 @@ impl<'a> ReportView<'a> {
 
     fn render_overview_cards(&self) -> String {
         [
-            ("Total requests", self.result.metrics.total_requests.to_string()),
-            ("Failed requests", self.result.metrics.failed_requests.to_string()),
+            (
+                "Total requests",
+                self.result.metrics.total_requests.to_string(),
+            ),
+            (
+                "Failed requests",
+                self.result.metrics.failed_requests.to_string(),
+            ),
             (
                 "Average response",
                 format!("{} ms", self.result.metrics.avg_response_time),
@@ -347,8 +355,8 @@ impl<'a> ReportView<'a> {
         .join("")
     }
 
-    fn summary_metrics(&self) -> Option<&SummaryMetricsMap> {
-        self.parsed_summary.as_ref()?.get("metrics")?.as_object()
+    fn summary_metrics(&self) -> Option<SummaryMetricsMap> {
+        summary_metrics_map(self.parsed_summary.as_ref()?)
     }
 }
 
@@ -428,7 +436,11 @@ fn render_metric_section(category: &str, metrics: &SummaryMetricsMap) -> Option<
 
     let cards = names
         .iter()
-        .filter_map(|name| metrics.get(name).map(|metric| render_metric_card(name, metric)))
+        .filter_map(|name| {
+            metrics
+                .get(name)
+                .map(|metric| render_metric_card(name, metric))
+        })
         .collect::<Vec<_>>()
         .join("");
 
@@ -498,7 +510,10 @@ fn metric_value_pairs(metric: &Value) -> Vec<(String, String)> {
 }
 
 fn render_raw_summary(summary_json: Option<&str>) -> String {
-    let Some(summary_json) = summary_json.map(str::trim).filter(|value| !value.is_empty()) else {
+    let Some(summary_json) = summary_json
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
         return String::new();
     };
 

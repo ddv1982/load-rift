@@ -21,6 +21,10 @@ import type { SmokeTestState } from "../../features/test/useSmokeTest";
 interface TestHarnessStatusProps {
   collection: CollectionInfo | null;
   testState: TestHarnessState;
+  exportNotice: {
+    tone: "error" | "success";
+    message: string;
+  } | null;
   configValidation: ConfigValidationState;
   canStartTest: boolean;
   canSmokeTest: boolean;
@@ -71,6 +75,7 @@ export function TestHarnessSection({
   const {
     collection,
     testState,
+    exportNotice,
     configValidation,
     canStartTest,
     canSmokeTest,
@@ -361,6 +366,7 @@ export function TestHarnessSection({
           <LiveRunMonitorCard
             output={testState.output}
             error={testState.error}
+            notice={exportNotice}
             eventLogRef={eventLogRef}
             onExportLatestReport={onExportLatestReport}
           />
