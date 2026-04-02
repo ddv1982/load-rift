@@ -124,6 +124,80 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
+      - name: Require macOS signing secrets
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          missing=()
+          for key in \
+            APPLE_CERTIFICATE \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_ID \
+            APPLE_PASSWORD \
+            APPLE_TEAM_ID \
+            KEYCHAIN_PASSWORD; do
+            if [[ -z "${!key:-}" ]]; then
+              missing+=("$key")
+            fi
+          done
+
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing required macOS signing/notarization secrets: %s\n' "${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Import Apple Developer certificate
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          echo "$APPLE_CERTIFICATE" | openssl base64 -d -A -out certificate.p12
+          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
+          security set-keychain-settings -t 3600 -u build.keychain
+          security import certificate.p12 \
+            -k build.keychain \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            build.keychain
+          security find-identity -v -p codesigning build.keychain
+
+      - name: Resolve Apple signing identity
+        if: matrix.platform == 'macos-latest'
+        run: |
+          set -euo pipefail
+
+          cert_info="$(
+            security find-identity -v -p codesigning build.keychain \
+              | grep -E 'Developer ID Application|Apple Distribution' \
+              | head -n1
+          )"
+
+          if [[ -z "$cert_info" ]]; then
+            echo "No usable Apple signing identity found in build.keychain" >&2
+            exit 1
+          fi
+
+          cert_id="$(echo "$cert_info" | awk -F'"' '{print $2}')"
+          echo "APPLE_SIGNING_IDENTITY=$cert_id" >> "$GITHUB_ENV"
+
       - name: Install Tauri Linux dependencies
         if: matrix.platform == 'ubuntu-latest'
         run: |
@@ -161,6 +235,10 @@ jobs:
         uses: tauri-apps/tauri-action@action-v0.6.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_ID || '' }}
+          APPLE_PASSWORD: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_PASSWORD || '' }}
+          APPLE_TEAM_ID: ${{ matrix.platform == 'macos-latest' && secrets.APPLE_TEAM_ID || '' }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY || '' }}
         with:
           projectPath: .
           tagName: ${{ steps.release.outputs.tag_name }}
