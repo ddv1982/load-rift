@@ -1,25 +1,29 @@
 <svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="loadrift-lr-gradient" x1="96" y1="72" x2="416" y2="432" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#E3B56A" />
-      <stop offset="1" stop-color="#7DBFD2" />
+    <linearGradient id="loadrift-lr-gradient" x1="92" y1="80" x2="420" y2="432" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E5BA73" />
+      <stop offset="1" stop-color="#84C5D7" />
     </linearGradient>
-    <linearGradient id="loadrift-lr-sheen" x1="112" y1="88" x2="384" y2="220" gradientUnits="userSpaceOnUse">
+    <linearGradient id="loadrift-lr-sheen" x1="132" y1="88" x2="388" y2="224" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="white" stop-opacity="0.34" />
       <stop offset="1" stop-color="white" stop-opacity="0" />
     </linearGradient>
   </defs>
 
-  <rect x="40" y="40" width="432" height="432" rx="140" fill="#0A1016" />
-  <rect x="56" y="56" width="400" height="400" rx="124" fill="url(#loadrift-lr-gradient)" />
+  <rect x="24" y="24" width="464" height="464" rx="152" fill="#091017" />
+  <rect x="40" y="40" width="432" height="432" rx="140" fill="url(#loadrift-lr-gradient)" />
+  <rect x="40.5" y="40.5" width="431" height="431" rx="139.5" stroke="rgba(255,255,255,0.08)" />
   <path
-    d="M88 110C88 88.9086 105.091 71.8173 126.183 71.8173H347.163C382.782 71.8173 415.022 92.7063 429.598 125.207L438.587 145.246H126.183C105.091 145.246 88 128.155 88 107.064V110Z"
+    d="M96 118C96 96.9086 113.091 79.8173 134.183 79.8173H351.873C387.91 79.8173 420.412 101.067 434.785 134.112L443.217 153.5H134.183C113.091 153.5 96 136.409 96 115.317V118Z"
     fill="url(#loadrift-lr-sheen)"
   />
 
-  <path d="M154 154H198V321H289V358H154V154Z" fill="#071018" />
   <path
-    d="M290 154H353C406.487 154 437 182.636 437 228.47C437 260.662 420.848 283.529 392.35 294.712L441 358H389.124L348.995 304.337H334V358H290V154ZM334 191V268H351.132C381.193 268 393.509 252.011 393.509 229.178C393.509 206.7 380.484 191 351.132 191H334Z"
-    fill="#071018"
+    d="M156 150H208V312H294V362H156V150Z"
+    fill="#081019"
+  />
+  <path
+    d="M284 150H356C411.11 150 442 179.823 442 225.484C442 257.393 426.258 280.466 396.727 292.396L442 362H383.478L345.232 302.915H336V362H284V150ZM336 194V261H352.255C383.661 261 397.127 248.946 397.127 227.152C397.127 205.358 383.661 194 352.255 194H336Z"
+    fill="#081019"
   />
 </svg>
