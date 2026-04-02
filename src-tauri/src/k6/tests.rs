@@ -43,6 +43,87 @@ fn sample_result(status: TestResultStatus) -> TestResult {
     }
 }
 
+fn sample_machine_summary_json() -> &'static str {
+    r#"{
+      "metrics": {
+        "http_reqs": {
+          "type": "counter",
+          "contains": "default",
+          "values": { "count": 12, "rate": 3.5 }
+        },
+        "http_req_duration": {
+          "type": "trend",
+          "contains": "time",
+          "values": { "avg": 82, "med": 70, "p(95)": 110, "max": 120 }
+        },
+        "iterations": {
+          "type": "counter",
+          "contains": "default",
+          "values": { "count": 12, "rate": 3.5 }
+        },
+        "data_received": {
+          "type": "counter",
+          "contains": "data",
+          "values": { "count": 63000, "rate": 42000 }
+        }
+      }
+    }"#
+}
+
+fn basic_load_shape_override_test_script() -> &'static str {
+    r#"import { sleep } from "k6";
+
+function numberEnv(name, fallback) {
+  const value = __ENV[name];
+  if (!value) {
+    return fallback;
+  }
+
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseJsonEnv(name, fallback) {
+  const value = __ENV[name];
+  if (!value || !value.trim()) {
+    return fallback;
+  }
+
+  return JSON.parse(value);
+}
+
+function mergeOptions(baseOptions, advancedOptions) {
+  if (!advancedOptions || typeof advancedOptions !== "object" || Array.isArray(advancedOptions)) {
+    return baseOptions;
+  }
+
+  return { ...baseOptions, ...advancedOptions };
+}
+
+function buildBasicOptions() {
+  const thresholds = {};
+  if ((__ENV.LOADRIFT_SKIP_BASIC_LOAD_SHAPE || "").toLowerCase() === "true") {
+    return { thresholds };
+  }
+
+  return {
+    vus: numberEnv("K6_VUS", 1),
+    duration: __ENV.K6_DURATION || "1s",
+    thresholds,
+  };
+}
+
+export const options = mergeOptions(
+  buildBasicOptions(),
+  parseJsonEnv("LOADRIFT_ADVANCED_OPTIONS_JSON", null),
+);
+
+export default function () {
+  sleep(0.01);
+}
+"#
+}
+
 #[test]
 fn threshold_exit_requires_the_dedicated_k6_exit_code() {
     assert!(summary::is_threshold_failure_exit(
@@ -108,6 +189,7 @@ fn store_completion_persists_result_and_clears_running_state() {
         &result,
         TestStatus::Completed,
         "thresholds_failed",
+        Some("{\"metrics\":{}}".to_string()),
     );
 
     let app_state = state.lock().expect("state should remain readable");
@@ -125,6 +207,10 @@ fn store_completion_persists_result_and_clears_running_state() {
             .as_ref()
             .map(|value| value.active_vus),
         Some(0)
+    );
+    assert_eq!(
+        app_state.latest_summary_json.as_deref(),
+        Some("{\"metrics\":{}}")
     );
     assert!(matches!(
         app_state.latest_result.as_ref().map(|value| &value.status),
@@ -237,6 +323,25 @@ fn parse_summary_supports_machine_readable_summary_shape() {
     assert_eq!(result.thresholds.len(), 2);
     assert!(result.thresholds.iter().all(|threshold| !threshold.passed));
     assert!(matches!(result.status, TestResultStatus::Failed));
+}
+
+#[test]
+fn analyze_advanced_options_detects_when_basic_load_shape_must_be_skipped() {
+    let config = process::analyze_advanced_options_json(Some(
+        r#"{"scenarios":{"steady":{"executor":"shared-iterations","vus":1,"iterations":1}}}"#,
+    ))
+    .expect("advanced options should parse");
+    assert!(config.overrides_basic_load_shape);
+
+    let config = process::analyze_advanced_options_json(Some(
+        r#"{"stages":[{"duration":"10s","target":10}]}"#,
+    ))
+    .expect("advanced stage options should parse");
+    assert!(config.overrides_basic_load_shape);
+
+    let config = process::analyze_advanced_options_json(Some(r#"{"tags":{"suite":"api"}}"#))
+        .expect("simple advanced options should parse");
+    assert!(!config.overrides_basic_load_shape);
 }
 
 #[test]
@@ -384,12 +489,14 @@ fn render_report_preserves_full_console_summary_sections() {
     let result = summary_report_result();
 
     let output = "banner\n\n  █ THRESHOLDS \n\n    http_req_duration\n    ✓ 'p(95)<200'\n\n  █ TOTAL RESULTS \n\n    HTTP\n    http_reqs......................: 12     3.50/s\n\n    EXECUTION\n    iterations.....................: 12     3.50/s\n\n    NETWORK\n    data_received..................: 63 kB 42 kB/s\n";
-    let rendered = report::render_report(&result, output);
+    let rendered = report::render_report(&result, output, Some(sample_machine_summary_json()));
 
     assert!(rendered.contains("█ THRESHOLDS"));
     assert!(rendered.contains("http_reqs......................: 12     3.50/s"));
     assert!(rendered.contains("EXECUTION"));
     assert!(rendered.contains("NETWORK"));
+    assert!(rendered.contains("Raw k6 summary JSON"));
+    assert!(rendered.contains("Type: counter"));
     assert!(!rendered.contains("banner"));
 }
 
@@ -397,9 +504,70 @@ fn render_report_preserves_full_console_summary_sections() {
 fn render_report_falls_back_to_trimmed_output_when_summary_markers_are_missing() {
     let result = summary_report_result();
 
-    let report = report::render_report(&result, "plain output");
+    let report = report::render_report(&result, "plain output", None);
 
     assert!(report.contains("plain output"));
+}
+
+#[test]
+fn bundled_k6_accepts_advanced_scenarios_when_basic_load_shape_is_suppressed() {
+    let Some(k6_binary) = bundled_k6_binary() else {
+        return;
+    };
+
+    let script_path = process::write_temp_file("js", basic_load_shape_override_test_script())
+        .expect("fixture script should be written");
+
+    let output = Command::new(&k6_binary)
+        .arg("run")
+        .arg(&script_path)
+        .env("K6_NO_COLOR", "true")
+        .env("K6_WEB_DASHBOARD", "false")
+        .env("LOADRIFT_SKIP_BASIC_LOAD_SHAPE", "true")
+        .env(
+            "LOADRIFT_ADVANCED_OPTIONS_JSON",
+            r#"{"scenarios":{"steady":{"executor":"shared-iterations","vus":1,"iterations":1}}}"#,
+        )
+        .output()
+        .expect("bundled k6 should run");
+
+    let _ = fs::remove_file(&script_path);
+
+    assert!(
+        output.status.success(),
+        "bundled k6 execution failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+#[test]
+fn bundled_k6_accepts_advanced_iterations_when_basic_load_shape_is_suppressed() {
+    let Some(k6_binary) = bundled_k6_binary() else {
+        return;
+    };
+
+    let script_path = process::write_temp_file("js", basic_load_shape_override_test_script())
+        .expect("fixture script should be written");
+
+    let output = Command::new(&k6_binary)
+        .arg("run")
+        .arg(&script_path)
+        .env("K6_NO_COLOR", "true")
+        .env("K6_WEB_DASHBOARD", "false")
+        .env("LOADRIFT_SKIP_BASIC_LOAD_SHAPE", "true")
+        .env("LOADRIFT_ADVANCED_OPTIONS_JSON", r#"{"iterations":1}"#)
+        .output()
+        .expect("bundled k6 should run");
+
+    let _ = fs::remove_file(&script_path);
+
+    assert!(
+        output.status.success(),
+        "bundled k6 execution failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 fn bundled_k6_binary() -> Option<PathBuf> {

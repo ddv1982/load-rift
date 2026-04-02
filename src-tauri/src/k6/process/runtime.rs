@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
@@ -28,8 +28,7 @@ pub fn start_k6_process(
     script: String,
     options: K6Options,
 ) -> Result<(), String> {
-    let advanced_options_json =
-        validate_advanced_options_json(options.advanced_options_json.as_deref())?;
+    let advanced_options = analyze_advanced_options_json(options.advanced_options_json.as_deref())?;
     let variable_overrides_json = serde_json::to_string(&options.variable_overrides)
         .map_err(|error| format!("Failed to serialize runtime variable overrides: {error}"))?;
     let selected_request_ids_json = serde_json::to_string(&options.selected_request_ids)
@@ -48,6 +47,8 @@ pub fn start_k6_process(
         .arg(format!("json={}", metrics_path.display()))
         .arg(&script_path)
         .env("K6_NO_COLOR", "true")
+        .env("K6_NEW_MACHINE_READABLE_SUMMARY", "true")
+        .env("K6_SUMMARY_MODE", "full")
         .env("K6_WEB_DASHBOARD", "false")
         .env("K6_VUS", options.vus.to_string())
         .env("K6_DURATION", &options.duration)
@@ -67,8 +68,11 @@ pub fn start_k6_process(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 
-    if let Some(value) = advanced_options_json.as_deref() {
+    if let Some(value) = advanced_options.normalized_json.as_deref() {
         command.env("LOADRIFT_ADVANCED_OPTIONS_JSON", value);
+    }
+    if advanced_options.overrides_basic_load_shape {
+        command.env("LOADRIFT_SKIP_BASIC_LOAD_SHAPE", "true");
     }
 
     if let Some(value) = options.thresholds.p95_response_time {
@@ -149,17 +153,7 @@ pub fn start_k6_process(
 pub(crate) fn validate_advanced_options_json(
     value: Option<&str>,
 ) -> Result<Option<String>, String> {
-    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
-        return Ok(None);
-    };
-
-    let parsed: Value = serde_json::from_str(value)
-        .map_err(|error| format!("Advanced k6 options must be valid JSON: {error}"))?;
-    if !parsed.is_object() {
-        return Err("Advanced k6 options must be a JSON object.".to_string());
-    }
-
-    Ok(Some(value.to_string()))
+    analyze_advanced_options_json(value).map(|config| config.normalized_json)
 }
 
 pub fn stop_k6_process(state: &SharedAppState) -> Result<(), String> {
@@ -276,6 +270,7 @@ fn spawn_waiter(
                         &result,
                         completion.run_state.clone(),
                         &completion.finish_reason,
+                        Some(summary_json.clone()),
                     );
 
                     let _ = emit_k6_metrics(&app, metrics.clone());
@@ -322,6 +317,41 @@ fn wait_for_output_forwarders(forwarders: [Option<JoinHandle<()>>; 2]) {
     for forwarder in forwarders.into_iter().flatten() {
         let _ = forwarder.join();
     }
+}
+
+pub(crate) fn analyze_advanced_options_json(
+    value: Option<&str>,
+) -> Result<AdvancedOptionsConfig, String> {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return Ok(AdvancedOptionsConfig::default());
+    };
+
+    let parsed: Value = serde_json::from_str(value)
+        .map_err(|error| format!("Advanced k6 options must be valid JSON: {error}"))?;
+    let object = parsed
+        .as_object()
+        .ok_or("Advanced k6 options must be a JSON object.".to_string())?;
+
+    Ok(AdvancedOptionsConfig {
+        normalized_json: Some(value.to_string()),
+        overrides_basic_load_shape: advanced_options_override_basic_load_shape(object),
+    })
+}
+
+fn advanced_options_override_basic_load_shape(options: &Map<String, Value>) -> bool {
+    // These top-level k6 keys define the load shape themselves, so they must
+    // bypass the app's basic `vus` / `duration` / `stages` injection. Keep this
+    // list aligned with the advanced options we intentionally allow to override
+    // the basic runner controls.
+    ["scenarios", "stages", "iterations"]
+        .iter()
+        .any(|key| options.contains_key(*key))
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct AdvancedOptionsConfig {
+    pub(crate) normalized_json: Option<String>,
+    pub(crate) overrides_basic_load_shape: bool,
 }
 
 fn resolve_k6_binary(app: &AppHandle) -> Result<PathBuf, String> {

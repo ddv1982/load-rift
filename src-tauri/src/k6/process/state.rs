@@ -50,10 +50,12 @@ pub(crate) fn store_completion(
     result: &crate::models::TestResult,
     run_state: TestStatus,
     finish_reason: &str,
+    summary_json: Option<String>,
 ) {
     if let Ok(mut app_state) = state.lock() {
         app_state.latest_metrics = Some(metrics.clone());
         app_state.latest_result = Some(result.clone());
+        app_state.latest_summary_json = summary_json;
         app_state.latest_finish_reason = Some(finish_reason.to_string());
         app_state.latest_error_message = None;
         clear_active_run(&mut app_state);

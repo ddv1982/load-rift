@@ -4,6 +4,8 @@ mod state;
 
 #[cfg(test)]
 pub(crate) use live_metrics::LiveMetricsAggregator;
+#[cfg(test)]
+pub(crate) use runtime::analyze_advanced_options_json;
 pub(crate) use runtime::validate_advanced_options_json;
 pub use runtime::{start_k6_process, stop_k6_process};
 #[cfg(test)]

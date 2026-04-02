@@ -7,7 +7,8 @@ This repository currently contains the first working Tauri vertical slice:
 - React + TypeScript frontend setup
 - A typed frontend API layer
 - Postman collection import from file
-- Local k6 execution with live output, metrics/status tracking, and report export
+- Local k6 execution with live output, metrics, status tracking, and richer HTML report export
+- Advanced k6 options JSON for scenarios, thresholds, tags, and other settings that do not fit the basic controls
 - Bundled project-local k6 binary for Linux and macOS desktop builds
 
 ## Prerequisites
@@ -93,7 +94,11 @@ build workflow.
 
 The app currently provides a slim migration shell with:
 - File import entry point
-- A test harness panel for start / stop / status
+- A test harness panel for start, stop, and status
+- Basic runner controls for common load-test setup
+- An advanced k6 options JSON area for scenarios, tags, thresholds, and other custom options
+- Clear override behavior: if you define top-level `scenarios`, `stages`, or `iterations` in the advanced JSON, those settings override the basic runner controls
+- HTML report export with summary cards, threshold results, structured metrics, the raw k6 summary JSON, and the final console summary from k6
 - Event listeners for:
   - `k6:output`
   - `k6:metrics`

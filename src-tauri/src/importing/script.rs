@@ -85,6 +85,10 @@ function mergeOptions(baseOptions, advancedOptions) {{
   return merged;
 }}
 
+function shouldSkipBasicLoadShape() {{
+  return (__ENV.LOADRIFT_SKIP_BASIC_LOAD_SHAPE || "").toLowerCase() === "true";
+}}
+
 function buildBasicOptions() {{
   const vus = numberEnv("K6_VUS", 10);
   const duration = __ENV.K6_DURATION || "1m";
@@ -100,6 +104,10 @@ function buildBasicOptions() {{
 
   if (errorRateThreshold) {{
     thresholds.http_req_failed = [`rate<${{Number(errorRateThreshold) / 100}}`];
+  }}
+
+  if (shouldSkipBasicLoadShape()) {{
+    return {{ thresholds }};
   }}
 
   if (rampUp === "instant") {{

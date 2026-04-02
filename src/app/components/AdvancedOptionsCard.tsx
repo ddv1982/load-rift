@@ -14,7 +14,7 @@ export function AdvancedOptionsCard({
       <SettingsCardHeader
         eyebrow="Advanced"
         title="Raw k6 Options JSON"
-        hint="Optional. This JSON is merged over the basic settings so you can define scenarios, tags, thresholds, and other k6 options that do not fit the simple form."
+        hint="Optional. This JSON is merged over the basic settings so you can define scenarios, tags, thresholds, and other k6 options that do not fit the simple form. If you set scenarios, stages, or iterations here, the advanced load profile overrides the basic load controls."
       />
 
       <label className="field">

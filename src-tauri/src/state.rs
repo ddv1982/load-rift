@@ -16,6 +16,7 @@ pub struct AppState {
     pub runtime_collection: Option<RuntimeCollection>,
     pub latest_metrics: Option<LiveMetrics>,
     pub latest_result: Option<TestResult>,
+    pub latest_summary_json: Option<String>,
     pub latest_finish_reason: Option<String>,
     pub latest_error_message: Option<String>,
     pub latest_output: String,
@@ -32,6 +33,7 @@ impl AppState {
     pub fn clear_test_run_state(&mut self) {
         self.latest_metrics = None;
         self.latest_result = None;
+        self.latest_summary_json = None;
         self.latest_finish_reason = None;
         self.latest_error_message = None;
         self.latest_output.clear();
@@ -45,6 +47,7 @@ impl Default for AppState {
             runtime_collection: None,
             latest_metrics: None,
             latest_result: None,
+            latest_summary_json: None,
             latest_finish_reason: None,
             latest_error_message: None,
             latest_output: String::new(),
