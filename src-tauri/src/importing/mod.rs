@@ -107,4 +107,7 @@ pub fn resolve_test_requests(
 }
 
 #[cfg(test)]
+mod script_tests;
+
+#[cfg(test)]
 mod tests;

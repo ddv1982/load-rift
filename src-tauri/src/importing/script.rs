@@ -7,7 +7,8 @@ pub(crate) fn generate_k6_script(parsed: &ParsedCollection) -> Result<String, St
         .map_err(|error| format!("Failed to serialize variables: {error}"))?;
 
     Ok(format!(
-        r#"import http from "k6/http";
+        r#"import exec from "k6/execution";
+import http from "k6/http";
 import {{ check, sleep }} from "k6";
 
 const COLLECTION_VARIABLES = {variables_json};
@@ -209,6 +210,14 @@ function resolveUrl(url, context) {{
   return `${{baseUrl}}/${{suffix}}`;
 }}
 
+function abortForAuthorizationFailure(response, request) {{
+  if (response.status === 401 || response.status === 403) {{
+    exec.test.abort(
+      `Authorization failed for "${{request.name}}" with HTTP ${{response.status}}.`,
+    );
+  }}
+}}
+
 export default function () {{
   const context = buildContext();
   const selectedRequestIds = parseSelectedRequestIds();
@@ -231,6 +240,8 @@ export default function () {{
         collection_name: {collection_name:?},
       }},
     }});
+
+    abortForAuthorizationFailure(response, request);
 
     check(response, {{
       [`${{request.name}} status < 400`]: (result) => result.status < 400,

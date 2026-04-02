@@ -509,6 +509,40 @@ fn host_placeholder_generated_script_runs_with_bundled_k6() {
 
 #[cfg(target_os = "linux")]
 #[test]
+fn host_placeholder_generated_script_aborts_on_authorization_failures() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    let Some((output, requests)) = run_generated_script_fixture_with_response(
+        &imported.script,
+        "loadrift-auth-abort",
+        Some("Authorization: Bearer integration-token"),
+        "HTTP/1.1 401 Unauthorized\r\nContent-Length: 12\r\nConnection: close\r\n\r\nunauthorized",
+    ) else {
+        return;
+    };
+
+    assert!(
+        !output.status.success(),
+        "expected k6 to abort on authorization failure\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("Authorization failed"),
+        "expected auth abort message in stderr\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(
+        requests.len(),
+        1,
+        "expected the test to stop after the first unauthorized response, captured requests: {requests:?}"
+    );
+}
+
+#[cfg(target_os = "linux")]
+#[test]
 fn enviroment_placeholder_generated_script_runs_with_bundled_k6() {
     let imported = import_collection(sample_host_typo_placeholder_collection())
         .expect("fixture should import");
@@ -535,6 +569,44 @@ fn run_generated_script_fixture(
     file_prefix: &str,
     auth_token: Option<&str>,
 ) -> Option<(String, Vec<String>)> {
+    let Some((output, summary_json, requests)) = run_generated_script_fixture_with_summary(
+        script,
+        file_prefix,
+        auth_token,
+        "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK",
+    ) else {
+        return None;
+    };
+
+    assert!(
+        output.status.success(),
+        "k6 execution failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    Some((summary_json, requests))
+}
+
+#[cfg(target_os = "linux")]
+fn run_generated_script_fixture_with_response(
+    script: &str,
+    file_prefix: &str,
+    auth_token: Option<&str>,
+    response: &'static str,
+) -> Option<(std::process::Output, Vec<String>)> {
+    let (output, _summary_json, requests) =
+        run_generated_script_fixture_with_summary(script, file_prefix, auth_token, response)?;
+    Some((output, requests))
+}
+
+#[cfg(target_os = "linux")]
+fn run_generated_script_fixture_with_summary(
+    script: &str,
+    file_prefix: &str,
+    auth_token: Option<&str>,
+    response: &'static str,
+) -> Option<(std::process::Output, String, Vec<String>)> {
     let k6_binary = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("bin")
         .join(k6_binary_name());
@@ -546,7 +618,7 @@ fn run_generated_script_fixture(
         return None;
     }
 
-    let server = CapturingServer::start();
+    let server = CapturingServer::start(response);
     let script_path = temp_artifact_path(file_prefix, "js");
     let summary_path = temp_artifact_path(file_prefix, "json");
     fs::write(&script_path, script).expect("script should be written");
@@ -572,17 +644,10 @@ fn run_generated_script_fixture(
     let requests = server.finish();
 
     let _ = fs::remove_file(&script_path);
-    let summary_json = fs::read_to_string(&summary_path).expect("k6 should write the summary file");
+    let summary_json = fs::read_to_string(&summary_path).unwrap_or_default();
     let _ = fs::remove_file(&summary_path);
 
-    assert!(
-        output.status.success(),
-        "k6 execution failed\nstdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&output.stdout),
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    Some((summary_json, requests))
+    Some((output, summary_json, requests))
 }
 
 #[cfg(target_os = "linux")]
@@ -595,7 +660,7 @@ struct CapturingServer {
 
 #[cfg(target_os = "linux")]
 impl CapturingServer {
-    fn start() -> Self {
+    fn start(response: &'static str) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
         listener
             .set_nonblocking(true)
@@ -608,6 +673,7 @@ impl CapturingServer {
         let server_stop_flag = stop_server.clone();
         let captured_requests = Arc::new(Mutex::new(Vec::<String>::new()));
         let captured_request_log = captured_requests.clone();
+        let response = response.as_bytes().to_vec();
         let handle = thread::spawn(move || {
             while !server_stop_flag.load(Ordering::SeqCst) {
                 match listener.accept() {
@@ -617,9 +683,7 @@ impl CapturingServer {
                         if let Ok(mut requests) = captured_request_log.lock() {
                             requests.push(String::from_utf8_lossy(&buffer[..bytes_read]).into());
                         }
-                        let response =
-                            b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK";
-                        let _ = stream.write_all(response);
+                        let _ = stream.write_all(&response);
                         let _ = stream.flush();
                     }
                     Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
