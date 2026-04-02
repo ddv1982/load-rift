@@ -60,6 +60,25 @@ Common bundle subdirectories under `src-tauri/target/release/bundle/` include:
 Tauri produces native bundles for the current build platform, so Linux bundles
 must be built on Linux and macOS bundles must be built on macOS.
 
+## Clean Rebuild
+
+You usually do **not** need to run a clean step before building.
+
+Use a clean rebuild only when troubleshooting stale Rust/Tauri artifacts,
+native-toolchain changes, or unusual linker/compiler errors:
+
+```bash
+rm -rf dist
+cargo clean --manifest-path src-tauri/Cargo.toml
+npm run build
+# or
+npm run tauri build
+```
+
+`cargo clean` removes Rust build artifacts and makes the next build slower, so
+it should be treated as a troubleshooting step rather than a normal part of the
+build workflow.
+
 ## Useful Scripts
 
 - `npm run dev`: starts the Vite frontend only
