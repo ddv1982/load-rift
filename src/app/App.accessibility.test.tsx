@@ -52,4 +52,15 @@ describe("App accessibility", () => {
     );
     expect(controlsPanel).not.toBeVisible();
   });
+
+  it("surfaces the redesigned workflow stages with explicit headings", () => {
+    renderApp(createApiMock());
+
+    expect(
+      screen.getByRole("heading", { name: "Import a collection" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Configure and launch" }),
+    ).toBeInTheDocument();
+  });
 });

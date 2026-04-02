@@ -245,7 +245,7 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    expect(screen.getAllByText("IDLE")).toHaveLength(3);
+    expect(screen.getAllByText("IDLE")).toHaveLength(4);
     expect(screen.queryByText("PENDING")).not.toBeInTheDocument();
   });
 

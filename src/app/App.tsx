@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CollectionImportSection } from "./components/CollectionImportSection";
 import { TestHarnessSection } from "./components/TestHarnessSection";
 import { buildReportFileName, formatCount, truncateLog } from "./utils";
@@ -50,6 +50,31 @@ function buildSmokeInputKey(
   });
 }
 
+function AppIcon() {
+  return (
+    <span className="app-icon" aria-hidden="true">
+      <svg viewBox="0 0 48 48" focusable="false">
+        <defs>
+          <linearGradient id="loadrift-icon-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stopColor="#9f8cff" />
+            <stop offset="100%" stopColor="#5fd4ff" />
+          </linearGradient>
+        </defs>
+        <rect x="4" y="4" width="40" height="40" rx="14" fill="url(#loadrift-icon-gradient)" />
+        <path
+          d="M16 31.5V16.5h6.5c3.6 0 6.2 2.1 6.2 5.6 0 3.7-2.8 5.8-6.4 5.8h-2.9v3.6H16Zm3.4-6.3h2.4c1.8 0 3.1-.8 3.1-2.9 0-1.9-1.3-2.8-3.1-2.8h-2.4v5.7Z"
+          fill="#081019"
+        />
+        <path
+          d="M28.5 16.5h3.4v15h-3.4z"
+          fill="#081019"
+          opacity="0.85"
+        />
+      </svg>
+    </span>
+  );
+}
+
 export function App() {
   const [lastSmokeInputKey, setLastSmokeInputKey] = useState<string | null>(null);
   const [collectionRevision, setCollectionRevision] = useState(0);
@@ -89,12 +114,9 @@ export function App() {
     handleCurlInputChange,
   } = useCurlImport(setRunnerOptions);
   const {
-    sidebarWidth,
-    isResizingPanes,
     workspaceShellRef,
     eventLogRef,
     resultSummaryRef,
-    startPaneResize,
   } = useWorkspaceLayout({
     output: testState.output,
     result: testState.result,
@@ -126,12 +148,7 @@ export function App() {
     [importState.collection, isHarnessBusy],
   );
   const smokeInputKey = useMemo(
-    () =>
-      buildSmokeInputKey(
-        collection,
-        runnerOptions,
-        collectionRevision,
-      ),
+    () => buildSmokeInputKey(collection, runnerOptions, collectionRevision),
     [collection, collectionRevision, runnerOptions],
   );
   const displayedSmokeTestState = useMemo(() => {
@@ -267,32 +284,35 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-topbar">
-        <div className="app-brand">
+      <header className="app-hero">
+        <div className="app-hero-copy">
           <p className="eyebrow">Load Testing Workspace</p>
           <div className="app-title-row">
-            <h1>Load Rift</h1>
             <span className={`status-pill is-${displayedTestStatus}`}>
               {displayedTestStatus.replace("_", " ")}
             </span>
           </div>
+          <div className="app-brand-row">
+            <AppIcon />
+            <h1>Load Rift</h1>
+          </div>
           <p className="app-subtitle">
             {collection
-              ? `${collection.name} is loaded. Shape the run, inspect the request map, and execute locally with k6.`
-              : "Import a Postman collection, derive runtime inputs, and run local k6 checks from one tighter desktop workspace."}
+              ? `${collection.name} is loaded. Move from collection setup to run controls and live diagnostics without the old dashboard clutter.`
+              : "Import a Postman collection, derive runtime inputs, and run local k6 checks from one tighter, more professional workspace."}
           </p>
         </div>
 
-        <dl className="topbar-stats">
-          <div className="topbar-stat">
+        <dl className="overview-grid">
+          <div className="overview-card">
             <dt>Collection</dt>
             <dd>{collection?.name ?? "No collection loaded"}</dd>
           </div>
-          <div className="topbar-stat">
+          <div className="overview-card">
             <dt>Requests</dt>
             <dd>{collection ? formatCount("request", collection.requestCount) : "0 requests"}</dd>
           </div>
-          <div className="topbar-stat">
+          <div className="overview-card">
             <dt>Variables</dt>
             <dd>
               {collection
@@ -300,22 +320,14 @@ export function App() {
                 : "0 variables"}
             </dd>
           </div>
-          <div className="topbar-stat">
+          <div className="overview-card">
             <dt>Runner</dt>
             <dd>{displayedVerdict}</dd>
           </div>
         </dl>
       </header>
 
-      <main
-        ref={workspaceShellRef}
-        className="workspace-shell"
-        style={
-          {
-            "--sidebar-width": `${sidebarWidth}%`,
-          } as CSSProperties
-        }
-      >
+      <main ref={workspaceShellRef} className="workspace-shell workflow-shell">
         <CollectionImportSection
           collection={collection}
           selectedRequestIds={runnerOptions.selectedRequestIds}
@@ -326,15 +338,6 @@ export function App() {
           onReset={reset}
           onSelectionChange={updateSelectedRequestIds}
         />
-
-        <button
-          type="button"
-          className={`workspace-divider${isResizingPanes ? " is-resizing" : ""}`}
-          aria-label="Resize workspace panes"
-          onMouseDown={startPaneResize}
-        >
-          <span />
-        </button>
 
         <TestHarnessSection
           status={harnessStatus}

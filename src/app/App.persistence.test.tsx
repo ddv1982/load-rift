@@ -39,7 +39,7 @@ describe("App persistence", () => {
     vi.useRealTimers();
   });
 
-  it("restores the persisted harness tab and pane width", () => {
+  it("restores the persisted harness tab while safely ignoring legacy pane width state", () => {
     window.localStorage.setItem("loadrift.ui.active-harness-tab", JSON.stringify("variables"));
     window.localStorage.setItem("loadrift.ui.sidebar-width", JSON.stringify(40));
 
@@ -47,7 +47,7 @@ describe("App persistence", () => {
 
     expect(screen.getByLabelText("Environment")).toBeInTheDocument();
     expect(screen.getByLabelText("Duration")).not.toBeVisible();
-    expect(document.querySelector(".workspace-shell")).toHaveStyle("--sidebar-width: 40%");
+    expect(screen.getByRole("heading", { name: "Configure and launch" })).toBeInTheDocument();
   });
 
   it("restores the current curl draft", () => {

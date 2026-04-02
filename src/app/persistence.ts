@@ -5,7 +5,6 @@ import type {
 } from "../lib/loadrift/types";
 
 const STORAGE_KEYS = {
-  sidebarWidth: "loadrift.ui.sidebar-width",
   activeHarnessTab: "loadrift.ui.active-harness-tab",
   collectionFilters: "loadrift.ui.collection-filters",
   curlInput: "loadrift.ui.curl-input",
@@ -133,19 +132,6 @@ function normalizeCollectionFilterStore(
   }
 
   return null;
-}
-
-export function loadSidebarWidth(defaultWidth: number): number {
-  const stored = readStorage<number>(STORAGE_KEYS.sidebarWidth);
-  if (typeof stored !== "number" || Number.isNaN(stored)) {
-    return defaultWidth;
-  }
-
-  return Math.max(24, Math.min(46, stored));
-}
-
-export function saveSidebarWidth(width: number) {
-  writeStorage(STORAGE_KEYS.sidebarWidth, width);
 }
 
 export function loadHarnessTab(defaultTab: HarnessTab): HarnessTab {

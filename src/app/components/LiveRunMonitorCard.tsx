@@ -34,7 +34,7 @@ export function LiveRunMonitorCard({
         status, thresholds, and failure signals without leaving the workspace.
       </p>
 
-      <pre ref={eventLogRef} className="event-log">
+      <pre ref={eventLogRef} className="event-log event-log-tall">
         <code>{output}</code>
       </pre>
 

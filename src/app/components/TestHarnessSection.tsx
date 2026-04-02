@@ -143,94 +143,105 @@ export function TestHarnessSection({
   }
 
   return (
-    <section className="panel harness-panel">
+    <section className="panel harness-panel workflow-panel">
       <div className="section-heading section-heading-wide">
         <div className="section-heading-copy">
-          <p className="panel-kicker">Step 2</p>
-          <h2>Test Harness</h2>
+          <p className="panel-kicker">Step 2 · Run</p>
+          <h2>Configure and launch</h2>
           <p className="section-copy">
-            Configure the run, validate unresolved variables quickly, and keep
-            the live execution view visible without scrolling through forms.
+            Keep the primary controls front and center, then dip into variables,
+            advanced settings, and diagnostics only when they matter.
           </p>
         </div>
 
-        <div className="action-row">
-          <button
-            type="button"
-            className="primary"
-            onClick={onStartTest}
-            disabled={!canStartTest}
-          >
-            {testState.isStarting ? "Starting..." : "Start Test"}
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onSmokeTest}
-            disabled={!canSmokeTest}
-          >
-            {smokeTestState.isRunning ? "Smoking..." : "Smoke Test"}
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onStopTest}
-            disabled={!testState.isRunning || testState.isStarting}
-          >
-            Stop
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onValidateConfiguration}
-            disabled={!collection || configValidation.status === "checking"}
-          >
-            {configValidation.status === "checking" ? "Checking..." : "Check Config"}
-          </button>
-          <button
-            type="button"
-            className="ghost"
-            onClick={onRefreshStatus}
-            disabled={testState.isBusy}
-          >
-            Refresh Status
-          </button>
+        <div className="harness-heading-meta">
+          <span className={`status-pill is-${displayedTestStatus}`}>
+            {displayedVerdict}
+          </span>
+          <p className="panel-copy">
+            {collection
+              ? "Ready to validate configuration, run a smoke check, or launch the full load profile."
+              : "Import a collection first to unlock the run workflow."}
+          </p>
         </div>
       </div>
 
-      <div className="status-grid">
-        <article className="status-card">
+      <div className="action-row harness-action-row">
+        <button
+          type="button"
+          className="primary"
+          onClick={onStartTest}
+          disabled={!canStartTest}
+        >
+          {testState.isStarting ? "Starting..." : "Start Test"}
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={onSmokeTest}
+          disabled={!canSmokeTest}
+        >
+          {smokeTestState.isRunning ? "Smoking..." : "Smoke Test"}
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={onValidateConfiguration}
+          disabled={!collection || configValidation.status === "checking"}
+        >
+          {configValidation.status === "checking" ? "Checking..." : "Check Config"}
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={onStopTest}
+          disabled={!testState.isRunning || testState.isStarting}
+        >
+          Stop
+        </button>
+        <button
+          type="button"
+          className="ghost"
+          onClick={onRefreshStatus}
+          disabled={testState.isBusy}
+        >
+          Refresh Status
+        </button>
+      </div>
+
+      <div className="status-strip" aria-label="Run metrics overview">
+        <article className="status-chip">
           <span>Run State</span>
           <strong>{displayedTestStatus.toUpperCase()}</strong>
         </article>
-        <article className="status-card">
+        <article className="status-chip">
           <span>Verdict</span>
           <strong>{displayedVerdict}</strong>
         </article>
-        <article className="status-card">
+        <article className="status-chip">
           <span>Active VUs</span>
           <strong>{testState.metrics.activeVus}</strong>
         </article>
-        <article className="status-card">
+        <article className="status-chip">
           <span>Total Requests</span>
           <strong>{testState.metrics.totalRequests}</strong>
         </article>
-        <article className="status-card">
+        <article className="status-chip">
           <span>P95</span>
           <strong>{testState.metrics.p95ResponseTime} ms</strong>
         </article>
-        <article className="status-card">
+        <article className="status-chip">
           <span>Error Rate</span>
           <strong>{(testState.metrics.errorRate * 100).toFixed(1)}%</strong>
         </article>
-        <article className="status-card">
+        <article className="status-chip">
           <span>Req/s</span>
           <strong>{testState.metrics.requestsPerSecond.toFixed(1)}</strong>
         </article>
       </div>
 
-      <div className="harness-layout">
-        <div className="harness-column">
+      <div className="harness-layout harness-layout-focused">
+        <div className="harness-main">
           {configValidation.status !== "idle" ? (
             <div
               className={`validation-banner${
@@ -246,7 +257,18 @@ export function TestHarnessSection({
             </div>
           ) : null}
 
-          <div className="control-deck">
+          <div className="workflow-card workflow-card-primary">
+            <div className="workflow-card-header">
+              <div>
+                <p className="eyebrow">Run profile</p>
+                <h3>Primary controls</h3>
+              </div>
+              <p className="field-hint">
+                Use the common settings first. Variables and advanced JSON stay
+                one click away when the collection needs them.
+              </p>
+            </div>
+
             <div
               className="segmented-control segmented-control-compact"
               role="tablist"
@@ -284,60 +306,66 @@ export function TestHarnessSection({
               })}
             </div>
 
-            <div
-              role="tabpanel"
-              id={`${tabListId}-controls-panel`}
-              aria-labelledby={`${tabListId}-controls-tab`}
-              hidden={activeTab !== "controls"}
-            >
-              <RunnerSettingsCard
-                runnerOptions={runnerOptions}
-                curlInput={curlInput}
-                curlImportState={curlImportState}
-                onVusChange={onVusChange}
-                onDurationChange={onDurationChange}
-                onRampUpChange={onRampUpChange}
-                onRampUpTimeChange={onRampUpTimeChange}
-                onThresholdChange={onThresholdChange}
-                onAuthTokenChange={onAuthTokenChange}
-                onCurlInputChange={onCurlInputChange}
-                onApplyCurlCommand={onApplyCurlCommand}
-              />
-            </div>
+            <div className="control-deck">
+              <div
+                role="tabpanel"
+                id={`${tabListId}-controls-panel`}
+                aria-labelledby={`${tabListId}-controls-tab`}
+                hidden={activeTab !== "controls"}
+              >
+                <RunnerSettingsCard
+                  runnerOptions={runnerOptions}
+                  curlInput={curlInput}
+                  curlImportState={curlImportState}
+                  onVusChange={onVusChange}
+                  onDurationChange={onDurationChange}
+                  onRampUpChange={onRampUpChange}
+                  onRampUpTimeChange={onRampUpTimeChange}
+                  onThresholdChange={onThresholdChange}
+                  onAuthTokenChange={onAuthTokenChange}
+                  onCurlInputChange={onCurlInputChange}
+                  onApplyCurlCommand={onApplyCurlCommand}
+                />
+              </div>
 
-            <div
-              role="tabpanel"
-              id={`${tabListId}-variables-panel`}
-              aria-labelledby={`${tabListId}-variables-tab`}
-              hidden={activeTab !== "variables"}
-            >
-              <RuntimeVariablesCard
-                collection={collection}
-                runnerOptions={runnerOptions}
-                emptyRuntimeVariables={emptyRuntimeVariables}
-                onRuntimeVariableChange={onRuntimeVariableChange}
-              />
-            </div>
+              <div
+                role="tabpanel"
+                id={`${tabListId}-variables-panel`}
+                aria-labelledby={`${tabListId}-variables-tab`}
+                hidden={activeTab !== "variables"}
+              >
+                <RuntimeVariablesCard
+                  collection={collection}
+                  runnerOptions={runnerOptions}
+                  emptyRuntimeVariables={emptyRuntimeVariables}
+                  onRuntimeVariableChange={onRuntimeVariableChange}
+                />
+              </div>
 
-            <div
-              role="tabpanel"
-              id={`${tabListId}-advanced-panel`}
-              aria-labelledby={`${tabListId}-advanced-tab`}
-              hidden={activeTab !== "advanced"}
-            >
-              <AdvancedOptionsCard
-                value={runnerOptions.advancedOptionsJson ?? ""}
-                onChange={onAdvancedOptionsChange}
-              />
+              <div
+                role="tabpanel"
+                id={`${tabListId}-advanced-panel`}
+                aria-labelledby={`${tabListId}-advanced-tab`}
+                hidden={activeTab !== "advanced"}
+              >
+                <AdvancedOptionsCard
+                  value={runnerOptions.advancedOptionsJson ?? ""}
+                  onChange={onAdvancedOptionsChange}
+                />
+              </div>
             </div>
           </div>
         </div>
 
-        <div className="harness-column">
+        <aside className="harness-sidecar" aria-label="Run diagnostics">
           <SmokeTestCard
             result={smokeTestState.result}
             error={smokeTestState.error}
             isRunning={smokeTestState.isRunning}
+          />
+          <LatestResultCard
+            result={testState.result}
+            resultSummaryRef={resultSummaryRef}
           />
           <LiveRunMonitorCard
             output={testState.output}
@@ -345,11 +373,7 @@ export function TestHarnessSection({
             eventLogRef={eventLogRef}
             onExportLatestReport={onExportLatestReport}
           />
-          <LatestResultCard
-            result={testState.result}
-            resultSummaryRef={resultSummaryRef}
-          />
-        </div>
+        </aside>
       </div>
     </section>
   );
