@@ -158,7 +158,7 @@ jobs:
         run: npm run install:k6
 
       - name: Build and publish Tauri bundles
-        uses: tauri-apps/tauri-action@v1
+        uses: tauri-apps/tauri-action@action-v0.6.0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
