@@ -1,29 +1,29 @@
 :root {
   color-scheme: dark;
-  --bg: #070b12;
-  --bg-elevated: rgba(15, 20, 32, 0.95);
-  --bg-soft: rgba(20, 27, 42, 0.94);
-  --bg-panel: rgba(12, 18, 29, 0.92);
-  --panel-border: rgba(132, 152, 188, 0.16);
-  --panel-border-strong: rgba(150, 169, 210, 0.24);
+  --bg: #081017;
+  --bg-elevated: rgba(16, 23, 30, 0.94);
+  --bg-soft: rgba(22, 31, 39, 0.94);
+  --bg-panel: rgba(15, 22, 29, 0.92);
+  --panel-border: rgba(135, 167, 186, 0.14);
+  --panel-border-strong: rgba(158, 192, 212, 0.24);
   --panel-quiet: rgba(255, 255, 255, 0.018);
-  --text: #f3f6ff;
-  --muted: #98a7c2;
-  --accent: #74c8ff;
-  --accent-strong: #b6a4ff;
-  --accent-soft: rgba(116, 200, 255, 0.14);
-  --accent-cool: #8de0ff;
-  --danger: #ff9f92;
-  --success: #8fddb2;
-  --shadow: 0 28px 80px rgba(2, 6, 16, 0.46);
+  --text: #eef4f7;
+  --muted: #97a6b0;
+  --accent: #d2a15b;
+  --accent-strong: #e2be80;
+  --accent-soft: rgba(210, 161, 91, 0.14);
+  --accent-cool: #86c4d8;
+  --danger: #ff957c;
+  --success: #88d5a4;
+  --shadow: 0 26px 70px rgba(0, 0, 0, 0.34);
   font-family: "Inter", "Avenir Next", "Segoe UI", sans-serif;
   line-height: 1.5;
   font-weight: 400;
   color: var(--text);
   background:
-    radial-gradient(circle at top left, rgba(116, 200, 255, 0.14), transparent 28%),
-    radial-gradient(circle at top right, rgba(159, 140, 255, 0.13), transparent 24%),
-    linear-gradient(180deg, #090d16 0%, #05070d 100%);
+    radial-gradient(circle at top left, rgba(210, 161, 91, 0.13), transparent 26%),
+    radial-gradient(circle at top right, rgba(134, 196, 216, 0.13), transparent 24%),
+    linear-gradient(180deg, #091016 0%, #05090d 100%);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -72,8 +72,8 @@ button {
   border: 1px solid var(--panel-border-strong);
   border-radius: 1.5rem;
   background:
-    linear-gradient(145deg, rgba(116, 200, 255, 0.1), transparent 45%),
-    radial-gradient(circle at top right, rgba(182, 164, 255, 0.1), transparent 36%),
+    linear-gradient(145deg, rgba(210, 161, 91, 0.08), transparent 42%),
+    radial-gradient(circle at top right, rgba(134, 196, 216, 0.12), transparent 36%),
     linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
     rgba(9, 14, 24, 0.88);
   box-shadow: var(--shadow);
@@ -114,24 +114,15 @@ button {
 }
 
 .app-icon {
-  display: inline-flex;
+  display: block;
   flex: 0 0 auto;
   width: 3.15rem;
   height: 3.15rem;
-  padding: 0.2rem;
   border-radius: 1rem;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.03)),
-    rgba(255, 255, 255, 0.03);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
     0 14px 30px rgba(0, 0, 0, 0.28);
-}
-
-.app-icon svg {
-  width: 100%;
-  height: 100%;
-  display: block;
+  object-fit: contain;
 }
 
 .eyebrow,
@@ -219,9 +210,9 @@ button {
 
 .status-pill.is-running,
 .status-pill.is-starting {
-  color: #d9eeff;
-  border-color: rgba(116, 200, 255, 0.34);
-  background: rgba(116, 200, 255, 0.12);
+  color: var(--accent-strong);
+  border-color: rgba(210, 161, 91, 0.34);
+  background: rgba(210, 161, 91, 0.12);
 }
 
 .status-pill.is-completed {
@@ -330,10 +321,10 @@ button {
 }
 
 .primary {
-  background: linear-gradient(135deg, #c5b7ff 0%, #77d4ff 100%);
-  color: #09111b;
+  background: linear-gradient(135deg, #e2ba7d 0%, #c99046 100%);
+  color: #130d07;
   font-weight: 700;
-  box-shadow: 0 16px 34px rgba(65, 104, 191, 0.24);
+  box-shadow: 0 16px 32px rgba(117, 82, 33, 0.24);
 }
 
 .ghost {
@@ -606,16 +597,27 @@ button {
   line-height: 1.15;
 }
 
-.harness-layout-focused {
-  grid-template-columns: minmax(0, 1.15fr) minmax(20rem, 0.82fr);
+.harness-primary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: minmax(0, 1.15fr) minmax(22rem, 0.85fr);
+  align-items: stretch;
 }
 
 .harness-main,
-.harness-sidecar {
+.harness-monitor-column,
+.harness-secondary-card {
   display: flex;
   flex-direction: column;
   gap: 1rem;
   min-width: 0;
+}
+
+.harness-secondary-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1rem;
 }
 
 .workflow-card {
@@ -630,8 +632,8 @@ button {
 
 .workflow-card-primary {
   background:
-    linear-gradient(180deg, rgba(116, 200, 255, 0.06), transparent 22%),
-    radial-gradient(circle at top right, rgba(182, 164, 255, 0.09), transparent 30%),
+    linear-gradient(180deg, rgba(210, 161, 91, 0.06), transparent 22%),
+    radial-gradient(circle at top right, rgba(134, 196, 216, 0.08), transparent 30%),
     rgba(255, 255, 255, 0.02);
 }
 
@@ -650,6 +652,11 @@ button {
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 1.1rem;
   background: rgba(255, 255, 255, 0.018);
+}
+
+.monitor-card-live {
+  flex: 1;
+  min-height: 100%;
 }
 
 .monitor-header {
@@ -671,7 +678,7 @@ button {
   gap: 0.9rem;
   border-radius: 1.1rem;
   background:
-    linear-gradient(180deg, rgba(124, 192, 216, 0.06), rgba(255, 255, 255, 0.02)),
+    linear-gradient(180deg, rgba(134, 196, 216, 0.06), rgba(255, 255, 255, 0.02)),
     rgba(255, 255, 255, 0.018);
 }
 
@@ -807,7 +814,7 @@ button {
   align-items: center;
   padding: 0.26rem 0.45rem;
   border-radius: 999px;
-  background: rgba(201, 146, 63, 0.12);
+  background: rgba(210, 161, 91, 0.12);
   color: var(--accent);
   font-size: 0.72rem;
   letter-spacing: 0.12em;
@@ -892,14 +899,16 @@ button {
   height: 16rem;
   max-height: 16rem;
   border-radius: 1rem;
-  background: rgba(7, 10, 18, 0.96);
-  border: 1px solid rgba(143, 160, 201, 0.12);
+  background: rgba(7, 10, 14, 0.92);
+  border: 1px solid rgba(132, 167, 186, 0.12);
   font-size: 0.83rem;
 }
 
 .event-log-tall {
-  height: 21rem;
-  max-height: 21rem;
+  flex: 1;
+  height: auto;
+  min-height: 29rem;
+  max-height: none;
 }
 
 .inline-error {
@@ -926,10 +935,10 @@ button {
   flex-direction: column;
   gap: 0.8rem;
   min-height: 15rem;
-  border: 1px solid rgba(116, 200, 255, 0.18);
+  border: 1px solid rgba(134, 196, 216, 0.16);
   border-radius: 1.1rem;
   background:
-    linear-gradient(180deg, rgba(116, 200, 255, 0.08), rgba(182, 164, 255, 0.05)),
+    linear-gradient(180deg, rgba(134, 196, 216, 0.08), rgba(210, 161, 91, 0.04)),
     rgba(255, 255, 255, 0.03);
 }
 
@@ -1077,7 +1086,8 @@ button {
   }
 
   .app-hero,
-  .harness-layout {
+  .harness-primary-grid,
+  .harness-secondary-grid {
     grid-template-columns: 1fr;
   }
 

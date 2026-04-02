@@ -1,0 +1,25 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="loadrift-lr-gradient" x1="96" y1="72" x2="416" y2="432" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#E3B56A" />
+      <stop offset="1" stop-color="#7DBFD2" />
+    </linearGradient>
+    <linearGradient id="loadrift-lr-sheen" x1="112" y1="88" x2="384" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="white" stop-opacity="0.34" />
+      <stop offset="1" stop-color="white" stop-opacity="0" />
+    </linearGradient>
+  </defs>
+
+  <rect x="40" y="40" width="432" height="432" rx="140" fill="#0A1016" />
+  <rect x="56" y="56" width="400" height="400" rx="124" fill="url(#loadrift-lr-gradient)" />
+  <path
+    d="M88 110C88 88.9086 105.091 71.8173 126.183 71.8173H347.163C382.782 71.8173 415.022 92.7063 429.598 125.207L438.587 145.246H126.183C105.091 145.246 88 128.155 88 107.064V110Z"
+    fill="url(#loadrift-lr-sheen)"
+  />
+
+  <path d="M154 154H198V321H289V358H154V154Z" fill="#071018" />
+  <path
+    d="M290 154H353C406.487 154 437 182.636 437 228.47C437 260.662 420.848 283.529 392.35 294.712L441 358H389.124L348.995 304.337H334V358H290V154ZM334 191V268H351.132C381.193 268 393.509 252.011 393.509 229.178C393.509 206.7 380.484 191 351.132 191H334Z"
+    fill="#071018"
+  />
+</svg>

@@ -240,7 +240,7 @@ export function TestHarnessSection({
         </article>
       </div>
 
-      <div className="harness-layout harness-layout-focused">
+      <div className="harness-primary-grid">
         <div className="harness-main">
           {configValidation.status !== "idle" ? (
             <div
@@ -357,16 +357,7 @@ export function TestHarnessSection({
           </div>
         </div>
 
-        <aside className="harness-sidecar" aria-label="Run diagnostics">
-          <SmokeTestCard
-            result={smokeTestState.result}
-            error={smokeTestState.error}
-            isRunning={smokeTestState.isRunning}
-          />
-          <LatestResultCard
-            result={testState.result}
-            resultSummaryRef={resultSummaryRef}
-          />
+        <aside className="harness-monitor-column" aria-label="Live run monitor">
           <LiveRunMonitorCard
             output={testState.output}
             error={testState.error}
@@ -374,6 +365,22 @@ export function TestHarnessSection({
             onExportLatestReport={onExportLatestReport}
           />
         </aside>
+      </div>
+
+      <div className="harness-secondary-grid">
+        <div className="harness-secondary-card">
+          <SmokeTestCard
+            result={smokeTestState.result}
+            error={smokeTestState.error}
+            isRunning={smokeTestState.isRunning}
+          />
+        </div>
+        <div className="harness-secondary-card">
+          <LatestResultCard
+            result={testState.result}
+            resultSummaryRef={resultSummaryRef}
+          />
+        </div>
       </div>
     </section>
   );

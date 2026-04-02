@@ -14,7 +14,7 @@ export function LiveRunMonitorCard({
   onExportLatestReport,
 }: LiveRunMonitorCardProps) {
   return (
-    <div className="monitor-card">
+    <div className="monitor-card monitor-card-live">
       <div className="monitor-header">
         <div>
           <p className="eyebrow">Live Run</p>
