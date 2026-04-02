@@ -6,8 +6,8 @@ GitHub Releases.
 The GitHub Actions release workflow reads `docs/releases/<tag>.md` when it
 exists, and falls back to `.github/RELEASE_TEMPLATE.md` otherwise. For a tagged
 release like `v0.2.1`, prefer adding `docs/releases/v0.2.1.md` before pushing
-the tag so the CI-built macOS and Linux packages publish with the correct notes
-and bundled third-party notice.
+the tag so the CI-built Linux packages publish with the correct notes and
+bundled third-party notice.
 
 ## Suggested Release Notes for v0.2.1
 
@@ -24,7 +24,6 @@ and bundled third-party notice.
 - Linux AppImage: _link_
 - Linux `.deb`: _link_
 - Linux `.rpm`: _link_
-- macOS `.dmg`: _link_
 
 ## Bundled Third-Party Software
 

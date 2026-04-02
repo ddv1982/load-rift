@@ -7,7 +7,6 @@
 - Linux AppImage: _link_
 - Linux `.deb`: _link_
 - Linux `.rpm`: _link_
-- macOS `.dmg`: _link_
 
 ## Bundled Third-Party Software
 
