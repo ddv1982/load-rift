@@ -72,7 +72,15 @@ fn generated_script_supports_weighted_request_selection_and_tags() {
     assert!(
         imported
             .script
-            .contains("pickWeightedRequest(runnableRequests, requestWeights)"),
-        "expected generated script to choose a weighted request when weighted mode is active"
+            .contains("buildWeightedSchedule(runnableRequests, requestWeights)"),
+        "expected generated script to build a deterministic weighted schedule when weighted mode is active"
+    );
+    assert!(
+        imported.script.contains("exec.scenario.iterationInTest"),
+        "expected generated script to derive weighted picks from the scenario iteration index"
+    );
+    assert!(
+        !imported.script.contains("Math.random()"),
+        "expected generated script to avoid probabilistic random weighted selection"
     );
 }

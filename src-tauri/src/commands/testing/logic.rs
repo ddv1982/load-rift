@@ -29,7 +29,7 @@ const BASE_URL_GUIDANCE: &str =
 const ADVANCED_SCENARIOS_OVERRIDE_TRAFFIC_MODE_MESSAGE: &str =
     "Configuration looks ready to run. Advanced k6 scenarios override the built-in weighted mix settings. Use advanced scenarios/executors for stricter fixed traffic ratios.";
 const WEIGHTED_MODE_READY_MESSAGE: &str =
-    "Configuration looks ready to run. Weighted mix uses relative request-selection probability per iteration.";
+    "Configuration looks ready to run. Weighted mix uses deterministic weighted scheduling per iteration.";
 
 pub(super) fn get_test_status_response(
     state: &SharedAppState,

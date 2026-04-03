@@ -36,7 +36,7 @@ export function RunnerSettingsCard({
       <SettingsCardHeader
         eyebrow="Runner Settings"
         title="Basic k6 Controls"
-        hint="Configure the common load profile here. Use advanced JSON below for the full k6 options surface. Weighted mix treats per-request weights as relative selection probability, while advanced k6 scenarios remain the path for stricter fixed traffic splits."
+        hint="Configure the common load profile here. Use advanced JSON below for the full k6 options surface. Weighted mix follows a deterministic weighted request schedule across started iterations, while advanced k6 scenarios remain the path for stricter fixed traffic splits."
       />
 
       <div className="settings-grid">
@@ -127,7 +127,7 @@ export function RunnerSettingsCard({
           <span>Traffic mode notes</span>
           <p className="inline-note">
             {runnerOptions.trafficMode === "weighted"
-              ? "Weighted mix picks one selected request per iteration using relative weights. Use advanced k6 scenarios for stricter fixed ratios."
+              ? "Weighted mix follows a deterministic weighted schedule across started iterations. Use advanced k6 scenarios for stricter fixed ratios."
               : "Sequential mode runs every selected request in order during each iteration."}
           </p>
         </div>

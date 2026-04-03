@@ -257,25 +257,26 @@ function selectRunnableRequests(selectedRequests, trafficMode, requestWeights) {
   return selectedRequests.filter((request) => resolveRequestWeight(request, requestWeights) > 0);
 }}
 
-function pickWeightedRequest(requests, requestWeights) {{
-  const totalWeight = requests.reduce(
-    (sum, request) => sum + resolveRequestWeight(request, requestWeights),
-    0,
-  );
+function buildWeightedSchedule(requests, requestWeights) {{
+  const schedule = [];
 
-  if (totalWeight <= 0) {{
-    throw new Error("Weighted mix requires at least one selected request with a positive weight.");
-  }}
-
-  let cursor = Math.random() * totalWeight;
   for (const request of requests) {{
-    cursor -= resolveRequestWeight(request, requestWeights);
-    if (cursor < 0) {{
-      return request;
+    const weight = resolveRequestWeight(request, requestWeights);
+    for (let index = 0; index < weight; index += 1) {{
+      schedule.push(request);
     }}
   }}
 
-  return requests[requests.length - 1];
+  if (!schedule.length) {{
+    throw new Error("Weighted mix requires at least one selected request with a positive weight.");
+  }}
+
+  return schedule;
+}}
+
+function pickWeightedRequest(schedule) {{
+  const iterationIndex = Number(exec.scenario.iterationInTest || 0);
+  return schedule[iterationIndex % schedule.length];
 }}
 
 function executeRequest(request, context, trafficMode) {{
@@ -318,7 +319,8 @@ export default function () {{
   }}
 
   if (trafficMode === "weighted") {{
-    executeRequest(pickWeightedRequest(runnableRequests, requestWeights), context, trafficMode);
+    const weightedSchedule = buildWeightedSchedule(runnableRequests, requestWeights);
+    executeRequest(pickWeightedRequest(weightedSchedule), context, trafficMode);
   }} else {{
     for (const request of runnableRequests) {{
       executeRequest(request, context, trafficMode);
