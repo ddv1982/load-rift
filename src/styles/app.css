@@ -16,7 +16,8 @@
   --danger: #ff957c;
   --success: #88d5a4;
   --shadow: 0 26px 70px rgba(0, 0, 0, 0.34);
-  --monitor-panel-height: clamp(20rem, 42vh, 26rem);
+  --monitor-panel-min-height: clamp(26rem, 54vh, 36rem);
+  --monitor-panel-max-height: clamp(32rem, 74vh, 48rem);
   /* Stable viewport for secondary result cards; tuned to preserve scrollable panels. */
   --secondary-panel-height: clamp(18rem, 34vh, 21rem);
   font-family: "Inter", "Avenir Next", "Segoe UI", sans-serif;
@@ -617,8 +618,7 @@ button {
 }
 
 .harness-monitor-column {
-  min-height: 0;
-  align-self: start;
+  min-height: 100%;
 }
 
 .harness-secondary-grid {
@@ -663,10 +663,10 @@ button {
 }
 
 .monitor-card-live {
-  flex: 0 0 auto;
-  min-height: var(--monitor-panel-height);
-  height: var(--monitor-panel-height);
-  max-height: var(--monitor-panel-height);
+  flex: 1 1 auto;
+  min-height: var(--monitor-panel-min-height);
+  height: 100%;
+  max-height: var(--monitor-panel-max-height);
   overflow: hidden;
 }
 
