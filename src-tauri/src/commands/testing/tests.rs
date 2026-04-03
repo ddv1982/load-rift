@@ -199,7 +199,7 @@ fn validate_test_configuration_reports_weighted_mode_ready_message() {
     assert_eq!(
         response.message.as_deref(),
         Some(
-            "Configuration looks ready to run. Weighted mix uses deterministic weighted scheduling per iteration."
+            "Configuration looks ready to run. Weighted mix prefers generated per-request scenarios when VU capacity allows, otherwise deterministic weighted scheduling per iteration."
         )
     );
 }

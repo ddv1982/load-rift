@@ -53,7 +53,7 @@ fn generated_script_aborts_the_test_on_authorization_failures() {
 }
 
 #[test]
-fn generated_script_supports_weighted_request_selection_and_tags() {
+fn generated_script_supports_weighted_request_scenarios_and_tags() {
     let imported =
         import_collection(sample_host_placeholder_collection()).expect("fixture should import");
 
@@ -72,12 +72,24 @@ fn generated_script_supports_weighted_request_selection_and_tags() {
     assert!(
         imported
             .script
-            .contains("buildWeightedSchedule(runnableRequests, requestWeights)"),
-        "expected generated script to build a deterministic weighted schedule when weighted mode is active"
+            .contains("buildWeightedScenarioOptions(vus, duration, rampUp, rampUpTime, thresholds)"),
+        "expected generated script to build per-request weighted scenario options when feasible"
+    );
+    assert!(
+        imported.script.contains("allocateWeightedVus(runnableRequests, requestWeights, vus)"),
+        "expected generated script to allocate VUs across weighted request scenarios"
+    );
+    assert!(
+        imported.script.contains("REQUEST_EXEC_NAMES"),
+        "expected generated script to expose generated exec names for weighted scenarios"
+    );
+    assert!(
+        imported.script.contains("buildWeightedSchedule(runnableRequests, requestWeights)"),
+        "expected generated script to keep deterministic scheduling as the low-VU fallback"
     );
     assert!(
         imported.script.contains("exec.scenario.iterationInTest"),
-        "expected generated script to derive weighted picks from the scenario iteration index"
+        "expected generated script to derive fallback weighted picks from the scenario iteration index"
     );
     assert!(
         !imported.script.contains("Math.random()"),

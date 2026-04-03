@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use super::ParsedCollection;
 
 pub(crate) fn generate_k6_script(parsed: &ParsedCollection) -> Result<String, String> {
@@ -5,6 +7,26 @@ pub(crate) fn generate_k6_script(parsed: &ParsedCollection) -> Result<String, St
         .map_err(|error| format!("Failed to serialize requests: {error}"))?;
     let variables_json = serde_json::to_string_pretty(&parsed.variables)
         .map_err(|error| format!("Failed to serialize variables: {error}"))?;
+    let request_exec_names: BTreeMap<String, String> = parsed
+        .requests
+        .iter()
+        .enumerate()
+        .map(|(index, request)| (request.id.clone(), format!("loadriftRequest{index}")))
+        .collect();
+    let request_exec_names_json = serde_json::to_string_pretty(&request_exec_names)
+        .map_err(|error| format!("Failed to serialize request exec names: {error}"))?;
+    let request_exec_functions = parsed
+        .requests
+        .iter()
+        .enumerate()
+        .map(|(index, request)| {
+            format!(
+                "export function loadriftRequest{index}() {{\n  executeRequestById({request_id:?}, \"weighted\");\n}}",
+                request_id = request.id,
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n\n");
 
     Ok(format!(
         r#"import exec from "k6/execution";
@@ -13,6 +35,7 @@ import {{ check, sleep }} from "k6";
 
 const COLLECTION_VARIABLES = {variables_json};
 const REQUESTS = {requests_json};
+const REQUEST_EXEC_NAMES = {request_exec_names_json};
 
 function numberEnv(name, fallback) {{
   const value = __ENV[name];
@@ -103,6 +126,138 @@ function shouldSkipBasicLoadShape() {{
   return (__ENV.LOADRIFT_SKIP_BASIC_LOAD_SHAPE || "").toLowerCase() === "true";
 }}
 
+function getSelectedRequests() {{
+  const selectedRequestIds = parseSelectedRequestIds();
+  return selectedRequestIds === null
+    ? REQUESTS
+    : REQUESTS.filter((request) => selectedRequestIds.has(request.id));
+}}
+
+function resolveRequestWeight(request, requestWeights) {{
+  const rawWeight = requestWeights[request.id];
+  if (!Number.isFinite(rawWeight)) {{
+    return 1;
+  }}
+
+  return Math.max(0, Math.trunc(rawWeight));
+}}
+
+function selectRunnableRequests(selectedRequests, trafficMode, requestWeights) {{
+  if (trafficMode !== "weighted") {{
+    return selectedRequests;
+  }}
+
+  return selectedRequests.filter((request) => resolveRequestWeight(request, requestWeights) > 0);
+}}
+
+function allocateWeightedVus(requests, requestWeights, totalVus) {{
+  if (totalVus < requests.length) {{
+    return null;
+  }}
+
+  const allocations = Object.fromEntries(requests.map((request) => [request.id, 1]));
+  let remainingVus = totalVus - requests.length;
+  if (remainingVus === 0) {{
+    return allocations;
+  }}
+
+  const totalWeight = requests.reduce(
+    (sum, request) => sum + resolveRequestWeight(request, requestWeights),
+    0,
+  );
+  const remainders = [];
+
+  for (const request of requests) {{
+    const desiredExtra = (resolveRequestWeight(request, requestWeights) / totalWeight) * remainingVus;
+    const extraVus = Math.floor(desiredExtra);
+    allocations[request.id] += extraVus;
+    remainders.push({{
+      requestId: request.id,
+      remainder: desiredExtra - extraVus,
+      weight: resolveRequestWeight(request, requestWeights),
+    }});
+  }}
+
+  let allocatedExtras = requests.reduce((sum, request) => sum + allocations[request.id] - 1, 0);
+  let leftoverVus = remainingVus - allocatedExtras;
+
+  remainders.sort((left, right) =>
+    right.remainder - left.remainder ||
+    right.weight - left.weight ||
+    left.requestId.localeCompare(right.requestId)
+  );
+
+  for (let index = 0; index < leftoverVus; index += 1) {{
+    allocations[remainders[index].requestId] += 1;
+  }}
+
+  return allocations;
+}}
+
+function buildScenarioStages(rampUp, rampUpTime, duration, targetVus) {{
+  if (rampUp === "staged") {{
+    return [
+      {{ duration: rampUpTime, target: Math.max(1, Math.ceil(targetVus / 2)) }},
+      {{ duration: rampUpTime, target: targetVus }},
+      {{ duration, target: targetVus }},
+    ];
+  }}
+
+  return [
+    {{ duration: rampUpTime, target: targetVus }},
+    {{ duration, target: targetVus }},
+  ];
+}}
+
+function buildWeightedScenarioOptions(vus, duration, rampUp, rampUpTime, thresholds) {{
+  const requestWeights = parseRequestWeights();
+  const runnableRequests = selectRunnableRequests(
+    getSelectedRequests(),
+    "weighted",
+    requestWeights,
+  );
+
+  if (!runnableRequests.length) {{
+    throw new Error("Weighted mix requires at least one selected request with a positive weight.");
+  }}
+
+  const allocations = allocateWeightedVus(runnableRequests, requestWeights, vus);
+  if (!allocations) {{
+    return null;
+  }}
+
+  const scenarios = {{}};
+  for (const request of runnableRequests) {{
+    const scenarioName = `weighted_${{request.id}}`;
+    const targetVus = allocations[request.id];
+    const scenario = {{
+      exec: REQUEST_EXEC_NAMES[request.id],
+      tags: {{
+        request_id: request.id,
+        request_name: request.name,
+        traffic_mode: "weighted",
+      }},
+    }};
+
+    if (rampUp === "instant") {{
+      scenarios[scenarioName] = {{
+        ...scenario,
+        executor: "constant-vus",
+        vus: targetVus,
+        duration,
+      }};
+    }} else {{
+      scenarios[scenarioName] = {{
+        ...scenario,
+        executor: "ramping-vus",
+        stages: buildScenarioStages(rampUp, rampUpTime, duration, targetVus),
+      }};
+    }}
+  }}
+
+  return {{ scenarios, thresholds }};
+}}
+
 function buildBasicOptions() {{
   const vus = numberEnv("K6_VUS", 10);
   const duration = __ENV.K6_DURATION || "1m";
@@ -122,6 +277,19 @@ function buildBasicOptions() {{
 
   if (shouldSkipBasicLoadShape()) {{
     return {{ thresholds }};
+  }}
+
+  if (resolveTrafficMode() === "weighted") {{
+    const weightedScenarioOptions = buildWeightedScenarioOptions(
+      vus,
+      duration,
+      rampUp,
+      rampUpTime,
+      thresholds,
+    );
+    if (weightedScenarioOptions) {{
+      return weightedScenarioOptions;
+    }}
   }}
 
   if (rampUp === "instant") {{
@@ -240,23 +408,6 @@ function abortForAuthorizationFailure(response, request) {{
   }}
 }}
 
-function resolveRequestWeight(request, requestWeights) {{
-  const rawWeight = requestWeights[request.id];
-  if (!Number.isFinite(rawWeight)) {{
-    return 1;
-  }}
-
-  return Math.max(0, Math.trunc(rawWeight));
-}}
-
-function selectRunnableRequests(selectedRequests, trafficMode, requestWeights) {{
-  if (trafficMode !== "weighted") {{
-    return selectedRequests;
-  }}
-
-  return selectedRequests.filter((request) => resolveRequestWeight(request, requestWeights) > 0);
-}}
-
 function buildWeightedSchedule(requests, requestWeights) {{
   const schedule = [];
 
@@ -277,6 +428,15 @@ function buildWeightedSchedule(requests, requestWeights) {{
 function pickWeightedRequest(schedule) {{
   const iterationIndex = Number(exec.scenario.iterationInTest || 0);
   return schedule[iterationIndex % schedule.length];
+}}
+
+function findRequestById(requestId) {{
+  const request = REQUESTS.find((candidate) => candidate.id === requestId);
+  if (!request) {{
+    throw new Error(`Could not find request ${{requestId}} in the imported collection.`);
+  }}
+
+  return request;
 }}
 
 function executeRequest(request, context, trafficMode) {{
@@ -300,14 +460,18 @@ function executeRequest(request, context, trafficMode) {{
   }});
 }}
 
+function executeRequestById(requestId, trafficMode) {{
+  executeRequest(findRequestById(requestId), buildContext(), trafficMode);
+  sleep(1);
+}}
+
+{request_exec_functions}
+
 export default function () {{
   const context = buildContext();
-  const selectedRequestIds = parseSelectedRequestIds();
   const requestWeights = parseRequestWeights();
   const trafficMode = resolveTrafficMode();
-  const selectedRequests = selectedRequestIds === null
-    ? REQUESTS
-    : REQUESTS.filter((request) => selectedRequestIds.has(request.id));
+  const selectedRequests = getSelectedRequests();
   const runnableRequests = selectRunnableRequests(selectedRequests, trafficMode, requestWeights);
 
   if (!runnableRequests.length) {{
@@ -332,6 +496,8 @@ export default function () {{
 "#,
         variables_json = variables_json,
         requests_json = requests_json,
+        request_exec_names_json = request_exec_names_json,
+        request_exec_functions = request_exec_functions,
         collection_name = parsed.name,
     ))
 }

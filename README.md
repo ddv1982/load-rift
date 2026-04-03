@@ -98,7 +98,7 @@ The app currently provides a slim migration shell with:
 - A test harness panel for start, stop, and status
 - Basic runner controls for common load-test setup, including sequential vs weighted request mix
 - An advanced k6 options JSON area for scenarios, tags, thresholds, and other custom options
-- Weighted request mixes follow a deterministic weighted schedule across started iterations; use advanced k6 scenarios/executors for stricter fixed workload ratios
+- Weighted request mixes prefer generated per-request k6 scenarios when VU capacity allows, otherwise they fall back to deterministic scheduling across started iterations; use advanced k6 scenarios/executors for stricter fixed workload ratios
 - Clear override behavior: if you define top-level `scenarios`, `stages`, or `iterations` in the advanced JSON, those settings override the basic runner controls
 - HTML report export with summary cards, threshold results, structured metrics, the raw k6 summary JSON, and the final console summary from k6
 - Event listeners for:
