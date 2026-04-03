@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use super::ParsedCollection;
 
 pub(crate) fn generate_k6_script(parsed: &ParsedCollection) -> Result<String, String> {
@@ -7,15 +5,6 @@ pub(crate) fn generate_k6_script(parsed: &ParsedCollection) -> Result<String, St
         .map_err(|error| format!("Failed to serialize requests: {error}"))?;
     let variables_json = serde_json::to_string_pretty(&parsed.variables)
         .map_err(|error| format!("Failed to serialize variables: {error}"))?;
-    let request_exec_map_json = serde_json::to_string_pretty(
-        &parsed
-            .requests
-            .iter()
-            .map(|request| (request.id.clone(), request))
-            .collect::<BTreeMap<_, _>>(),
-    )
-    .map_err(|error| format!("Failed to serialize request lookup map: {error}"))?;
-
     Ok(format!(
         r#"import exec from "k6/execution";
 import http from "k6/http";
@@ -23,7 +12,7 @@ import {{ check, sleep }} from "k6";
 
 const COLLECTION_VARIABLES = {variables_json};
 const REQUESTS = {requests_json};
-const REQUESTS_BY_ID = {request_exec_map_json};
+const REQUESTS_BY_ID = Object.fromEntries(REQUESTS.map((request) => [request.id, request]));
 
 function numberEnv(name, fallback) {{
   const value = __ENV[name];
@@ -356,7 +345,6 @@ export default function () {{
 "#,
         variables_json = variables_json,
         requests_json = requests_json,
-        request_exec_map_json = request_exec_map_json,
         collection_name = parsed.name,
     ))
 }
