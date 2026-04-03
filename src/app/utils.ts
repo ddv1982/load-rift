@@ -109,6 +109,44 @@ export function syncSelectedRequestIds(
     : requests.map((request) => request.id);
 }
 
+export function normalizeRequestWeight(value: unknown): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return 1;
+  }
+
+  return Math.max(1, Math.floor(value));
+}
+
+export function syncRequestWeights(
+  requests: RequestInfo[],
+  previousRequestWeights: Record<string, number>,
+): Record<string, number> {
+  if (!requests.length) {
+    return {};
+  }
+
+  const nextRequestWeights: Record<string, number> = {};
+
+  for (const request of requests) {
+    const previousWeight = previousRequestWeights[request.id];
+    nextRequestWeights[request.id] =
+      typeof previousWeight === "number" &&
+      Number.isFinite(previousWeight) &&
+      previousWeight > 0
+        ? Math.max(1, Math.trunc(previousWeight))
+        : 1;
+  }
+
+  return nextRequestWeights;
+}
+
+export function getRequestWeight(
+  requestId: string,
+  requestWeights: Record<string, number>,
+): number {
+  return normalizeRequestWeight(requestWeights[requestId]);
+}
+
 export function isHostVariableKey(key: string): boolean {
   return HOST_VARIABLE_KEYS.has(key);
 }

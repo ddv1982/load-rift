@@ -90,6 +90,7 @@ export function App() {
     updateThreshold,
     updateRuntimeVariable,
     updateSelectedRequestIds,
+    updateRequestWeight,
   } = useRunnerOptions(collection);
   const {
     curlInput,
@@ -195,6 +196,8 @@ export function App() {
     onRampUpTimeChange: (value: string) =>
       updateRunnerOption("rampUpTime", value),
     onThresholdChange: updateThreshold,
+    onTrafficModeChange: (value: K6Options["trafficMode"]) =>
+      updateRunnerOption("trafficMode", value),
     onAuthTokenChange: (value: string) => updateRunnerOption("authToken", value),
     onCurlInputChange: handleCurlInputChange,
     onApplyCurlCommand: applyCurlCommand,
@@ -325,12 +328,15 @@ export function App() {
         <CollectionImportSection
           collection={collection}
           selectedRequestIds={runnerOptions.selectedRequestIds}
+          requestWeights={runnerOptions.requestWeights}
+          trafficMode={runnerOptions.trafficMode}
           error={importState.error}
           isLoading={importState.isLoading}
           isPickingFile={isPickingFile}
           onFileImport={() => void handleFileImport()}
           onReset={reset}
           onSelectionChange={updateSelectedRequestIds}
+          onRequestWeightChange={updateRequestWeight}
         />
 
         <TestHarnessSection

@@ -1,12 +1,15 @@
 import { useEffect, useRef, type InputHTMLAttributes } from "react";
-import type { CollectionInfo } from "../../lib/loadrift/types";
-import { formatCount } from "../utils";
+import type { CollectionInfo, K6Options } from "../../lib/loadrift/types";
+import { formatCount, getRequestWeight } from "../utils";
 import { useCollectionSummaryState } from "./collection-summary/useCollectionSummaryState";
 
 interface CollectionSummaryCardProps {
   collection: CollectionInfo | null;
   selectedRequestIds: string[];
+  requestWeights: K6Options["requestWeights"];
+  trafficMode: K6Options["trafficMode"];
   onSelectionChange: (selectedRequestIds: string[]) => void;
+  onRequestWeightChange: (requestId: string, weight: number) => void;
 }
 
 function SelectionCheckbox({
@@ -32,7 +35,10 @@ function SelectionCheckbox({
 export function CollectionSummaryCard({
   collection,
   selectedRequestIds,
+  requestWeights,
+  trafficMode,
   onSelectionChange,
+  onRequestWeightChange,
 }: CollectionSummaryCardProps) {
   const {
     searchQuery,
@@ -60,6 +66,12 @@ export function CollectionSummaryCard({
     selectedRequestIds,
     onSelectionChange,
   });
+
+  const showWeights = trafficMode === "weighted";
+  const weightedSelectionCount = (collection?.requests ?? []).filter(
+    (request) =>
+      selectedRequestSet.has(request.id) && getRequestWeight(request.id, requestWeights) > 0,
+  ).length;
 
   if (!collection) {
     return (
@@ -168,14 +180,21 @@ export function CollectionSummaryCard({
             ? ` (${visibleSelectedCount} visible, ${filteredSelectedCount} filtered)`
             : ""}
         </span>
+        {showWeights ? (
+          <span>
+            Weighted pool includes {weightedSelectionCount} request
+            {weightedSelectionCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
         <span>{formatCount("runtime variable", collection.runtimeVariables.length)}</span>
       </div>
 
       <div className="request-table">
-        <div className="request-list-header request-tree-header">
+        <div className={`request-list-header request-tree-header${showWeights ? " is-weighted" : ""}`}>
           <span>Run</span>
           <span>Collection item</span>
           <span>Resolved URL / Path</span>
+          {showWeights ? <span>Weight</span> : null}
         </div>
 
         {visibleRows.length ? (
@@ -193,7 +212,7 @@ export function CollectionSummaryCard({
                 return (
                   <li
                     key={row.id}
-                    className="request-tree-row request-tree-folder"
+                    className={`request-tree-row request-tree-folder${showWeights ? " is-weighted" : ""}`}
                   >
                     <SelectionCheckbox
                       checked={fullySelected}
@@ -226,14 +245,17 @@ export function CollectionSummaryCard({
                       </span>
                     </div>
                     <em className="request-url">{row.pathLabel}</em>
+                    {showWeights ? <span className="request-weight-placeholder">—</span> : null}
                   </li>
                 );
               }
 
+              const requestWeight = getRequestWeight(row.request.id, requestWeights);
+
               return (
                 <li
                   key={row.request.id}
-                  className="request-tree-row request-tree-request"
+                  className={`request-tree-row request-tree-request${showWeights ? " is-weighted" : ""}`}
                 >
                   <SelectionCheckbox
                     checked={selectedRequestSet.has(row.request.id)}
@@ -252,6 +274,24 @@ export function CollectionSummaryCard({
                   <em className="request-url">
                     {row.request.url || "No URL extracted"}
                   </em>
+                  {showWeights ? (
+                    <label className="request-weight-field">
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={requestWeight}
+                        disabled={!selectedRequestSet.has(row.request.id)}
+                        onChange={(event) =>
+                          onRequestWeightChange(
+                            row.request.id,
+                            Number(event.target.value) || 1,
+                          )
+                        }
+                        aria-label={`Weight for ${row.request.name}`}
+                      />
+                    </label>
+                  ) : null}
                 </li>
               );
             })}

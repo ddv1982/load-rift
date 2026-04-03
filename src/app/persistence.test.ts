@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { createCollectionStorageKey } from "./persistence";
+import {
+  createCollectionStorageKey,
+  loadRunnerPreferences,
+  saveRunnerPreferences,
+} from "./persistence";
 import type { CollectionInfo } from "../lib/loadrift/types";
+import { DEFAULT_K6_OPTIONS } from "../lib/loadrift/types";
 
 const orderedCollection: CollectionInfo = {
   name: "Stable Key Collection",
@@ -50,5 +55,25 @@ describe("createCollectionStorageKey", () => {
     expect(createCollectionStorageKey(reorderedCollection)).toBe(
       createCollectionStorageKey(orderedCollection),
     );
+  });
+});
+
+describe("runner preferences persistence", () => {
+  it("persists traffic mode and positive request weights", () => {
+    saveRunnerPreferences({
+      ...DEFAULT_K6_OPTIONS,
+      trafficMode: "weighted",
+      requestWeights: {
+        "request-a": 3,
+        "request-b": 0,
+      },
+    });
+
+    expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS)).toMatchObject({
+      trafficMode: "weighted",
+      requestWeights: {
+        "request-a": 3,
+      },
+    });
   });
 });

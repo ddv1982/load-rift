@@ -132,4 +132,42 @@ describe("App collection summary", () => {
       }),
     );
   });
+
+  it("sends weighted request settings when weighted mix is configured", async () => {
+    renderApp(createApiMock());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
+    fireEvent.change(screen.getByLabelText("Traffic mode"), {
+      target: { value: "weighted" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    fireEvent.change(screen.getByLabelText("Weight for GET users"), {
+      target: { value: "3" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Test" }));
+
+    expect(appHookTestState.testHookState.startTest).toHaveBeenCalledWith(
+      expect.objectContaining({
+        trafficMode: "weighted",
+        requestWeights: {
+          "request-0": 3,
+        },
+      }),
+    );
+  });
 });

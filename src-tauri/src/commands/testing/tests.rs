@@ -10,7 +10,7 @@ use super::logic::{
     wait_for_test_stop,
 };
 use crate::k6::export_report_file;
-use crate::models::TestStatus;
+use crate::models::{TestStatus, TrafficMode};
 use crate::state::{AppState, RunningTest};
 use crate::test_support::{
     empty_runtime_collection, passed_result, runtime_collection, runtime_request,
@@ -183,6 +183,28 @@ fn validate_test_configuration_reports_ready_for_valid_collection() {
 }
 
 #[test]
+fn validate_test_configuration_reports_weighted_mode_ready_message() {
+    let state = Arc::new(Mutex::new(AppState {
+        runtime_collection: Some(runtime_collection(vec![runtime_request(
+            "GET users",
+            "/users",
+        )])),
+        ..AppState::default()
+    }));
+    let mut options = test_k6_options(Some("https://api.example.com"));
+    options.traffic_mode = TrafficMode::Weighted;
+
+    let response = validate_test_configuration_inner(&state, &options);
+    assert!(response.ready);
+    assert_eq!(
+        response.message.as_deref(),
+        Some(
+            "Configuration looks ready to run. Weighted mix uses relative request-selection probability per iteration."
+        )
+    );
+}
+
+#[test]
 fn validate_test_configuration_requires_at_least_one_selected_request() {
     let state = Arc::new(Mutex::new(AppState {
         runtime_collection: Some(runtime_collection(vec![runtime_request(
@@ -199,6 +221,53 @@ fn validate_test_configuration_requires_at_least_one_selected_request() {
     assert_eq!(
         response.message.as_deref(),
         Some("Select at least one request to run.")
+    );
+}
+
+#[test]
+fn validate_test_configuration_rejects_zero_weight_for_selected_weighted_requests() {
+    let state = Arc::new(Mutex::new(AppState {
+        runtime_collection: Some(runtime_collection(vec![runtime_request(
+            "GET users",
+            "/users",
+        )])),
+        ..AppState::default()
+    }));
+    let mut options = test_k6_options(Some("https://api.example.com"));
+    options.traffic_mode = TrafficMode::Weighted;
+    options.request_weights.insert("request-0".to_string(), 0);
+
+    let response = validate_test_configuration_inner(&state, &options);
+    assert!(!response.ready);
+    assert_eq!(
+        response.message.as_deref(),
+        Some("Weighted mix requires at least one selected request with a positive weight.")
+    );
+}
+
+#[test]
+fn validate_test_configuration_reports_advanced_scenarios_override_weighted_mode() {
+    let state = Arc::new(Mutex::new(AppState {
+        runtime_collection: Some(runtime_collection(vec![runtime_request(
+            "GET users",
+            "/users",
+        )])),
+        ..AppState::default()
+    }));
+    let mut options = test_k6_options(Some("https://api.example.com"));
+    options.traffic_mode = TrafficMode::Weighted;
+    options.advanced_options_json = Some(
+        r#"{"scenarios":{"steady":{"executor":"shared-iterations","vus":1,"iterations":1}}}"#
+            .to_string(),
+    );
+
+    let response = validate_test_configuration_inner(&state, &options);
+    assert!(response.ready);
+    assert_eq!(
+        response.message.as_deref(),
+        Some(
+            "Configuration looks ready to run. Advanced k6 scenarios override the built-in weighted mix settings. Use advanced scenarios/executors for stricter fixed traffic ratios."
+        )
     );
 }
 

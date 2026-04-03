@@ -50,6 +50,20 @@ function parseSelectedRequestIds() {{
   return new Set(value.filter((entry) => typeof entry === "string"));
 }}
 
+function parseRequestWeights() {{
+  const value = parseJsonEnv("LOADRIFT_REQUEST_WEIGHTS_JSON", {{}});
+  if (!value || typeof value !== "object" || Array.isArray(value)) {{
+    throw new Error("LOADRIFT_REQUEST_WEIGHTS_JSON must be a JSON object.");
+  }}
+
+  return value;
+}}
+
+function resolveTrafficMode() {{
+  const value = (__ENV.LOADRIFT_TRAFFIC_MODE || "sequential").toLowerCase();
+  return value === "weighted" ? "weighted" : "sequential";
+}}
+
 function firstNonEmptyValue(values, fallback = "") {{
   for (const value of values) {{
     if (typeof value !== "string") {{
@@ -226,34 +240,89 @@ function abortForAuthorizationFailure(response, request) {{
   }}
 }}
 
+function resolveRequestWeight(request, requestWeights) {{
+  const rawWeight = requestWeights[request.id];
+  if (!Number.isFinite(rawWeight)) {{
+    return 1;
+  }}
+
+  return Math.max(0, Math.trunc(rawWeight));
+}}
+
+function selectRunnableRequests(selectedRequests, trafficMode, requestWeights) {{
+  if (trafficMode !== "weighted") {{
+    return selectedRequests;
+  }}
+
+  return selectedRequests.filter((request) => resolveRequestWeight(request, requestWeights) > 0);
+}}
+
+function pickWeightedRequest(requests, requestWeights) {{
+  const totalWeight = requests.reduce(
+    (sum, request) => sum + resolveRequestWeight(request, requestWeights),
+    0,
+  );
+
+  if (totalWeight <= 0) {{
+    throw new Error("Weighted mix requires at least one selected request with a positive weight.");
+  }}
+
+  let cursor = Math.random() * totalWeight;
+  for (const request of requests) {{
+    cursor -= resolveRequestWeight(request, requestWeights);
+    if (cursor < 0) {{
+      return request;
+    }}
+  }}
+
+  return requests[requests.length - 1];
+}}
+
+function executeRequest(request, context, trafficMode) {{
+  const url = resolveUrl(request.url, context);
+  const headers = resolveHeaders(request.headers, context);
+  const payload = request.body ? resolveTemplate(request.body, context) : undefined;
+  const response = http.request(request.method, url, payload, {{
+    headers,
+    tags: {{
+      request_id: request.id,
+      request_name: request.name,
+      collection_name: {collection_name:?},
+      traffic_mode: trafficMode,
+    }},
+  }});
+
+  abortForAuthorizationFailure(response, request);
+
+  check(response, {{
+    [`${{request.name}} status < 400`]: (result) => result.status < 400,
+  }});
+}}
+
 export default function () {{
   const context = buildContext();
   const selectedRequestIds = parseSelectedRequestIds();
+  const requestWeights = parseRequestWeights();
+  const trafficMode = resolveTrafficMode();
   const selectedRequests = selectedRequestIds === null
     ? REQUESTS
     : REQUESTS.filter((request) => selectedRequestIds.has(request.id));
+  const runnableRequests = selectRunnableRequests(selectedRequests, trafficMode, requestWeights);
 
-  if (!selectedRequests.length) {{
-    throw new Error("No requests were selected to run.");
+  if (!runnableRequests.length) {{
+    throw new Error(
+      trafficMode === "weighted"
+        ? "Weighted mix requires at least one selected request with a positive weight."
+        : "No requests were selected to run.",
+    );
   }}
 
-  for (const request of selectedRequests) {{
-    const url = resolveUrl(request.url, context);
-    const headers = resolveHeaders(request.headers, context);
-    const payload = request.body ? resolveTemplate(request.body, context) : undefined;
-    const response = http.request(request.method, url, payload, {{
-      headers,
-      tags: {{
-        request_name: request.name,
-        collection_name: {collection_name:?},
-      }},
-    }});
-
-    abortForAuthorizationFailure(response, request);
-
-    check(response, {{
-      [`${{request.name}} status < 400`]: (result) => result.status < 400,
-    }});
+  if (trafficMode === "weighted") {{
+    executeRequest(pickWeightedRequest(runnableRequests, requestWeights), context, trafficMode);
+  }} else {{
+    for (const request of runnableRequests) {{
+      executeRequest(request, context, trafficMode);
+    }}
   }}
 
   sleep(1);

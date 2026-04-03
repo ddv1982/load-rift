@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::models::K6Options;
+use crate::models::{K6Options, TrafficMode};
 
 use super::{ResolvedRuntimeRequest, RuntimeCollection, RuntimeRequest};
 
@@ -8,7 +8,15 @@ pub(crate) fn validate_test_run(
     collection: &RuntimeCollection,
     options: &K6Options,
 ) -> Result<(), String> {
-    resolve_test_requests(collection, options).map(|_| ())
+    let selected_requests = select_requests(collection, options)?;
+    validate_weighted_selection(&selected_requests, options)?;
+    let context = build_runtime_context(collection, options)?;
+
+    selected_requests
+        .into_iter()
+        .map(|request| resolve_request(request, &context))
+        .collect::<Result<Vec<_>, _>>()
+        .map(|_| ())
 }
 
 pub(crate) fn resolve_test_requests(
@@ -50,6 +58,28 @@ fn select_requests<'a>(
     }
 
     Ok(selected_requests)
+}
+
+fn validate_weighted_selection(
+    selected_requests: &[&RuntimeRequest],
+    options: &K6Options,
+) -> Result<(), String> {
+    if options.traffic_mode != TrafficMode::Weighted {
+        return Ok(());
+    }
+
+    let has_positive_weight = selected_requests
+        .iter()
+        .any(|request| effective_request_weight(options, request.id.as_str()) > 0);
+    if has_positive_weight {
+        return Ok(());
+    }
+
+    Err("Weighted mix requires at least one selected request with a positive weight.".to_string())
+}
+
+fn effective_request_weight(options: &K6Options, request_id: &str) -> u32 {
+    options.request_weights.get(request_id).copied().unwrap_or(1)
 }
 
 fn resolve_request(

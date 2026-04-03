@@ -174,11 +174,13 @@ describe("useTestHarness", () => {
         vus: 1,
         duration: "1s",
         rampUp: "instant",
+        trafficMode: "sequential",
         rampUpTime: "1s",
         thresholds: {},
         variableOverrides: {},
         advancedOptionsJson: "",
         selectedRequestIds: ["request-0"],
+        requestWeights: {},
       });
     });
 

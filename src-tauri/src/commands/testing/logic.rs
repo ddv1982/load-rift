@@ -2,9 +2,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use crate::importing::{validate_test_run, RuntimeCollection};
-use crate::k6::validate_advanced_options_json;
+use crate::k6::{analyze_advanced_options_json, validate_advanced_options_json};
 use crate::models::{
-    GetTestStatusResponse, K6Options, TestStatus, ValidateTestConfigurationResponse,
+    GetTestStatusResponse, K6Options, TestStatus, TrafficMode, ValidateTestConfigurationResponse,
 };
 use crate::state::SharedAppState;
 
@@ -26,6 +26,10 @@ const WAIT_FOR_STOP_TIMEOUT_ERROR: &str =
 const READY_TO_RUN_MESSAGE: &str = "Configuration looks ready to run.";
 const BASE_URL_GUIDANCE: &str =
     "Apply a Postman cURL snippet to derive the base URL required by this collection.";
+const ADVANCED_SCENARIOS_OVERRIDE_TRAFFIC_MODE_MESSAGE: &str =
+    "Configuration looks ready to run. Advanced k6 scenarios override the built-in weighted mix settings. Use advanced scenarios/executors for stricter fixed traffic ratios.";
+const WEIGHTED_MODE_READY_MESSAGE: &str =
+    "Configuration looks ready to run. Weighted mix uses relative request-selection probability per iteration.";
 
 pub(super) fn get_test_status_response(
     state: &SharedAppState,
@@ -122,10 +126,12 @@ pub(super) fn validate_test_configuration_inner(
         return not_ready(IMPORT_BEFORE_VALIDATE_ERROR);
     };
 
+    let advanced_options_define_scenarios = advanced_options_has_scenarios(options);
+
     match validate_test_configuration_for_collection(&runtime_collection, options) {
         None => ValidateTestConfigurationResponse {
             ready: true,
-            message: Some(READY_TO_RUN_MESSAGE.to_string()),
+            message: Some(ready_message(options, advanced_options_define_scenarios)),
         },
         Some(message) => {
             let message = if should_show_base_url_guidance(options, &message) {
@@ -196,6 +202,24 @@ fn should_show_base_url_guidance(options: &K6Options, validation_error: &str) ->
         && missing_variables
             .iter()
             .all(|key| matches!(*key, "baseUrl" | "base_url" | "environment" | "enviroment"))
+}
+
+fn ready_message(options: &K6Options, advanced_options_define_scenarios: bool) -> String {
+    if options.traffic_mode == TrafficMode::Weighted && advanced_options_define_scenarios {
+        return ADVANCED_SCENARIOS_OVERRIDE_TRAFFIC_MODE_MESSAGE.to_string();
+    }
+
+    if options.traffic_mode == TrafficMode::Weighted {
+        return WEIGHTED_MODE_READY_MESSAGE.to_string();
+    }
+
+    READY_TO_RUN_MESSAGE.to_string()
+}
+
+fn advanced_options_has_scenarios(options: &K6Options) -> bool {
+    analyze_advanced_options_json(options.advanced_options_json.as_deref())
+        .map(|config| config.has_scenarios)
+        .unwrap_or(false)
 }
 
 pub(super) fn wait_for_test_stop(state: &SharedAppState) -> Result<(), String> {

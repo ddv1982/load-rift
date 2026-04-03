@@ -2,6 +2,7 @@ import type {
   CollectionInfo,
   K6Options,
   RampUpStrategy,
+  TrafficMode,
 } from "../lib/loadrift/types";
 
 const STORAGE_KEYS = {
@@ -33,6 +34,8 @@ interface PersistedRunnerPreferences {
     p95ResponseTime?: number;
     errorRate?: number;
   };
+  trafficMode?: TrafficMode;
+  requestWeights?: Record<string, number>;
 }
 
 type StorageArea = "local" | "session";
@@ -85,6 +88,24 @@ function hashString(value: string): string {
   }
 
   return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function normalizePersistedRequestWeights(
+  requestWeights: Record<string, number> | undefined,
+): Record<string, number> {
+  if (!requestWeights || typeof requestWeights !== "object") {
+    return {};
+  }
+
+  const normalizedEntries = Object.entries(requestWeights).flatMap(([requestId, weight]) => {
+    if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) {
+      return [];
+    }
+
+    return [[requestId, Math.max(1, Math.trunc(weight))] as const];
+  });
+
+  return Object.fromEntries(normalizedEntries);
 }
 
 export function createCollectionStorageKey(collection: CollectionInfo): string {
@@ -213,6 +234,11 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
     thresholds.errorRate = defaultOptions.thresholds.errorRate;
   }
 
+  const trafficMode =
+    stored.trafficMode === "weighted" || stored.trafficMode === "sequential"
+      ? stored.trafficMode
+      : defaultOptions.trafficMode;
+
   const nextOptions: K6Options = {
     ...defaultOptions,
     vus:
@@ -225,6 +251,8 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
         : defaultOptions.duration,
     rampUp,
     thresholds,
+    trafficMode,
+    requestWeights: normalizePersistedRequestWeights(stored.requestWeights),
   };
 
   const resolvedRampUpTime =
@@ -252,6 +280,8 @@ export function saveRunnerPreferences(options: K6Options) {
     duration: options.duration,
     rampUp: options.rampUp,
     thresholds,
+    trafficMode: options.trafficMode,
+    requestWeights: normalizePersistedRequestWeights(options.requestWeights),
   };
   if (options.rampUpTime !== undefined) {
     persisted.rampUpTime = options.rampUpTime;

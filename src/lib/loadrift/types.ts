@@ -2,6 +2,8 @@ export type TestStatus = "idle" | "running" | "completed" | "failed" | "stopped"
 
 export type RampUpStrategy = "instant" | "gradual" | "staged";
 
+export type TrafficMode = "sequential" | "weighted";
+
 export interface ThresholdConfig {
   p95ResponseTime?: number;
   errorRate?: number;
@@ -18,6 +20,8 @@ export interface K6Options {
   variableOverrides: Record<string, string>;
   advancedOptionsJson?: string;
   selectedRequestIds: string[];
+  trafficMode: TrafficMode;
+  requestWeights: Record<string, number>;
 }
 
 export interface RuntimeVariable {
@@ -129,6 +133,8 @@ export const DEFAULT_K6_OPTIONS: K6Options = {
   variableOverrides: {},
   advancedOptionsJson: "",
   selectedRequestIds: [],
+  trafficMode: "sequential",
+  requestWeights: {},
 };
 
 export const DEFAULT_LIVE_METRICS: LiveMetrics = {

@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use crate::importing::{RuntimeCollection, RuntimeRequest};
 use crate::models::{
     K6Options, RampUpStrategy, TestMetrics, TestResult, TestResultStatus, ThresholdConfig,
+    TrafficMode,
 };
 
 pub(crate) fn test_k6_options(base_url: Option<&str>) -> K6Options {
@@ -20,6 +21,8 @@ pub(crate) fn test_k6_options(base_url: Option<&str>) -> K6Options {
         variable_overrides: Default::default(),
         advanced_options_json: None,
         selected_request_ids: (0..64).map(|index| format!("request-{index}")).collect(),
+        traffic_mode: TrafficMode::Sequential,
+        request_weights: Default::default(),
     }
 }
 

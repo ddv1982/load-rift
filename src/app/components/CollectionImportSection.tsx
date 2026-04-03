@@ -1,26 +1,32 @@
-import type { CollectionInfo } from "../../lib/loadrift/types";
+import type { K6Options, CollectionInfo } from "../../lib/loadrift/types";
 import { CollectionSummaryCard } from "./CollectionSummaryCard";
 
 interface CollectionImportSectionProps {
   collection: CollectionInfo | null;
   selectedRequestIds: string[];
+  requestWeights: K6Options["requestWeights"];
+  trafficMode: K6Options["trafficMode"];
   error: string | null;
   isLoading: boolean;
   isPickingFile: boolean;
   onFileImport: () => void;
   onReset: () => void;
   onSelectionChange: (selectedRequestIds: string[]) => void;
+  onRequestWeightChange: (requestId: string, weight: number) => void;
 }
 
 export function CollectionImportSection({
   collection,
   selectedRequestIds,
+  requestWeights,
+  trafficMode,
   error,
   isLoading,
   isPickingFile,
   onFileImport,
   onReset,
   onSelectionChange,
+  onRequestWeightChange,
 }: CollectionImportSectionProps) {
   return (
     <section className="panel import-panel workflow-panel">
@@ -77,7 +83,10 @@ export function CollectionImportSection({
           <CollectionSummaryCard
             collection={collection}
             selectedRequestIds={selectedRequestIds}
+            requestWeights={requestWeights}
+            trafficMode={trafficMode}
             onSelectionChange={onSelectionChange}
+            onRequestWeightChange={onRequestWeightChange}
           />
         </div>
       </details>

@@ -17,6 +17,14 @@ pub enum RampUpStrategy {
     Staged,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TrafficMode {
+    #[default]
+    Sequential,
+    Weighted,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct K6Options {
@@ -32,6 +40,10 @@ pub struct K6Options {
     pub advanced_options_json: Option<String>,
     #[serde(default)]
     pub selected_request_ids: Vec<String>,
+    #[serde(default)]
+    pub traffic_mode: TrafficMode,
+    #[serde(default)]
+    pub request_weights: BTreeMap<String, u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

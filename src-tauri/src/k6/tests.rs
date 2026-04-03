@@ -507,16 +507,19 @@ fn analyze_advanced_options_detects_when_basic_load_shape_must_be_skipped() {
     ))
     .expect("advanced options should parse");
     assert!(config.overrides_basic_load_shape);
+    assert!(config.has_scenarios);
 
     let config = process::analyze_advanced_options_json(Some(
         r#"{"stages":[{"duration":"10s","target":10}]}"#,
     ))
     .expect("advanced stage options should parse");
     assert!(config.overrides_basic_load_shape);
+    assert!(!config.has_scenarios);
 
     let config = process::analyze_advanced_options_json(Some(r#"{"tags":{"suite":"api"}}"#))
         .expect("simple advanced options should parse");
     assert!(!config.overrides_basic_load_shape);
+    assert!(!config.has_scenarios);
 }
 
 #[test]

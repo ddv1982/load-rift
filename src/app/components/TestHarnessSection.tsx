@@ -54,6 +54,7 @@ interface TestHarnessActionsProps {
   onRampUpChange: (value: K6Options["rampUp"]) => void;
   onRampUpTimeChange: (value: string) => void;
   onThresholdChange: (key: keyof K6Options["thresholds"], value: string) => void;
+  onTrafficModeChange: (value: K6Options["trafficMode"]) => void;
   onAuthTokenChange: (value: string) => void;
   onCurlInputChange: (value: string) => void;
   onApplyCurlCommand: () => void;
@@ -103,6 +104,7 @@ export function TestHarnessSection({
     onRampUpChange,
     onRampUpTimeChange,
     onThresholdChange,
+    onTrafficModeChange,
     onAuthTokenChange,
     onCurlInputChange,
     onApplyCurlCommand,
@@ -327,6 +329,7 @@ export function TestHarnessSection({
                   onRampUpChange={onRampUpChange}
                   onRampUpTimeChange={onRampUpTimeChange}
                   onThresholdChange={onThresholdChange}
+                  onTrafficModeChange={onTrafficModeChange}
                   onAuthTokenChange={onAuthTokenChange}
                   onCurlInputChange={onCurlInputChange}
                   onApplyCurlCommand={onApplyCurlCommand}

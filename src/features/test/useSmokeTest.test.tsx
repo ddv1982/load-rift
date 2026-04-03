@@ -40,11 +40,13 @@ describe("useSmokeTest", () => {
         vus: 1,
         duration: "1s",
         rampUp: "instant",
+        trafficMode: "sequential",
         rampUpTime: "1s",
         thresholds: {},
         variableOverrides: {},
         advancedOptionsJson: "",
         selectedRequestIds: ["request-1"],
+        requestWeights: {},
       });
     });
 
@@ -68,11 +70,13 @@ describe("useSmokeTest", () => {
         vus: 1,
         duration: "1s",
         rampUp: "instant",
+        trafficMode: "sequential",
         rampUpTime: "1s",
         thresholds: {},
         variableOverrides: {},
         advancedOptionsJson: "",
         selectedRequestIds: ["request-1"],
+        requestWeights: {},
       });
     });
 

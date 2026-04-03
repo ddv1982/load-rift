@@ -8,6 +8,7 @@ import { loadRunnerPreferences, saveRunnerPreferences } from "../persistence";
 import {
   getVariableValue,
   isHostVariableKey,
+  syncRequestWeights,
   syncSelectedRequestIds,
   syncVariableOverrides,
 } from "../utils";
@@ -23,6 +24,10 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
       selectedRequestIds: syncSelectedRequestIds(
         collection?.requests ?? [],
         previous.selectedRequestIds,
+      ),
+      requestWeights: syncRequestWeights(
+        collection?.requests ?? [],
+        previous.requestWeights,
       ),
       variableOverrides: syncVariableOverrides(
         collection?.runtimeVariables ?? [],
@@ -87,6 +92,16 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     }));
   }
 
+  function updateRequestWeight(requestId: string, weight: number) {
+    setRunnerOptions((previous) => ({
+      ...previous,
+      requestWeights: {
+        ...previous.requestWeights,
+        [requestId]: Math.max(1, Math.trunc(weight) || 1),
+      },
+    }));
+  }
+
   return {
     runnerOptions,
     setRunnerOptions,
@@ -95,5 +110,6 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     updateThreshold,
     updateRuntimeVariable,
     updateSelectedRequestIds,
+    updateRequestWeight,
   };
 }

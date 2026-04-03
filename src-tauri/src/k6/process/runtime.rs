@@ -12,7 +12,7 @@ use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 
 use crate::events::{emit_k6_complete, emit_k6_error, emit_k6_metrics, emit_k6_output};
-use crate::models::{K6Options, LiveMetrics, TestCompletion};
+use crate::models::{K6Options, LiveMetrics, TestCompletion, TrafficMode};
 use crate::state::{RunningTest, SharedAppState};
 
 use super::super::summary::{parse_summary, result_from_live_metrics};
@@ -33,6 +33,13 @@ pub fn start_k6_process(
         .map_err(|error| format!("Failed to serialize runtime variable overrides: {error}"))?;
     let selected_request_ids_json = serde_json::to_string(&options.selected_request_ids)
         .map_err(|error| format!("Failed to serialize selected request ids: {error}"))?;
+    let request_weights_json = serde_json::to_string(&options.request_weights)
+        .map_err(|error| format!("Failed to serialize request weights: {error}"))?;
+    let effective_traffic_mode = if advanced_options.has_scenarios {
+        TrafficMode::Sequential
+    } else {
+        options.traffic_mode.clone()
+    };
     let k6_binary = resolve_k6_binary(&app)?;
     let script_path = write_temp_file("js", &script)?;
     let summary_path = temp_file_path("json");
@@ -64,6 +71,14 @@ pub fn start_k6_process(
         .env(
             "LOADRIFT_SELECTED_REQUEST_IDS_JSON",
             selected_request_ids_json,
+        )
+        .env("LOADRIFT_REQUEST_WEIGHTS_JSON", request_weights_json)
+        .env(
+            "LOADRIFT_TRAFFIC_MODE",
+            match effective_traffic_mode {
+                TrafficMode::Weighted => "weighted",
+                TrafficMode::Sequential => "sequential",
+            },
         )
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
@@ -401,6 +416,7 @@ pub(crate) fn analyze_advanced_options_json(
     Ok(AdvancedOptionsConfig {
         normalized_json: Some(value.to_string()),
         overrides_basic_load_shape: advanced_options_override_basic_load_shape(object),
+        has_scenarios: object.contains_key("scenarios"),
     })
 }
 
@@ -418,6 +434,7 @@ fn advanced_options_override_basic_load_shape(options: &Map<String, Value>) -> b
 pub(crate) struct AdvancedOptionsConfig {
     pub(crate) normalized_json: Option<String>,
     pub(crate) overrides_basic_load_shape: bool,
+    pub(crate) has_scenarios: bool,
 }
 
 fn resolve_k6_binary(app: &AppHandle) -> Result<PathBuf, String> {

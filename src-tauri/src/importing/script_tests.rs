@@ -51,3 +51,28 @@ fn generated_script_aborts_the_test_on_authorization_failures() {
         "expected generated script to abort the full test on authorization failure"
     );
 }
+
+#[test]
+fn generated_script_supports_weighted_request_selection_and_tags() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    assert!(
+        imported.script.contains(r#"LOADRIFT_REQUEST_WEIGHTS_JSON"#),
+        "expected generated script to parse request weights from the runtime environment"
+    );
+    assert!(
+        imported.script.contains(r#"request_id: request.id"#),
+        "expected generated script to tag requests with a stable request id"
+    );
+    assert!(
+        imported.script.contains(r#"traffic_mode: trafficMode"#),
+        "expected generated script to tag requests with the active traffic mode"
+    );
+    assert!(
+        imported
+            .script
+            .contains("pickWeightedRequest(runnableRequests, requestWeights)"),
+        "expected generated script to choose a weighted request when weighted mode is active"
+    );
+}

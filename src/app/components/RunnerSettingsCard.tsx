@@ -11,6 +11,7 @@ interface RunnerSettingsCardProps {
   onRampUpChange: (value: K6Options["rampUp"]) => void;
   onRampUpTimeChange: (value: string) => void;
   onThresholdChange: (key: keyof K6Options["thresholds"], value: string) => void;
+  onTrafficModeChange: (value: K6Options["trafficMode"]) => void;
   onAuthTokenChange: (value: string) => void;
   onCurlInputChange: (value: string) => void;
   onApplyCurlCommand: () => void;
@@ -25,6 +26,7 @@ export function RunnerSettingsCard({
   onRampUpChange,
   onRampUpTimeChange,
   onThresholdChange,
+  onTrafficModeChange,
   onAuthTokenChange,
   onCurlInputChange,
   onApplyCurlCommand,
@@ -34,7 +36,7 @@ export function RunnerSettingsCard({
       <SettingsCardHeader
         eyebrow="Runner Settings"
         title="Basic k6 Controls"
-        hint="Configure the common load profile here. Use advanced JSON below for the full k6 options surface."
+        hint="Configure the common load profile here. Use advanced JSON below for the full k6 options surface. Weighted mix treats per-request weights as relative selection probability, while advanced k6 scenarios remain the path for stricter fixed traffic splits."
       />
 
       <div className="settings-grid">
@@ -107,6 +109,28 @@ export function RunnerSettingsCard({
             placeholder="5"
           />
         </label>
+
+        <label className="field">
+          <span>Traffic mode</span>
+          <select
+            value={runnerOptions.trafficMode}
+            onChange={(event) =>
+              onTrafficModeChange(event.target.value as K6Options["trafficMode"])
+            }
+          >
+            <option value="sequential">Sequential</option>
+            <option value="weighted">Weighted mix</option>
+          </select>
+        </label>
+
+        <div className="field field-note">
+          <span>Traffic mode notes</span>
+          <p className="inline-note">
+            {runnerOptions.trafficMode === "weighted"
+              ? "Weighted mix picks one selected request per iteration using relative weights. Use advanced k6 scenarios for stricter fixed ratios."
+              : "Sequential mode runs every selected request in order during each iteration."}
+          </p>
+        </div>
 
         <label className="field field-wide">
           <span>Bearer token</span>

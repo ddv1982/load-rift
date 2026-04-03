@@ -9,6 +9,7 @@ This repository currently contains the first working Tauri vertical slice:
 - Postman collection import from file
 - Local k6 execution with live output, metrics, status tracking, and richer HTML report export
 - Advanced k6 options JSON for scenarios, thresholds, tags, and other settings that do not fit the basic controls
+- Optional weighted request mix mode for request-level traffic importance
 - Bundled project-local k6 binary for Linux and macOS desktop builds
 
 ## Prerequisites
@@ -95,8 +96,9 @@ build workflow.
 The app currently provides a slim migration shell with:
 - File import entry point
 - A test harness panel for start, stop, and status
-- Basic runner controls for common load-test setup
+- Basic runner controls for common load-test setup, including sequential vs weighted request mix
 - An advanced k6 options JSON area for scenarios, tags, thresholds, and other custom options
+- Weighted request mixes treat per-request weights as relative selection probability; use advanced k6 scenarios/executors for stricter fixed workload ratios
 - Clear override behavior: if you define top-level `scenarios`, `stages`, or `iterations` in the advanced JSON, those settings override the basic runner controls
 - HTML report export with summary cards, threshold results, structured metrics, the raw k6 summary JSON, and the final console summary from k6
 - Event listeners for:

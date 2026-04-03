@@ -787,6 +787,10 @@ button {
   grid-template-columns: 3rem minmax(0, 1.4fr) minmax(0, 1.8fr);
 }
 
+.request-tree-header.is-weighted {
+  grid-template-columns: 3rem minmax(0, 1.25fr) minmax(0, 1.55fr) 7rem;
+}
+
 .request-list {
   margin: 0;
   display: grid;
@@ -808,6 +812,10 @@ button {
 
 .request-tree-row {
   grid-template-columns: 3rem minmax(0, 1.4fr) minmax(0, 1.8fr);
+}
+
+.request-tree-row.is-weighted {
+  grid-template-columns: 3rem minmax(0, 1.25fr) minmax(0, 1.55fr) 7rem;
 }
 
 .request-list li {
@@ -884,6 +892,19 @@ button {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.request-weight-field,
+.request-weight-placeholder {
+  justify-self: end;
+}
+
+.request-weight-field input {
+  width: 5.25rem;
+}
+
+.field-note {
+  justify-content: flex-end;
 }
 
 .summary-empty-state {
@@ -1181,4 +1202,16 @@ button {
   .field-wide {
     grid-column: auto;
   }
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
