@@ -59,7 +59,7 @@ describe("createCollectionStorageKey", () => {
 });
 
 describe("runner preferences persistence", () => {
-  it("persists traffic mode and positive request weights", () => {
+  it("persists traffic mode and zero-or-positive request weights", () => {
     saveRunnerPreferences({
       ...DEFAULT_K6_OPTIONS,
       trafficMode: "weighted",
@@ -73,6 +73,7 @@ describe("runner preferences persistence", () => {
       trafficMode: "weighted",
       requestWeights: {
         "request-a": 3,
+        "request-b": 0,
       },
     });
   });

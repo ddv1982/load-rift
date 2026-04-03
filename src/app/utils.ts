@@ -114,7 +114,7 @@ export function normalizeRequestWeight(value: unknown): number {
     return 1;
   }
 
-  return Math.max(1, Math.floor(value));
+  return Math.max(0, Math.floor(value));
 }
 
 export function syncRequestWeights(
@@ -130,10 +130,8 @@ export function syncRequestWeights(
   for (const request of requests) {
     const previousWeight = previousRequestWeights[request.id];
     nextRequestWeights[request.id] =
-      typeof previousWeight === "number" &&
-      Number.isFinite(previousWeight) &&
-      previousWeight > 0
-        ? Math.max(1, Math.trunc(previousWeight))
+      typeof previousWeight === "number" && Number.isFinite(previousWeight)
+        ? Math.max(0, Math.trunc(previousWeight))
         : 1;
   }
 

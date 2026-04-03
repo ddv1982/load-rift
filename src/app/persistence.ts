@@ -98,11 +98,11 @@ function normalizePersistedRequestWeights(
   }
 
   const normalizedEntries = Object.entries(requestWeights).flatMap(([requestId, weight]) => {
-    if (typeof weight !== "number" || !Number.isFinite(weight) || weight <= 0) {
+    if (typeof weight !== "number" || !Number.isFinite(weight) || weight < 0) {
       return [];
     }
 
-    return [[requestId, Math.max(1, Math.trunc(weight))] as const];
+    return [[requestId, Math.max(0, Math.trunc(weight))] as const];
   });
 
   return Object.fromEntries(normalizedEntries);
