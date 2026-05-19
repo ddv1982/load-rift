@@ -398,6 +398,8 @@ jobs:
       - name: Configure GitHub Pages
         if: matrix.platform == 'ubuntu-22.04'
         uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - name: Upload APT repository Pages artifact
         if: matrix.platform == 'ubuntu-22.04'
