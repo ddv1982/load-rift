@@ -395,6 +395,30 @@ jobs:
           mkdir -p pages-site/apt
           cp -a apt-repository/. pages-site/apt/
 
+      - name: Upload APT setup release assets
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s load-rift-repository-setup_1.0_all.deb
+          test -s scripts/install-apt-repo.sh
+
+          gh release upload "${{ steps.release.outputs.tag_name }}" \
+            load-rift-repository-setup_1.0_all.deb \
+            scripts/install-apt-repo.sh \
+            --clobber
+
+          gh release view "${{ steps.release.outputs.tag_name }}" \
+            --json assets \
+            --jq '.assets[].name' \
+            | grep -Fx install-apt-repo.sh
+          gh release view "${{ steps.release.outputs.tag_name }}" \
+            --json assets \
+            --jq '.assets[].name' \
+            | grep -Fx load-rift-repository-setup_1.0_all.deb
+
       - name: Configure GitHub Pages
         if: matrix.platform == 'ubuntu-22.04'
         uses: actions/configure-pages@v5
@@ -410,14 +434,3 @@ jobs:
       - name: Deploy APT repository to GitHub Pages
         if: matrix.platform == 'ubuntu-22.04'
         uses: actions/deploy-pages@v4
-
-      - name: Upload APT setup assets
-        if: matrix.platform == 'ubuntu-22.04'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
-        run: |
-          gh release upload "${{ steps.release.outputs.tag_name }}" \
-            load-rift-repository-setup_1.0_all.deb \
-            scripts/install-apt-repo.sh \
-            --clobber
