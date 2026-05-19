@@ -235,6 +235,25 @@ jobs:
           chmod 600 "$api_key_path"
           echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
 
+      - name: Sign bundled macOS k6 binary
+        if: startsWith(matrix.platform, 'macos-')
+        shell: bash
+        run: |
+          set -euo pipefail
+          k6_binary="src-tauri/bin/k6-${{ matrix.rust_target }}"
+          if [[ ! -f "$k6_binary" ]]; then
+            echo "Expected bundled k6 binary not found: $k6_binary" >&2
+            exit 1
+          fi
+
+          codesign \
+            --force \
+            --options runtime \
+            --timestamp \
+            --sign "$APPLE_SIGNING_IDENTITY" \
+            "$k6_binary"
+          codesign --verify --verbose=2 "$k6_binary"
+
       - name: Build and publish Tauri bundles
         uses: tauri-apps/tauri-action@action-v0.6.2
         env:
