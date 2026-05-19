@@ -45,6 +45,8 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "shortDescription": "Postman collection load testing with local k6 runs",
+    "longDescription": "Load Rift imports Postman collections and runs local k6 load tests with live output, metrics, and HTML report export.",
     "copyright": "Copyright (c) 2026 Douwe de Vries",
     "license": "MIT",
     "licenseFile": "../LICENSE",
@@ -68,7 +70,8 @@
           "/usr/share/doc/loadrift/LICENSE": "../LICENSE",
           "/usr/share/doc/loadrift/THIRD_PARTY_LICENSES.md": "../THIRD_PARTY_LICENSES.md",
           "/usr/share/doc/loadrift/AGPL-3.0.txt": "../licenses/AGPL-3.0.txt",
-          "/usr/share/doc/loadrift/README.md": "../README.md"
+          "/usr/share/doc/loadrift/README.md": "../README.md",
+          "/usr/share/metainfo/dev.loadrift.desktop.metainfo.xml": "appstream/dev.loadrift.desktop.metainfo.xml"
         }
       },
       "rpm": {

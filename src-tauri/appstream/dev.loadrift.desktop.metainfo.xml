@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.loadrift.desktop</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT AND AGPL-3.0-only</project_license>
+  <name>Load Rift</name>
+  <summary>Run local k6 load tests from Postman collections</summary>
+  <description>
+    <p>Load Rift imports Postman collections and turns them into local k6 runs with live output, metrics, validation, and HTML report export.</p>
+  </description>
+  <launchable type="desktop-id">Load Rift.desktop</launchable>
+  <provides>
+    <binary>loadrift</binary>
+  </provides>
+  <url type="homepage">https://github.com/ddv1982/load-rift</url>
+  <releases>
+    <release version="0.2.5" date="2026-05-20" />
+  </releases>
+</component>

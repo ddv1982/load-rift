@@ -17,6 +17,8 @@ concurrency:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   verify:
@@ -37,7 +39,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            gnupg
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -139,7 +142,8 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libayatana-appindicator3-dev \
             librsvg2-dev \
-            patchelf
+            patchelf \
+            gnupg
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -271,3 +275,147 @@ jobs:
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: Build signed APT repository
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          APT_REPO_SIGNING_PRIVATE_KEY: ${{ secrets.APT_REPO_SIGNING_PRIVATE_KEY }}
+          APT_REPO_SIGNING_KEY_FINGERPRINT: ${{ secrets.APT_REPO_SIGNING_KEY_FINGERPRINT }}
+          APT_REPO_SIGNING_KEY_PASSPHRASE: ${{ secrets.APT_REPO_SIGNING_KEY_PASSPHRASE }}
+          DEB_SIGNING_PRIVATE_KEY: ${{ secrets.DEB_SIGNING_PRIVATE_KEY }}
+          DEB_SIGNING_KEY_FINGERPRINT: ${{ secrets.DEB_SIGNING_KEY_FINGERPRINT }}
+          DEB_SIGNING_KEY_PASSPHRASE: ${{ secrets.DEB_SIGNING_KEY_PASSPHRASE }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s globstar nullglob
+
+          signing_private_key="$APT_REPO_SIGNING_PRIVATE_KEY"
+          signing_fingerprint="$APT_REPO_SIGNING_KEY_FINGERPRINT"
+          signing_passphrase="$APT_REPO_SIGNING_KEY_PASSPHRASE"
+          signing_source="APT repository signing key"
+
+          if [[ -z "$signing_private_key" && -z "$signing_fingerprint" ]]; then
+            signing_private_key="$DEB_SIGNING_PRIVATE_KEY"
+            signing_fingerprint="$DEB_SIGNING_KEY_FINGERPRINT"
+            signing_passphrase="$DEB_SIGNING_KEY_PASSPHRASE"
+            signing_source="Debian package signing key fallback"
+          fi
+
+          missing=()
+          [[ -n "$signing_private_key" ]] || missing+=("APT_REPO_SIGNING_PRIVATE_KEY or DEB_SIGNING_PRIVATE_KEY")
+          [[ -n "$signing_fingerprint" ]] || missing+=("APT_REPO_SIGNING_KEY_FINGERPRINT or DEB_SIGNING_KEY_FINGERPRINT")
+          if [[ ${#missing[@]} -gt 0 ]]; then
+            echo "Required APT repository signing inputs are missing: ${missing[*]}" >&2
+            exit 1
+          fi
+          echo "Using ${signing_source} for APT repository Release signing."
+
+          deb_packages=(src-tauri/target/release/bundle/deb/*.deb)
+          if [[ ${#deb_packages[@]} -eq 0 ]]; then
+            echo "No Debian packages found under src-tauri/target/release/bundle/deb." >&2
+            exit 1
+          fi
+
+          gnupg_home="$(mktemp -d)"
+          verification_home="$(mktemp -d)"
+          key_file="$(mktemp)"
+          passphrase_file=""
+          setup_extract_dir=""
+          cleanup() {
+            rm -rf "$gnupg_home" "$verification_home"
+            rm -f "$key_file"
+            if [[ -n "$passphrase_file" ]]; then
+              rm -f "$passphrase_file"
+            fi
+            if [[ -n "$setup_extract_dir" ]]; then
+              rm -rf "$setup_extract_dir"
+            fi
+          }
+          trap cleanup EXIT
+
+          chmod 700 "$gnupg_home" "$verification_home"
+          export GNUPGHOME="$gnupg_home"
+          echo allow-loopback-pinentry > "$GNUPGHOME/gpg-agent.conf"
+          gpgconf --kill gpg-agent || true
+
+          printf '%s' "$signing_private_key" | base64 --decode > "$key_file"
+          gpg --batch --import "$key_file"
+
+          expected_fingerprint="$(printf '%s' "$signing_fingerprint" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
+          imported_fingerprint="$(gpg --batch --with-colons --fingerprint "$expected_fingerprint" | awk -F: '$1 == "fpr" { print toupper($10); exit }')"
+          if [[ "$imported_fingerprint" != "$expected_fingerprint" ]]; then
+            echo "Imported APT repository signing key fingerprint did not match the selected signing fingerprint." >&2
+            exit 1
+          fi
+
+          passphrase_args=()
+          if [[ -n "$signing_passphrase" ]]; then
+            passphrase_file="$(mktemp)"
+            chmod 600 "$passphrase_file"
+            printf '%s' "$signing_passphrase" > "$passphrase_file"
+            passphrase_args=(--gpg-passphrase-file "$passphrase_file")
+          else
+            echo "Selected APT repository signing passphrase is not set; signing requires an intentionally unprotected key."
+          fi
+
+          setup_package="load-rift-repository-setup_1.0_all.deb"
+          python3 scripts/build_apt_repository.py \
+            --clean \
+            --output apt-repository \
+            --suite stable \
+            --repository-url "https://ddv1982.github.io/load-rift/apt/" \
+            --gpg-homedir "$gnupg_home" \
+            --gpg-key "$expected_fingerprint" \
+            --public-key-out apt-repository/load-rift-archive-keyring.pgp \
+            --setup-package-out "$setup_package" \
+            "${passphrase_args[@]}" \
+            "${deb_packages[@]}"
+
+          test "$(dpkg-deb --field "$setup_package" Package)" = "load-rift-repository-setup"
+          test "$(dpkg-deb --field "$setup_package" Version)" = "1.0"
+          test "$(dpkg-deb --field "$setup_package" Architecture)" = "all"
+          setup_extract_dir="$(mktemp -d)"
+          dpkg-deb -x "$setup_package" "$setup_extract_dir"
+          test -s "$setup_extract_dir/usr/share/keyrings/load-rift-archive-keyring.pgp"
+          grep -Fx "Types: deb" "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
+          grep -Fx "URIs: https://ddv1982.github.io/load-rift/apt/" "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
+          grep -Fx "Suites: stable" "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
+          grep -Fx "Components: main" "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
+          grep -E '^Architectures: .*amd64( |$)' "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
+          grep -Fx "Signed-By: /usr/share/keyrings/load-rift-archive-keyring.pgp" "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
+          sh -n scripts/install-apt-repo.sh
+
+          GNUPGHOME="$verification_home" gpg --batch --import apt-repository/load-rift-archive-keyring.pgp
+          GNUPGHOME="$verification_home" gpg --batch --verify apt-repository/dists/stable/InRelease
+          GNUPGHOME="$verification_home" gpg --batch --verify \
+            apt-repository/dists/stable/Release.gpg \
+            apt-repository/dists/stable/Release
+
+          mkdir -p pages-site/apt
+          cp -a apt-repository/. pages-site/apt/
+
+      - name: Configure GitHub Pages
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/configure-pages@v5
+
+      - name: Upload APT repository Pages artifact
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: pages-site
+
+      - name: Deploy APT repository to GitHub Pages
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/deploy-pages@v4
+
+      - name: Upload APT setup assets
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          gh release upload "${{ steps.release.outputs.tag_name }}" \
+            load-rift-repository-setup_1.0_all.deb \
+            scripts/install-apt-repo.sh \
+            --clobber

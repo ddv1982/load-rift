@@ -23,6 +23,49 @@ On this machine, `cargo check` succeeded against the current Linux GTK/WebKit st
 
 ## Install
 
+Desktop builds are published on the GitHub Releases page:
+
+- [Releases](https://github.com/ddv1982/load-rift/releases)
+
+### macOS
+
+Download the `.dmg` for your Mac from the latest release:
+
+- Apple Silicon: `aarch64` / ARM64
+- Intel: `x64`
+
+Open the `.dmg` and drag Load Rift into Applications.
+
+### Linux
+
+Linux builds require a distro with **WebKitGTK 4.1**.
+
+Enable the APT repository once per machine:
+
+```bash
+bash <(curl -fsSL https://github.com/ddv1982/load-rift/releases/latest/download/install-apt-repo.sh)
+```
+
+The setup script downloads the repository setup package to a temporary file, installs the Load Rift archive keyring and APT source configuration, then removes the temporary file.
+
+Refresh APT metadata:
+
+```bash
+sudo apt update
+```
+
+Install Load Rift:
+
+```bash
+sudo apt install load-rift
+```
+
+After the repository is enabled, use normal `sudo apt update` and `sudo apt install load-rift` commands for installs and updates.
+
+The standalone `.AppImage`, `.deb`, and `.rpm` release assets remain available as direct-download fallback options.
+
+## Local Development Setup
+
 ```bash
 npm install
 npm run install:k6
