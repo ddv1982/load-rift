@@ -40,13 +40,20 @@ Open the `.dmg` and drag Load Rift into Applications.
 
 Linux builds require a distro with **WebKitGTK 4.1**.
 
-Enable the APT repository once per machine:
+Enable the APT repository once per machine with the installer script published on the latest GitHub release:
 
 ```bash
 bash <(curl -fsSL https://github.com/ddv1982/load-rift/releases/latest/download/install-apt-repo.sh)
 ```
 
-The setup script downloads the repository setup package to a temporary file, installs the Load Rift archive keyring and APT source configuration, then removes the temporary file.
+If GitHub's `latest` release redirect is stale or returns `404`, use the current release asset directly:
+
+```bash
+LOAD_RIFT_REPOSITORY_SETUP_URL=https://github.com/ddv1982/load-rift/releases/download/v0.2.6/load-rift-repository-setup_1.0_all.deb \
+  bash <(curl -fsSL https://github.com/ddv1982/load-rift/releases/download/v0.2.6/install-apt-repo.sh)
+```
+
+The setup script downloads `load-rift-repository-setup_1.0_all.deb` from the release to a temporary file, installs the Load Rift archive keyring and APT source configuration, then removes the temporary file. Both `install-apt-repo.sh` and `load-rift-repository-setup_1.0_all.deb` must be present on the release for the one-line installer to work.
 
 Refresh APT metadata:
 
