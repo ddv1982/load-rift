@@ -25,7 +25,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.tag || github.ref }}
@@ -40,7 +40,7 @@ jobs:
             patchelf
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -94,10 +94,19 @@ jobs:
           - platform: ubuntu-22.04
             platform_label: Linux
             args: ""
+            rust_target: x86_64-unknown-linux-gnu
+          - platform: macos-15-intel
+            platform_label: macOS Intel
+            args: "--target x86_64-apple-darwin --bundles dmg"
+            rust_target: x86_64-apple-darwin
+          - platform: macos-15
+            platform_label: macOS Apple Silicon
+            args: "--target aarch64-apple-darwin --bundles dmg"
+            rust_target: aarch64-apple-darwin
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
           ref: ${{ github.event.inputs.tag || github.ref }}
@@ -133,7 +142,7 @@ jobs:
             patchelf
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 22
           cache: npm
@@ -142,12 +151,13 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.88.0
+          targets: ${{ matrix.rust_target }}
 
       - name: Setup Rust cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: src-tauri
-          key: ubuntu-22.04-${{ runner.arch }}
+          key: ${{ matrix.platform }}-${{ runner.arch }}-${{ matrix.rust_target }}
 
       - name: Install Node dependencies
         run: npm ci
@@ -155,10 +165,85 @@ jobs:
       - name: Install bundled k6 binary
         run: npm run install:k6
 
+      - name: Validate Apple signing secrets
+        if: startsWith(matrix.platform, 'macos-')
+        env:
+          APPLE_CERTIFICATE_SECRET: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD_SECRET: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_ISSUER_SECRET: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_PRIVATE_KEY_SECRET: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID_SECRET: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_TEAM_ID_SECRET: ${{ secrets.APPLE_TEAM_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "$APPLE_CERTIFICATE_SECRET" ] || missing+=("APPLE_CERTIFICATE")
+          [ -n "$APPLE_CERTIFICATE_PASSWORD_SECRET" ] || missing+=("APPLE_CERTIFICATE_PASSWORD")
+          [ -n "$APPLE_API_ISSUER_SECRET" ] || missing+=("APPLE_API_ISSUER")
+          [ -n "$APPLE_API_PRIVATE_KEY_SECRET" ] || missing+=("APPLE_API_KEY")
+          [ -n "$APPLE_API_KEY_ID_SECRET" ] || missing+=("APPLE_API_KEY_ID")
+          [ -n "$APPLE_TEAM_ID_SECRET" ] || missing+=("APPLE_TEAM_ID")
+
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Required macOS signing/notarization secrets are missing: ${missing[*]}" >&2
+            exit 1
+          fi
+
+      - name: Import Apple Developer ID certificate
+        if: startsWith(matrix.platform, 'macos-')
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -base64 32)"
+
+          printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/developer-id-application.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/developer-id-application.p12" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/productsign
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          signing_identity="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'\"' '/Developer ID Application/ { print $2; exit }')"
+          if [[ -z "$signing_identity" ]]; then
+            echo "Developer ID Application signing identity not found after certificate import." >&2
+            security find-identity -v -p codesigning "$KEYCHAIN_PATH" >&2
+            exit 1
+          fi
+          echo "APPLE_SIGNING_IDENTITY=$signing_identity" >> "$GITHUB_ENV"
+
+      - name: Write App Store Connect API key
+        if: startsWith(matrix.platform, 'macos-')
+        env:
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          api_key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY_ID}.p8"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" > "$api_key_path"
+          chmod 600 "$api_key_path"
+          echo "APPLE_API_KEY_PATH=$api_key_path" >> "$GITHUB_ENV"
+
       - name: Build and publish Tauri bundles
-        uses: tauri-apps/tauri-action@action-v0.6.0
+        uses: tauri-apps/tauri-action@action-v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_KEY_PATH: ${{ env.APPLE_API_KEY_PATH }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
         with:
           projectPath: .
           tagName: ${{ steps.release.outputs.tag_name }}
