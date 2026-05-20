@@ -46,6 +46,7 @@ export function CollectionSummaryCard({
     methodFilter,
     setMethodFilter,
     selectedRequestSet,
+    hasActiveFilters,
     availableMethods,
     filteredRequests,
     folderRows,
@@ -58,6 +59,7 @@ export function CollectionSummaryCard({
     visibleSelectedCount,
     filteredSelectedCount,
     allFoldersCollapsed,
+    clearFilters,
     updateSelection,
     toggleFolder,
     toggleAllFolders,
@@ -124,6 +126,18 @@ export function CollectionSummaryCard({
             ))}
           </select>
         </label>
+
+        {hasActiveFilters ? (
+          <div className="summary-filter-actions">
+            <button
+              type="button"
+              className="ghost summary-action-button"
+              onClick={clearFilters}
+            >
+              Clear filters
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div className="summary-selection-bar">
@@ -188,6 +202,13 @@ export function CollectionSummaryCard({
         ) : null}
         <span>{formatCount("runtime variable", collection.runtimeVariables.length)}</span>
       </div>
+
+      {showWeights ? (
+        <div className="weighted-mode-callout">
+          Weighted mix uses selected requests with weight greater than 0. Weight 0
+          excludes a selected request; higher numbers run that request more often.
+        </div>
+      ) : null}
 
       <div className="request-table">
         <div className={`request-list-header request-tree-header${showWeights ? " is-weighted" : ""}`}>
@@ -297,9 +318,18 @@ export function CollectionSummaryCard({
             })}
           </ul>
         ) : (
-          <div className="summary-empty-state">
+          <div className="summary-empty-state summary-filter-state">
             <p>No requests match the current filters.</p>
-            <span>Clear the search or switch the method filter to see more.</span>
+            <span>Clear filters to show all imported requests.</span>
+            {hasActiveFilters ? (
+              <button
+                type="button"
+                className="ghost summary-action-button"
+                onClick={clearFilters}
+              >
+                Clear filters and show all requests
+              </button>
+            ) : null}
           </div>
         )}
       </div>

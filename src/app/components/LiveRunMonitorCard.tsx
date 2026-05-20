@@ -13,6 +13,7 @@ interface LiveRunMonitorCardProps {
   resultSource: TestResultSource | null;
   summaryIssue: string | null;
   notice: MonitorNotice | null;
+  hasLatestResult: boolean;
   eventLogRef: RefObject<HTMLPreElement | null>;
   onExportLatestReport: () => void;
 }
@@ -24,6 +25,7 @@ export function LiveRunMonitorCard({
   resultSource,
   summaryIssue,
   notice,
+  hasLatestResult,
   eventLogRef,
   onExportLatestReport,
 }: LiveRunMonitorCardProps) {
@@ -34,13 +36,20 @@ export function LiveRunMonitorCard({
           <p className="eyebrow">Live Run</p>
           <h3>Monitor</h3>
         </div>
-        <button
-          type="button"
-          className="ghost"
-          onClick={onExportLatestReport}
-        >
-          Export Latest Report
-        </button>
+        <div className="export-action-group">
+          <button
+            type="button"
+            className="ghost"
+            onClick={onExportLatestReport}
+          >
+            Export Latest Report
+          </button>
+          <p className="inline-note export-helper">
+            {hasLatestResult
+              ? "Exports the latest retained k6 report."
+              : "Export uses the latest backend report if one exists; otherwise Load Rift will explain why."}
+          </p>
+        </div>
       </div>
 
       <p className="panel-copy">

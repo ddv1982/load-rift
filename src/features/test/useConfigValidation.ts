@@ -16,6 +16,7 @@ interface UseConfigValidationOptions {
   isBusy: boolean;
   isRunning: boolean;
   isStarting: boolean;
+  isEnabled: boolean;
 }
 
 const INITIAL_STATE: ConfigValidationState = {
@@ -34,6 +35,7 @@ export function useConfigValidation({
   isBusy,
   isRunning,
   isStarting,
+  isEnabled,
 }: UseConfigValidationOptions) {
   const api = useLoadRiftApi();
   const validationRequestId = useRef(0);
@@ -41,7 +43,7 @@ export function useConfigValidation({
 
   const validateNow = useCallback(
     async (nextOptions: K6Options) => {
-      if (!collection) {
+      if (!collection || !isEnabled) {
         validationRequestId.current += 1;
         setState(INITIAL_STATE);
         return;
@@ -75,11 +77,11 @@ export function useConfigValidation({
         });
       }
     },
-    [api, collection],
+    [api, collection, isEnabled],
   );
 
   useEffect(() => {
-    if (!collection) {
+    if (!collection || !isEnabled) {
       validationRequestId.current += 1;
       setState(INITIAL_STATE);
       return;
@@ -95,7 +97,7 @@ export function useConfigValidation({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [collection, isBusy, isRunning, isStarting, options, validateNow]);
+  }, [collection, isBusy, isRunning, isStarting, isEnabled, options, validateNow]);
 
   return {
     state,

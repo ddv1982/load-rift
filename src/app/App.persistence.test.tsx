@@ -64,6 +64,45 @@ describe("App persistence", () => {
     );
   });
 
+  it("does not restore a manually entered base URL", () => {
+    const api = createApiMock();
+    const view = renderApp(api);
+
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: { value: "https://manual.example.com" },
+    });
+
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
+      "https://manual.example.com",
+    );
+
+    view.unmount();
+    renderApp(api);
+
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("");
+  });
+
+  it("normalizes invalid persisted VU preferences before rendering controls", () => {
+    window.localStorage.setItem(
+      "loadrift.ui.runner-preferences",
+      JSON.stringify({
+        vus: 0,
+        duration: "3m",
+        rampUp: "instant",
+        thresholds: {},
+      }),
+    );
+
+    renderApp(createApiMock());
+
+    const vusInput = screen.getByLabelText("Virtual users");
+    expect((vusInput as HTMLInputElement).value).toBe("10");
+    expect(vusInput).not.toHaveAttribute("aria-invalid");
+    expect(
+      screen.queryByText("Virtual users must be a whole number of 1 or more."),
+    ).not.toBeInTheDocument();
+  });
+
   it("restores non-sensitive runner preferences without restoring auth values", () => {
     window.localStorage.setItem(
       "loadrift.ui.runner-preferences",

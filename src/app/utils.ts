@@ -1,4 +1,4 @@
-import type { RequestInfo, RuntimeVariable } from "../lib/loadrift/types";
+import type { K6Options, RequestInfo, RuntimeVariable } from "../lib/loadrift/types";
 
 const HOST_VARIABLE_KEYS = new Set([
   "baseUrl",
@@ -60,6 +60,19 @@ export function truncateLog(log: string): string {
   }
 
   return log;
+}
+
+export function normalizeRunnerOptionsForExecution(options: K6Options): K6Options {
+  const trimmedBaseUrl = options.baseUrl?.trim() ?? "";
+  const nextOptions = { ...options };
+
+  if (trimmedBaseUrl) {
+    nextOptions.baseUrl = trimmedBaseUrl;
+  } else {
+    delete nextOptions.baseUrl;
+  }
+
+  return nextOptions;
 }
 
 export function formatVariableLabel(key: string): string {

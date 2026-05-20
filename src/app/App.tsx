@@ -1,7 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { CollectionImportSection } from "./components/CollectionImportSection";
 import { TestHarnessSection } from "./components/TestHarnessSection";
-import { buildReportFileName, formatCount, truncateLog } from "./utils";
+import {
+  buildReportFileName,
+  formatCount,
+  normalizeRunnerOptionsForExecution,
+  truncateLog,
+} from "./utils";
 import appIconUrl from "../assets/app-icon.svg";
 import { useCollectionImport } from "../features/import/useCollectionImport";
 import { useSmokeTest } from "../features/test/useSmokeTest";
@@ -88,9 +93,13 @@ export function App() {
     emptyRuntimeVariables,
     thresholdInputs,
     thresholdErrors,
+    vusInput,
+    vusError,
     runnerOptionsAreValid,
+    advancedOptionsFeedback,
     updateRunnerOption,
     updateThreshold,
+    updateVusInput,
     updateRuntimeVariable,
     updateSelectedRequestIds,
     updateRequestWeight,
@@ -110,12 +119,18 @@ export function App() {
     result: testState.result,
   });
 
+  const effectiveRunnerOptions = useMemo(
+    () => normalizeRunnerOptionsForExecution(runnerOptions),
+    [runnerOptions],
+  );
+
   const { state: configValidation, validateNow } = useConfigValidation({
     collection,
-    options: runnerOptions,
+    options: effectiveRunnerOptions,
     isBusy: testState.isBusy,
     isRunning: testState.isRunning,
     isStarting: testState.isStarting,
+    isEnabled: runnerOptionsAreValid,
   });
 
   const isHarnessBusy =
@@ -133,12 +148,12 @@ export function App() {
     [configValidation.status, importState.collection, isHarnessBusy, runnerOptionsAreValid],
   );
   const canSmokeTest = useMemo(
-    () => Boolean(importState.collection) && !isHarnessBusy,
-    [importState.collection, isHarnessBusy],
+    () => Boolean(importState.collection) && runnerOptionsAreValid && !isHarnessBusy,
+    [importState.collection, isHarnessBusy, runnerOptionsAreValid],
   );
   const smokeInputKey = useMemo(
-    () => buildSmokeInputKey(collection, runnerOptions, collectionRevision),
-    [collection, collectionRevision, runnerOptions],
+    () => buildSmokeInputKey(collection, effectiveRunnerOptions, collectionRevision),
+    [collection, collectionRevision, effectiveRunnerOptions],
   );
   const displayedSmokeTestState = useMemo(() => {
     if (
@@ -173,6 +188,7 @@ export function App() {
     configValidation,
     canStartTest,
     canSmokeTest,
+    runnerOptionsAreValid,
     displayedTestStatus,
     displayedVerdict,
   };
@@ -181,9 +197,12 @@ export function App() {
     runnerOptions,
     thresholdInputs,
     thresholdErrors,
+    vusInput,
+    vusError,
     emptyRuntimeVariables,
     curlInput,
     curlImportState,
+    advancedOptionsFeedback,
     eventLogRef,
     resultSummaryRef,
   };
@@ -195,7 +214,7 @@ export function App() {
     onValidateConfiguration: () => void handleValidateConfiguration(),
     onRefreshStatus: () => void handleRefreshStatus(),
     onExportLatestReport: () => void handleExportLatestReport(),
-    onVusChange: (value: number) => updateRunnerOption("vus", value),
+    onVusChange: updateVusInput,
     onDurationChange: (value: string) => updateRunnerOption("duration", value),
     onRampUpChange: (value: K6Options["rampUp"]) =>
       updateRunnerOption("rampUp", value),
@@ -205,6 +224,9 @@ export function App() {
     onTrafficModeChange: (value: K6Options["trafficMode"]) =>
       updateRunnerOption("trafficMode", value),
     onAuthTokenChange: (value: string) => updateRunnerOption("authToken", value),
+    onBaseUrlChange: (value: string) => {
+      updateRunnerOption("baseUrl", value);
+    },
     onCurlInputChange: handleCurlInputChange,
     onApplyCurlCommand: applyCurlCommand,
     onRuntimeVariableChange: updateRuntimeVariable,
@@ -241,20 +263,32 @@ export function App() {
   }
 
   async function handleValidateConfiguration() {
-    await validateNow(runnerOptions);
+    if (!runnerOptionsAreValid) {
+      return;
+    }
+
+    await validateNow(effectiveRunnerOptions);
   }
 
   async function handleStartTest() {
+    if (!runnerOptionsAreValid) {
+      return;
+    }
+
     setLastSmokeInputKey(null);
     setExportNotice(null);
     clearSmokeTest();
-    await startTest(runnerOptions);
+    await startTest(effectiveRunnerOptions);
   }
 
   async function handleSmokeTest() {
+    if (!runnerOptionsAreValid) {
+      return;
+    }
+
     setLastSmokeInputKey(smokeInputKey);
     setExportNotice(null);
-    await runSmokeTest(runnerOptions);
+    await runSmokeTest(effectiveRunnerOptions);
   }
 
   async function handleStopTest() {
@@ -266,7 +300,7 @@ export function App() {
     try {
       setExportNotice(null);
       const savePath = await selectReportSavePath(
-        buildReportFileName(runnerOptions.baseUrl),
+        buildReportFileName(effectiveRunnerOptions.baseUrl),
       );
       if (!savePath) {
         return;

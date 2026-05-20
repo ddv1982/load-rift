@@ -1,8 +1,9 @@
-import type {
-  CollectionInfo,
-  K6Options,
-  RampUpStrategy,
-  TrafficMode,
+import {
+  DEFAULT_K6_OPTIONS,
+  type CollectionInfo,
+  type K6Options,
+  type RampUpStrategy,
+  type TrafficMode,
 } from "../lib/loadrift/types";
 
 const STORAGE_KEYS = {
@@ -88,6 +89,15 @@ function hashString(value: string): string {
   }
 
   return (hash >>> 0).toString(16).padStart(8, "0");
+}
+
+function normalizePersistedVus(value: unknown, fallback: number): number {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isSafeInteger(value) &&
+    value >= 1
+    ? value
+    : fallback;
 }
 
 function normalizePersistedThreshold(value: unknown): number | undefined {
@@ -250,10 +260,7 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
 
   const nextOptions: K6Options = {
     ...defaultOptions,
-    vus:
-      typeof stored.vus === "number" && !Number.isNaN(stored.vus)
-        ? stored.vus
-        : defaultOptions.vus,
+    vus: normalizePersistedVus(stored.vus, defaultOptions.vus),
     duration:
       typeof stored.duration === "string" && stored.duration.trim()
         ? stored.duration
@@ -287,7 +294,7 @@ export function saveRunnerPreferences(options: K6Options) {
   }
 
   const persisted: PersistedRunnerPreferences = {
-    vus: options.vus,
+    vus: normalizePersistedVus(options.vus, DEFAULT_K6_OPTIONS.vus),
     duration: options.duration,
     rampUp: options.rampUp,
     thresholds,

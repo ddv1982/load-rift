@@ -564,17 +564,63 @@ button {
 }
 
 .harness-action-row {
-  margin-bottom: 1rem;
+  margin-bottom: 0.55rem;
   padding: 0.3rem;
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(134, 196, 216, 0.12);
   border-radius: 1.15rem;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(134, 196, 216, 0.035);
+}
+
+.action-guidance {
+  margin: 0 0 1rem;
+  padding: 0.68rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 0.95rem;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.018);
+  font-size: 0.88rem;
+}
+
+.action-guidance.is-ready {
+  color: var(--success);
+  border-color: rgba(136, 213, 164, 0.22);
+  background: rgba(136, 213, 164, 0.07);
+}
+
+.action-guidance.is-blocked {
+  color: var(--danger);
+  border-color: rgba(255, 149, 124, 0.22);
+  background: rgba(255, 149, 124, 0.07);
+}
+
+.action-guidance.is-busy,
+.action-guidance.is-checking {
+  color: var(--accent-strong);
+  border-color: rgba(210, 161, 91, 0.22);
+  background: rgba(210, 161, 91, 0.07);
+}
+
+.live-metrics-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  align-items: baseline;
+  margin-bottom: 0.55rem;
+}
+
+.live-metrics-heading span {
+  color: var(--text);
+  font-weight: 700;
+}
+
+.live-metrics-heading small {
+  color: var(--muted);
 }
 
 .status-strip {
   display: grid;
   gap: 0.65rem;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   margin-bottom: 1rem;
 }
 
@@ -582,10 +628,10 @@ button {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  padding: 0.8rem 0.9rem;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 1rem;
-  background: rgba(255, 255, 255, 0.02);
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.045);
+  border-radius: 0.95rem;
+  background: rgba(255, 255, 255, 0.014);
 }
 
 .status-chip span {
@@ -707,7 +753,14 @@ button {
 .summary-toolbar {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: minmax(0, 1fr) 10rem;
+  grid-template-columns: minmax(0, 1fr) 10rem auto;
+  align-items: end;
+}
+
+.summary-filter-actions {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
 }
 
 .summary-selection-bar,
@@ -755,6 +808,15 @@ button {
   gap: 0.75rem;
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.weighted-mode-callout {
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(210, 161, 91, 0.18);
+  border-radius: 0.95rem;
+  color: var(--accent-strong);
+  background: rgba(210, 161, 91, 0.08);
+  font-size: 0.86rem;
 }
 
 .variable-summary {
@@ -914,6 +976,11 @@ button {
   padding: 1rem;
 }
 
+.summary-filter-state {
+  align-items: flex-start;
+  gap: 0.55rem;
+}
+
 .summary-empty-state p,
 .summary-empty-state span {
   margin: 0;
@@ -960,6 +1027,19 @@ button {
 
 .inline-note.is-success {
   color: var(--success);
+}
+
+.json-feedback,
+.export-helper {
+  font-size: 0.8rem;
+}
+
+.export-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: flex-end;
+  max-width: 20rem;
 }
 
 .result-summary {
@@ -1136,7 +1216,12 @@ button {
   }
 
   .summary-toolbar {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr) 10rem;
+  }
+
+  .summary-filter-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
   }
 }
 
@@ -1148,9 +1233,20 @@ button {
 
   .request-list-header,
   .request-list-compact li,
-  .request-tree-row {
+  .request-tree-row,
+  .request-tree-row.is-weighted,
+  .request-tree-header.is-weighted {
     grid-template-columns: 1fr;
     gap: 0.35rem;
+  }
+
+  .request-weight-field,
+  .request-weight-placeholder {
+    justify-self: stretch;
+  }
+
+  .request-weight-field input {
+    width: 100%;
   }
 
   .summary-toolbar,
@@ -1180,9 +1276,15 @@ button {
   .monitor-header,
   .import-callout,
   .app-title-row,
-  .workflow-card-header {
+  .workflow-card-header,
+  .live-metrics-heading {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .export-action-group {
+    align-items: stretch;
+    max-width: none;
   }
 
   .harness-heading-meta {

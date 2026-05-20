@@ -59,6 +59,34 @@ describe("createCollectionStorageKey", () => {
 });
 
 describe("runner preferences persistence", () => {
+  it.each([
+    ["zero", 0],
+    ["negative", -1],
+    ["decimal", 1.5],
+    ["unsafe integer", Number.MAX_SAFE_INTEGER + 1],
+    ["null", null],
+    ["string", "4"],
+  ])("drops persisted invalid %s VU values in favor of defaults", (_label, vus) => {
+    window.localStorage.setItem(
+      "loadrift.ui.runner-preferences",
+      JSON.stringify({
+        ...DEFAULT_K6_OPTIONS,
+        vus,
+      }),
+    );
+
+    expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS).vus).toBe(DEFAULT_K6_OPTIONS.vus);
+  });
+
+  it("does not persist invalid VU values", () => {
+    saveRunnerPreferences({
+      ...DEFAULT_K6_OPTIONS,
+      vus: Number.POSITIVE_INFINITY,
+    });
+
+    expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS).vus).toBe(DEFAULT_K6_OPTIONS.vus);
+  });
+
   it("drops persisted decimal thresholds in favor of defaults", () => {
     window.localStorage.setItem(
       "loadrift.ui.runner-preferences",

@@ -95,6 +95,65 @@ describe("App collection summary", () => {
     expect(screen.getByText("Nested folder request")).toBeInTheDocument();
   });
 
+  it("clears active request filters and restores hidden rows", async () => {
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
+
+    renderApp(createApiMock());
+
+    fireEvent.change(screen.getByLabelText("Search requests"), {
+      target: { value: "login" },
+    });
+    fireEvent.change(screen.getByLabelText("Method"), {
+      target: { value: "POST" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(screen.getByText("POST login")).toBeInTheDocument();
+    expect(screen.queryByText("GET account")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect((screen.getByLabelText("Search requests") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Method") as HTMLSelectElement).value).toBe("all");
+    expect(screen.getByText("POST login")).toBeInTheDocument();
+    expect(screen.getByText("GET account")).toBeInTheDocument();
+  });
+
+  it("offers clear filters from the empty filtered state", async () => {
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
+
+    renderApp(createApiMock());
+
+    fireEvent.change(screen.getByLabelText("Search requests"), {
+      target: { value: "does-not-exist" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(screen.getByText("No requests match the current filters.")).toBeInTheDocument();
+    expect(screen.getByText("Clear filters to show all imported requests.")).toBeInTheDocument();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Clear filters and show all requests" }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+    });
+
+    expect(screen.getByText("POST login")).toBeInTheDocument();
+    expect(screen.getByText("GET account")).toBeInTheDocument();
+  });
+
   it("selects only visible requests when using filtered bulk selection", async () => {
     appHookTestState.importHookState = createImportHookState(anotherCollection);
 
@@ -146,6 +205,8 @@ describe("App collection summary", () => {
     fireEvent.change(screen.getByLabelText("Traffic mode"), {
       target: { value: "weighted" },
     });
+
+    expect(screen.getByText(/Weighted mix uses selected requests/)).toBeInTheDocument();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);

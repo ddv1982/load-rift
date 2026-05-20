@@ -63,4 +63,27 @@ describe("App accessibility", () => {
       screen.getByRole("heading", { name: "Configure and launch" }),
     ).toBeInTheDocument();
   });
+
+  it("links VU validation feedback to the VU input", () => {
+    renderApp(createApiMock());
+
+    const vusInput = screen.getByLabelText("Virtual users");
+    fireEvent.change(vusInput, { target: { value: "0" } });
+
+    const error = screen.getByText("Virtual users must be a whole number of 1 or more.");
+    expect(vusInput).toHaveAttribute("aria-describedby", error.id);
+    expect(vusInput).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("links advanced JSON feedback to the textarea", () => {
+    renderApp(createApiMock());
+
+    fireEvent.click(screen.getByRole("tab", { name: "Advanced" }));
+    const advancedJsonInput = screen.getByLabelText("Advanced options JSON");
+    fireEvent.change(advancedJsonInput, { target: { value: "{bad" } });
+
+    const feedback = screen.getByText(/Invalid JSON:/);
+    expect(advancedJsonInput).toHaveAttribute("aria-describedby", feedback.id);
+    expect(advancedJsonInput).toHaveAttribute("aria-invalid", "true");
+  });
 });

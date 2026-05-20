@@ -4,6 +4,7 @@ import {
   type CollectionInfo,
   type K6Options,
 } from "../../lib/loadrift/types";
+import { getAdvancedOptionsFeedback } from "../advancedOptions";
 import { loadRunnerPreferences, saveRunnerPreferences } from "../persistence";
 import {
   getVariableValue,
@@ -48,6 +49,25 @@ function validateThresholdInput(key: ThresholdKey, value: string): string | null
   return null;
 }
 
+function validateVusInput(value: string): string | null {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return "Virtual users is required.";
+  }
+
+  const parsedValue = Number(trimmedValue);
+  if (
+    !/^\d+$/.test(trimmedValue) ||
+    !Number.isFinite(parsedValue) ||
+    !Number.isSafeInteger(parsedValue) ||
+    parsedValue < 1
+  ) {
+    return "Virtual users must be a whole number of 1 or more.";
+  }
+
+  return null;
+}
+
 export function useRunnerOptions(collection: CollectionInfo | null) {
   const [runnerOptions, setRunnerOptions] = useState<K6Options>(() =>
     loadRunnerPreferences(DEFAULT_K6_OPTIONS),
@@ -56,6 +76,10 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     createThresholdInputs(runnerOptions.thresholds),
   );
   const [thresholdErrors, setThresholdErrors] = useState<ThresholdInputErrors>({});
+  const [vusInput, setVusInput] = useState(() => String(runnerOptions.vus));
+  const [vusError, setVusError] = useState<string | null>(() =>
+    validateVusInput(String(runnerOptions.vus)),
+  );
 
   useEffect(() => {
     setRunnerOptions((previous) => ({
@@ -131,6 +155,21 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     }));
   }
 
+  function updateVusInput(value: string) {
+    const error = validateVusInput(value);
+    setVusInput(value);
+    setVusError(error);
+
+    if (error) {
+      return;
+    }
+
+    setRunnerOptions((previous) => ({
+      ...previous,
+      vus: Number(value.trim()),
+    }));
+  }
+
   function updateRuntimeVariable(key: string, value: string) {
     setRunnerOptions((previous) => ({
       ...previous,
@@ -158,7 +197,16 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     }));
   }
 
-  const runnerOptionsAreValid = Object.keys(thresholdErrors).length === 0;
+  const advancedOptionsFeedback = useMemo(
+    () => getAdvancedOptionsFeedback(runnerOptions.advancedOptionsJson ?? ""),
+    [runnerOptions.advancedOptionsJson],
+  );
+  const advancedOptionsError =
+    advancedOptionsFeedback?.tone === "error" ? advancedOptionsFeedback.message : null;
+  // Invalid advanced JSON blocks local readiness so field feedback, Check Config,
+  // and Start Test stay semantically aligned.
+  const runnerOptionsAreValid =
+    !vusError && Object.keys(thresholdErrors).length === 0 && !advancedOptionsError;
 
   return {
     runnerOptions,
@@ -166,9 +214,13 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     emptyRuntimeVariables,
     thresholdInputs,
     thresholdErrors,
+    vusInput,
+    vusError,
     runnerOptionsAreValid,
+    advancedOptionsFeedback,
     updateRunnerOption,
     updateThreshold,
+    updateVusInput,
     updateRuntimeVariable,
     updateSelectedRequestIds,
     updateRequestWeight,

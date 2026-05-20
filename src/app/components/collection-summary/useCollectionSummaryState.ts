@@ -24,6 +24,7 @@ interface UseCollectionSummaryStateResult {
   methodFilter: string;
   setMethodFilter: (value: string) => void;
   selectedRequestSet: Set<string>;
+  hasActiveFilters: boolean;
   availableMethods: string[];
   filteredRequests: CollectionInfo["requests"];
   folderRows: Extract<CollectionRow, { kind: "folder" }>[];
@@ -36,6 +37,7 @@ interface UseCollectionSummaryStateResult {
   visibleSelectedCount: number;
   filteredSelectedCount: number;
   allFoldersCollapsed: boolean;
+  clearFilters: () => void;
   updateSelection: (requestIds: string[], nextChecked: boolean) => void;
   toggleFolder: (folderId: string) => void;
   toggleAllFolders: () => void;
@@ -55,6 +57,7 @@ export function useCollectionSummaryState({
     [collection],
   );
   const selectedRequestSet = useMemo(() => new Set(selectedRequestIds), [selectedRequestIds]);
+  const hasActiveFilters = searchQuery.trim() !== "" || methodFilter !== "all";
   const {
     availableMethods,
     filteredRequests,
@@ -139,6 +142,11 @@ export function useCollectionSummaryState({
   const allFoldersCollapsed =
     folderRows.length > 0 && folderRows.every((row) => collapsedFolderSet.has(row.id));
 
+  function clearFilters() {
+    setSearchQuery("");
+    setMethodFilter("all");
+  }
+
   function updateSelection(requestIds: string[], nextChecked: boolean) {
     if (!collection) {
       return;
@@ -178,6 +186,7 @@ export function useCollectionSummaryState({
     methodFilter,
     setMethodFilter,
     selectedRequestSet,
+    hasActiveFilters,
     availableMethods,
     filteredRequests,
     folderRows,
@@ -190,6 +199,7 @@ export function useCollectionSummaryState({
     visibleSelectedCount,
     filteredSelectedCount,
     allFoldersCollapsed,
+    clearFilters,
     updateSelection,
     toggleFolder,
     toggleAllFolders,

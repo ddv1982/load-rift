@@ -28,13 +28,14 @@ export function RuntimeVariablesCard({
       <SettingsCardHeader
         eyebrow="Runtime Variables"
         title="Collection Overrides"
-        hint='Detected from `{{...}}` placeholders in the imported collection. Host-style variables will use the derived base URL from the Postman cURL snippet when one is available.'
+        hint='Detected from `{{...}}` placeholders in the imported collection. Host-style variables mirror the Base URL from runner settings when one is available.'
       />
 
       {collection?.runtimeVariables.length ? (
         <div className="settings-grid">
           {collection.runtimeVariables.map((variable) => {
             const isHostVariable = isHostVariableKey(variable.key);
+            const effectiveBaseUrl = runnerOptions.baseUrl?.trim() ?? "";
 
             return (
               <label key={variable.key} className="field">
@@ -43,7 +44,7 @@ export function RuntimeVariablesCard({
                   type="text"
                   value={
                     isHostVariable
-                      ? runnerOptions.baseUrl ?? ""
+                      ? effectiveBaseUrl
                       : getVariableValue(variable, runnerOptions.variableOverrides)
                   }
                   onChange={(event) => {
@@ -55,7 +56,7 @@ export function RuntimeVariablesCard({
                   }}
                   placeholder={
                     isHostVariable
-                      ? "Apply a Postman cURL snippet to derive this value."
+                      ? "Set Base URL in runner settings to fill this value."
                       : variable.defaultValue ?? `Set ${variable.key}`
                   }
                   readOnly={isHostVariable}

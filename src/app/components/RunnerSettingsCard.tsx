@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { K6Options } from "../../lib/loadrift/types";
 import type { ThresholdInputErrors, ThresholdInputValues } from "../hooks/useRunnerOptions";
 import type { CurlImportState } from "../types";
@@ -7,15 +8,18 @@ interface RunnerSettingsCardProps {
   runnerOptions: K6Options;
   thresholdInputs: ThresholdInputValues;
   thresholdErrors: ThresholdInputErrors;
+  vusInput: string;
+  vusError: string | null;
   curlInput: string;
   curlImportState: CurlImportState;
-  onVusChange: (value: number) => void;
+  onVusChange: (value: string) => void;
   onDurationChange: (value: string) => void;
   onRampUpChange: (value: K6Options["rampUp"]) => void;
   onRampUpTimeChange: (value: string) => void;
   onThresholdChange: (key: keyof K6Options["thresholds"], value: string) => void;
   onTrafficModeChange: (value: K6Options["trafficMode"]) => void;
   onAuthTokenChange: (value: string) => void;
+  onBaseUrlChange: (value: string) => void;
   onCurlInputChange: (value: string) => void;
   onApplyCurlCommand: () => void;
 }
@@ -24,6 +28,8 @@ export function RunnerSettingsCard({
   runnerOptions,
   thresholdInputs,
   thresholdErrors,
+  vusInput,
+  vusError,
   curlInput,
   curlImportState,
   onVusChange,
@@ -33,15 +39,20 @@ export function RunnerSettingsCard({
   onThresholdChange,
   onTrafficModeChange,
   onAuthTokenChange,
+  onBaseUrlChange,
   onCurlInputChange,
   onApplyCurlCommand,
 }: RunnerSettingsCardProps) {
+  const vusErrorId = useId();
+  const p95ThresholdErrorId = useId();
+  const errorRateThresholdErrorId = useId();
+
   return (
     <div className="settings-card">
       <SettingsCardHeader
         eyebrow="Runner Settings"
         title="Basic k6 Controls"
-        hint="Configure the common load profile here. Use advanced JSON below for the full k6 options surface. Weighted mix follows a deterministic request schedule across started iterations. Set a weight to 0 to exclude a request from the weighted pool. Advanced k6 scenarios remain the path for stricter fixed traffic splits."
+        hint="Configure the common load profile here. Use advanced JSON for scenarios, tags, and other k6 options that do not fit the simple form."
       />
 
       <div className="settings-grid">
@@ -50,9 +61,15 @@ export function RunnerSettingsCard({
           <input
             type="number"
             min={1}
-            value={runnerOptions.vus}
-            onChange={(event) => onVusChange(Number(event.target.value) || 1)}
+            step={1}
+            inputMode="numeric"
+            value={vusInput}
+            aria-label="Virtual users"
+            onChange={(event) => onVusChange(event.target.value)}
+            aria-invalid={vusError ? "true" : undefined}
+            aria-describedby={vusError ? vusErrorId : undefined}
           />
+          {vusError ? <p id={vusErrorId} className="inline-note is-error">{vusError}</p> : null}
         </label>
 
         <label className="field">
@@ -104,9 +121,12 @@ export function RunnerSettingsCard({
             }
             placeholder="2000"
             aria-invalid={thresholdErrors.p95ResponseTime ? "true" : undefined}
+            aria-describedby={
+              thresholdErrors.p95ResponseTime ? p95ThresholdErrorId : undefined
+            }
           />
           {thresholdErrors.p95ResponseTime ? (
-            <p className="inline-note is-error">{thresholdErrors.p95ResponseTime}</p>
+            <p id={p95ThresholdErrorId} className="inline-note is-error">{thresholdErrors.p95ResponseTime}</p>
           ) : null}
         </label>
 
@@ -123,9 +143,12 @@ export function RunnerSettingsCard({
             onChange={(event) => onThresholdChange("errorRate", event.target.value)}
             placeholder="5"
             aria-invalid={thresholdErrors.errorRate ? "true" : undefined}
+            aria-describedby={
+              thresholdErrors.errorRate ? errorRateThresholdErrorId : undefined
+            }
           />
           {thresholdErrors.errorRate ? (
-            <p className="inline-note is-error">{thresholdErrors.errorRate}</p>
+            <p id={errorRateThresholdErrorId} className="inline-note is-error">{thresholdErrors.errorRate}</p>
           ) : null}
         </label>
 
@@ -146,7 +169,7 @@ export function RunnerSettingsCard({
           <span>Traffic mode notes</span>
           <p className="inline-note">
             {runnerOptions.trafficMode === "weighted"
-              ? "Weighted mix follows a deterministic request schedule across started iterations. Set a weight to 0 to exclude a request from the weighted pool. Use advanced k6 scenarios for stricter fixed ratios."
+              ? "Edit per-request weights in the collection summary above. Use advanced scenarios for strict fixed ratios."
               : "Sequential mode runs every selected request in order during each iteration."}
           </p>
         </div>
@@ -190,18 +213,23 @@ export function RunnerSettingsCard({
             }`}
           >
             {curlImportState.message ??
-              "Paste one working Postman cURL snippet here. Load Rift will extract the request origin and bearer/JWT token for the collection run."}
+              "Paste a working Postman cURL snippet to fill Base URL and bearer/JWT token automatically."}
           </p>
         </div>
 
         <label className="field field-wide">
-          <span>Derived base URL</span>
+          <span>Base URL</span>
           <input
-            type="url"
+            type="text"
+            inputMode="url"
             value={runnerOptions.baseUrl ?? ""}
-            readOnly
-            placeholder="Apply a Postman cURL snippet to derive the base URL."
+            aria-label="Base URL"
+            onChange={(event) => onBaseUrlChange(event.target.value)}
+            placeholder="https://api.example.com"
           />
+          <p className="inline-note">
+            Paste cURL to fill this automatically, or edit it manually.
+          </p>
         </label>
       </div>
     </div>

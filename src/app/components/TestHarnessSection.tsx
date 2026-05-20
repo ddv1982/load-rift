@@ -8,6 +8,7 @@ import type { TestHarnessState } from "../../features/test/useTestHarness";
 import type {
   ConfigValidationState,
 } from "../../features/test/useConfigValidation";
+import type { AdvancedOptionsFeedback } from "../advancedOptions";
 import type { CurlImportState } from "../types";
 import { loadHarnessTab, saveHarnessTab, type HarnessTab } from "../persistence";
 import { AdvancedOptionsCard } from "./AdvancedOptionsCard";
@@ -29,6 +30,7 @@ interface TestHarnessStatusProps {
   configValidation: ConfigValidationState;
   canStartTest: boolean;
   canSmokeTest: boolean;
+  runnerOptionsAreValid: boolean;
   displayedTestStatus: string;
   displayedVerdict: string;
   smokeTestState: SmokeTestState;
@@ -38,9 +40,12 @@ interface TestHarnessControlsProps {
   runnerOptions: K6Options;
   thresholdInputs: ThresholdInputValues;
   thresholdErrors: ThresholdInputErrors;
+  vusInput: string;
+  vusError: string | null;
   emptyRuntimeVariables: RuntimeVariable[];
   curlInput: string;
   curlImportState: CurlImportState;
+  advancedOptionsFeedback: AdvancedOptionsFeedback | null;
   eventLogRef: RefObject<HTMLPreElement | null>;
   resultSummaryRef: RefObject<HTMLDivElement | null>;
 }
@@ -52,13 +57,14 @@ interface TestHarnessActionsProps {
   onValidateConfiguration: () => void;
   onRefreshStatus: () => void;
   onExportLatestReport: () => void;
-  onVusChange: (value: number) => void;
+  onVusChange: (value: string) => void;
   onDurationChange: (value: string) => void;
   onRampUpChange: (value: K6Options["rampUp"]) => void;
   onRampUpTimeChange: (value: string) => void;
   onThresholdChange: (key: keyof K6Options["thresholds"], value: string) => void;
   onTrafficModeChange: (value: K6Options["trafficMode"]) => void;
   onAuthTokenChange: (value: string) => void;
+  onBaseUrlChange: (value: string) => void;
   onCurlInputChange: (value: string) => void;
   onApplyCurlCommand: () => void;
   onRuntimeVariableChange: (key: string, value: string) => void;
@@ -69,6 +75,80 @@ interface TestHarnessSectionProps {
   status: TestHarnessStatusProps;
   controls: TestHarnessControlsProps;
   actions: TestHarnessActionsProps;
+}
+
+type ReadinessTone = "ready" | "blocked" | "busy" | "checking";
+
+function getRunReadinessMessage({
+  collection,
+  testState,
+  smokeTestState,
+  configValidation,
+  canStartTest,
+  runnerOptionsAreValid,
+}: Pick<
+  TestHarnessStatusProps,
+  | "collection"
+  | "testState"
+  | "smokeTestState"
+  | "configValidation"
+  | "canStartTest"
+  | "runnerOptionsAreValid"
+>): { tone: ReadinessTone; message: string } {
+  if (!collection) {
+    return { tone: "blocked", message: "Import a collection to unlock run actions." };
+  }
+
+  if (testState.isStarting) {
+    return {
+      tone: "busy",
+      message: "Starting the load test; actions pause until the runner responds.",
+    };
+  }
+
+  if (testState.isRunning) {
+    return {
+      tone: "busy",
+      message: "A load test is running. Stop it before starting another run.",
+    };
+  }
+
+  if (smokeTestState.isRunning) {
+    return {
+      tone: "busy",
+      message: "Smoke test is running; load actions pause until it finishes.",
+    };
+  }
+
+  if (!runnerOptionsAreValid) {
+    return {
+      tone: "blocked",
+      message: "Fix the highlighted runner inputs before starting.",
+    };
+  }
+
+  if (configValidation.status === "checking") {
+    return {
+      tone: "checking",
+      message: "Checking the current configuration before Start Test is enabled.",
+    };
+  }
+
+  if (configValidation.status === "invalid") {
+    return {
+      tone: "blocked",
+      message: configValidation.message ?? "Configuration is not ready yet.",
+    };
+  }
+
+  if (canStartTest) {
+    return {
+      tone: "ready",
+      message: "Ready to start a load test or run another smoke check.",
+    };
+  }
+
+  return { tone: "checking", message: "Check configuration to enable Start Test." };
 }
 
 export function TestHarnessSection({
@@ -83,6 +163,7 @@ export function TestHarnessSection({
     configValidation,
     canStartTest,
     canSmokeTest,
+    runnerOptionsAreValid,
     displayedTestStatus,
     displayedVerdict,
     smokeTestState,
@@ -91,9 +172,12 @@ export function TestHarnessSection({
     runnerOptions,
     thresholdInputs,
     thresholdErrors,
+    vusInput,
+    vusError,
     emptyRuntimeVariables,
     curlInput,
     curlImportState,
+    advancedOptionsFeedback,
     eventLogRef,
     resultSummaryRef,
   } = controls;
@@ -111,6 +195,7 @@ export function TestHarnessSection({
     onThresholdChange,
     onTrafficModeChange,
     onAuthTokenChange,
+    onBaseUrlChange,
     onCurlInputChange,
     onApplyCurlCommand,
     onRuntimeVariableChange,
@@ -120,6 +205,22 @@ export function TestHarnessSection({
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [activeTab, setActiveTab] = useState<HarnessTab>(() => loadHarnessTab("controls"));
   const tabs: HarnessTab[] = ["controls", "variables", "advanced"];
+  const readiness = getRunReadinessMessage({
+    collection,
+    testState,
+    smokeTestState,
+    configValidation,
+    canStartTest,
+    runnerOptionsAreValid,
+  });
+  const validationBanner = !runnerOptionsAreValid
+    ? {
+        status: "invalid" as const,
+        message: "Fix the highlighted runner inputs before checking configuration or starting.",
+      }
+    : configValidation.status === "idle"
+      ? null
+      : configValidation;
 
   useEffect(() => {
     saveHarnessTab(activeTab);
@@ -199,7 +300,7 @@ export function TestHarnessSection({
           type="button"
           className="ghost"
           onClick={onValidateConfiguration}
-          disabled={!collection || configValidation.status === "checking"}
+          disabled={!collection || !runnerOptionsAreValid || configValidation.status === "checking"}
         >
           {configValidation.status === "checking" ? "Checking..." : "Check Config"}
         </button>
@@ -220,16 +321,15 @@ export function TestHarnessSection({
           Refresh Status
         </button>
       </div>
+      <p className={`action-guidance is-${readiness.tone}`} aria-live="polite">
+        {readiness.message}
+      </p>
 
-      <div className="status-strip" aria-label="Run metrics overview">
-        <article className="status-chip">
-          <span>Run State</span>
-          <strong>{displayedTestStatus.toUpperCase()}</strong>
-        </article>
-        <article className="status-chip">
-          <span>Verdict</span>
-          <strong>{displayedVerdict}</strong>
-        </article>
+      <div className="live-metrics-heading">
+        <span>Live metrics</span>
+        <small>Final verdict and completed-run stats stay in Latest result.</small>
+      </div>
+      <div className="status-strip" aria-label="Live run metrics overview">
         <article className="status-chip">
           <span>Active VUs</span>
           <strong>{testState.metrics.activeVus}</strong>
@@ -254,18 +354,18 @@ export function TestHarnessSection({
 
       <div className="harness-primary-grid">
         <div className="harness-main">
-          {configValidation.status !== "idle" ? (
+          {validationBanner ? (
             <div
               className={`validation-banner${
-                configValidation.status === "ready"
+                validationBanner.status === "ready"
                   ? " is-ready"
-                  : configValidation.status === "invalid"
+                  : validationBanner.status === "invalid"
                     ? " is-invalid"
                     : ""
               }`}
             >
               <strong>Configuration Check</strong>
-              <p>{configValidation.message}</p>
+              <p>{validationBanner.message}</p>
             </div>
           ) : null}
 
@@ -329,6 +429,8 @@ export function TestHarnessSection({
                   runnerOptions={runnerOptions}
                   thresholdInputs={thresholdInputs}
                   thresholdErrors={thresholdErrors}
+                  vusInput={vusInput}
+                  vusError={vusError}
                   curlInput={curlInput}
                   curlImportState={curlImportState}
                   onVusChange={onVusChange}
@@ -338,6 +440,7 @@ export function TestHarnessSection({
                   onThresholdChange={onThresholdChange}
                   onTrafficModeChange={onTrafficModeChange}
                   onAuthTokenChange={onAuthTokenChange}
+                  onBaseUrlChange={onBaseUrlChange}
                   onCurlInputChange={onCurlInputChange}
                   onApplyCurlCommand={onApplyCurlCommand}
                 />
@@ -365,6 +468,7 @@ export function TestHarnessSection({
               >
                 <AdvancedOptionsCard
                   value={runnerOptions.advancedOptionsJson ?? ""}
+                  feedback={advancedOptionsFeedback}
                   onChange={onAdvancedOptionsChange}
                 />
               </div>
@@ -380,6 +484,7 @@ export function TestHarnessSection({
             resultSource={testState.resultSource}
             summaryIssue={testState.summaryIssue}
             notice={exportNotice}
+            hasLatestResult={Boolean(testState.result)}
             eventLogRef={eventLogRef}
             onExportLatestReport={onExportLatestReport}
           />

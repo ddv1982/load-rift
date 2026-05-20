@@ -170,6 +170,56 @@ describe("App validation lifecycle", () => {
     expect(screen.getByText("Configuration looks ready to run.")).toBeInTheDocument();
   });
 
+  it("allows temporary invalid virtual user edits while blocking Start Test", async () => {
+    const api = createApiMock();
+
+    renderApp(api);
+
+    await advanceValidationTimer();
+
+    const startButton = screen.getByRole("button", { name: "Start Test" });
+    const checkConfigButton = screen.getByRole("button", { name: "Check Config" });
+    expect(startButton).toBeEnabled();
+    expect(checkConfigButton).toBeEnabled();
+
+    const vusInput = screen.getByLabelText("Virtual users");
+    fireEvent.change(vusInput, { target: { value: "" } });
+
+    expect(screen.getByText("Virtual users is required.")).toBeInTheDocument();
+    expect(screen.getByText("Fix the highlighted runner inputs before starting.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Fix the highlighted runner inputs before checking configuration or starting."),
+    ).toBeInTheDocument();
+    expect(startButton).toBeDisabled();
+    expect(checkConfigButton).toBeDisabled();
+
+    fireEvent.change(vusInput, { target: { value: "3.5" } });
+
+    expect(
+      screen.getByText("Virtual users must be a whole number of 1 or more."),
+    ).toBeInTheDocument();
+    expect(startButton).toBeDisabled();
+    expect(checkConfigButton).toBeDisabled();
+
+    fireEvent.change(vusInput, { target: { value: "9007199254740992" } });
+
+    expect(
+      screen.getByText("Virtual users must be a whole number of 1 or more."),
+    ).toBeInTheDocument();
+    expect(startButton).toBeDisabled();
+    expect(checkConfigButton).toBeDisabled();
+
+    fireEvent.change(vusInput, { target: { value: "25" } });
+
+    await advanceValidationTimer();
+
+    expect(startButton).toBeEnabled();
+    expect(checkConfigButton).toBeEnabled();
+    const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock.lastCall;
+    expect(lastValidationCall).toBeDefined();
+    expect(lastValidationCall?.[0].options.vus).toBe(25);
+  });
+
   it("requires threshold inputs to be whole numbers before starting", async () => {
     const api = createApiMock();
 
@@ -208,7 +258,7 @@ describe("App validation lifecycle", () => {
 
     applyCurlSnippet(DEFAULT_CURL_SNIPPET);
 
-    expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
     );
     expect((screen.getByLabelText("Bearer token") as HTMLInputElement).value).toBe(
@@ -225,7 +275,43 @@ describe("App validation lifecycle", () => {
     );
   });
 
-  it("uses the derived base URL for host-style variables without persisting mirrored overrides", async () => {
+  it("allows manual base URL edits for host-style variables without persisting mirrored overrides", async () => {
+    const api = createApiMock();
+
+    renderApp(api);
+
+    await advanceValidationTimer();
+    vi.mocked(api.validateTestConfiguration).mockClear();
+
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: { value: " https://manual.example.com " },
+    });
+
+    await advanceValidationTimer();
+
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
+      " https://manual.example.com ",
+    );
+    expect(api.validateTestConfiguration).toHaveBeenCalledTimes(1);
+    expect(
+      (api.validateTestConfiguration as ReturnType<typeof vi.fn>).mock.calls[0]?.[0].options,
+    ).toMatchObject({
+      baseUrl: "https://manual.example.com",
+      variableOverrides: {},
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Variables" }));
+    expect((screen.getByLabelText("Environment") as HTMLInputElement).value).toBe(
+      "https://manual.example.com",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Test" }));
+    expect(appHookTestState.testHookState.startTest).toHaveBeenCalledWith(
+      expect.objectContaining({ baseUrl: "https://manual.example.com" }),
+    );
+  });
+
+  it("uses the cURL-applied base URL for host-style variables without persisting mirrored overrides", async () => {
     const api = createApiMock();
 
     renderApp(api);
@@ -237,7 +323,7 @@ describe("App validation lifecycle", () => {
 
     await advanceValidationTimer();
 
-    expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
     );
     expect(api.validateTestConfiguration).toHaveBeenCalledTimes(1);
@@ -262,7 +348,7 @@ describe("App validation lifecycle", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Variables" }));
     expect(screen.queryByText(/Empty variables:\s*environment\./)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
-    expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
     );
   });
@@ -279,9 +365,57 @@ describe("App validation lifecycle", () => {
     renderApp(api);
 
     expect(screen.getByText("Runner").closest(".overview-card")).toHaveTextContent("IDLE");
-    expect(screen.getByText("Run State").closest(".status-chip")).toHaveTextContent("IDLE");
-    expect(screen.getByText("Verdict").closest(".status-chip")).toHaveTextContent("IDLE");
+    expect(screen.getByText("Live metrics")).toBeInTheDocument();
+    expect(screen.getByLabelText("Live run metrics overview")).toHaveTextContent("Active VUs");
+    expect(screen.queryByText("Run State")).not.toBeInTheDocument();
+    expect(screen.queryByText("Verdict")).not.toBeInTheDocument();
     expect(screen.queryByText("PENDING")).not.toBeInTheDocument();
+  });
+
+  it("blocks run readiness while advanced JSON is invalid", async () => {
+    const api = createApiMock();
+
+    renderApp(api);
+
+    await advanceValidationTimer();
+
+    const startButton = screen.getByRole("button", { name: "Start Test" });
+    const smokeButton = screen.getByRole("button", { name: "Smoke Test" });
+    const checkConfigButton = screen.getByRole("button", { name: "Check Config" });
+    expect(startButton).toBeEnabled();
+    expect(smokeButton).toBeEnabled();
+    expect(checkConfigButton).toBeEnabled();
+
+    vi.mocked(api.validateTestConfiguration).mockClear();
+    vi.mocked(api.smokeTestRequests).mockClear();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Advanced" }));
+    fireEvent.change(screen.getByLabelText("Advanced options JSON"), {
+      target: { value: "{bad" },
+    });
+
+    expect(screen.getByText(/Invalid JSON:/)).toBeInTheDocument();
+    expect(screen.getByText("Fix the highlighted runner inputs before starting.")).toBeInTheDocument();
+    expect(startButton).toBeDisabled();
+    expect(smokeButton).toBeDisabled();
+    expect(checkConfigButton).toBeDisabled();
+
+    await advanceValidationTimer();
+
+    expect(api.validateTestConfiguration).not.toHaveBeenCalled();
+    fireEvent.click(smokeButton);
+    expect(api.smokeTestRequests).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText("Advanced options JSON"), {
+      target: { value: '{"tags":{"team":"qa"}}' },
+    });
+
+    expect(screen.getByText("JSON syntax looks valid.")).toBeInTheDocument();
+
+    await advanceValidationTimer();
+
+    expect(startButton).toBeEnabled();
+    expect(checkConfigButton).toBeEnabled();
   });
 
   it("shows k6 primary error, fallback context, and finish reason", () => {
@@ -570,13 +704,13 @@ describe("App validation lifecycle", () => {
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
-    expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
     );
 
     applyCurlSnippet(TOKEN_ONLY_CURL_SNIPPET);
 
-    expect((screen.getByLabelText("Derived base URL") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Bearer token") as HTMLInputElement).value).toBe(
       "token-only",
     );
@@ -605,6 +739,7 @@ describe("App validation lifecycle", () => {
     expect(api.exportReport).toHaveBeenCalledWith({
       savePath: "/tmp/loadrift-report.html",
     });
+    expect(screen.getByText(/Export uses the latest backend report/)).toBeInTheDocument();
     expect(
       screen.getByText("Report saved to /tmp/loadrift-report.html."),
     ).toBeInTheDocument();
