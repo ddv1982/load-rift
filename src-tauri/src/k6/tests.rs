@@ -772,7 +772,7 @@ export default function () {
     assert_eq!(
         http_reqs.get("count").and_then(Value::as_u64),
         Some(1),
-        "bundled k6 v1.6.1 should export legacy flat counter fields",
+        "bundled k6 v2.0.0 should export legacy flat counter fields",
     );
     assert!(
         !http_reqs.contains_key("values"),

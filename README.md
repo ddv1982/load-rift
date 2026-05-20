@@ -154,7 +154,7 @@ The app currently provides a slim migration shell with:
 
 ## Runtime Notes
 
-- Supported Linux and macOS builds vendor `k6` `v1.6.1` into `src-tauri/bin/`
+- Supported Linux and macOS builds vendor `k6` `v2.0.0` into `src-tauri/bin/`
   using the platform-specific target triple filename.
 - Custom `K6_VERSION` installs require `K6_SHA256` for the matching k6 release archive; built-in checksums only apply to the default bundled version.
 - Tauri bundles those binaries as application resources, so packaged Linux and
@@ -166,11 +166,11 @@ The app currently provides a slim migration shell with:
 - Load Rift is licensed under MIT. See `LICENSE`.
 - The root `LICENSE` file contains only the project's MIT license text so GitHub
   and package tooling can detect it cleanly.
-- Packaged Linux and macOS builds bundle `k6` `v1.6.1`, which is licensed
-  separately under AGPL-3.0.
+- Packaged Linux and macOS builds bundle `k6` `v2.0.0`, which is licensed
+  separately under AGPL-3.0-only.
 - See `THIRD_PARTY_LICENSES.md` for the exact bundled `k6` version and
   corresponding source references.
-- See `licenses/AGPL-3.0.txt` for the AGPL-3.0 license text shipped with this
+- See `licenses/AGPL-3.0.txt` for the AGPL-3.0-only license text shipped with this
   repository.
 - Tauri bundle resources also ship these licensing documents inside the app,
   and Linux AppImage/`.deb`/`.rpm` outputs install copies under
@@ -183,9 +183,9 @@ download that calls out the bundled `k6` binary and its corresponding source.
 Use this template:
 
 ```text
-This package bundles Grafana k6 v1.6.1, licensed under AGPL-3.0.
-Corresponding source: https://github.com/grafana/k6/tree/v1.6.1
-Source archive: https://github.com/grafana/k6/archive/refs/tags/v1.6.1.tar.gz
+This package bundles Grafana k6 v2.0.0, licensed under AGPL-3.0-only.
+Corresponding source: https://github.com/grafana/k6/tree/v2.0.0
+Source archive: https://github.com/grafana/k6/archive/refs/tags/v2.0.0.tar.gz
 Additional bundled licensing notices are included in the package.
 ```
 

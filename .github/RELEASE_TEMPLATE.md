@@ -10,9 +10,9 @@
 
 ## Bundled Third-Party Software
 
-This package bundles Grafana k6 v1.6.1, licensed under AGPL-3.0.
-Corresponding source: https://github.com/grafana/k6/tree/v1.6.1
-Source archive: https://github.com/grafana/k6/archive/refs/tags/v1.6.1.tar.gz
+This package bundles Grafana k6 v2.0.0, licensed under AGPL-3.0-only.
+Corresponding source: https://github.com/grafana/k6/tree/v2.0.0
+Source archive: https://github.com/grafana/k6/archive/refs/tags/v2.0.0.tar.gz
 Additional bundled licensing notices are included in the package.
 
 ## Verification

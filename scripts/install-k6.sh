@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="$ROOT_DIR/src-tauri/bin"
-DEFAULT_K6_VERSION="1.6.1"
+DEFAULT_K6_VERSION="2.0.0"
 K6_VERSION="${K6_VERSION:-$DEFAULT_K6_VERSION}"
 K6_SHA256="${K6_SHA256:-}"
 
@@ -38,25 +38,25 @@ case "${uname_s}-${uname_m}" in
     asset_suffix="linux-amd64"
     archive_ext="tar.gz"
     tauri_target_triple="x86_64-unknown-linux-gnu"
-    default_sha256="68df4958a1b089dc6f70a234e07c7ec818922f83b261ca24f3abf79882b13343"
+    default_sha256="2ae87d976f6cdba17185bdd980d8819a3a98e9092c6f0638cd58272ecefc8b90"
     ;;
   Linux-aarch64|Linux-arm64)
     asset_suffix="linux-arm64"
     archive_ext="tar.gz"
     tauri_target_triple="aarch64-unknown-linux-gnu"
-    default_sha256="698e47804a8cf679237dc7f19813e2967e0a892d4b9387f6f6de46da259069f9"
+    default_sha256="397d338c0c50821994aa51a630e511c599c2e903d00f7fa6c55a82258e7a84e6"
     ;;
   Darwin-x86_64)
     asset_suffix="macos-amd64"
     archive_ext="zip"
     tauri_target_triple="x86_64-apple-darwin"
-    default_sha256="93d54398159c2cae1c5fecbb6c6abd5d12a8e43f181f2b246749b4320d08516e"
+    default_sha256="287f3b0ab9f936f20c37c649f220842385a7961ead84d695d7b5192268c61b3f"
     ;;
   Darwin-arm64|Darwin-aarch64)
     asset_suffix="macos-arm64"
     archive_ext="zip"
     tauri_target_triple="aarch64-apple-darwin"
-    default_sha256="104c4b8f3784d2e1899b4f0b9d9197538d9657d9eb9a9631638a58b72b2e9434"
+    default_sha256="9a725f3faf8fc9de70f0bd86fb9783e6fb02f822492862846375ec0d8f2b35f7"
     ;;
   *)
     echo "Skipping automatic k6 install for unsupported platform ${uname_s}-${uname_m}." >&2
