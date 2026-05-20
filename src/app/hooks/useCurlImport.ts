@@ -1,8 +1,7 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useState, type Dispatch, type SetStateAction } from "react";
 import { parseCurlCommand } from "../../lib/curl";
 import type { K6Options } from "../../lib/loadrift/types";
 import type { CurlImportState } from "../types";
-import { loadCurlInput, saveCurlInput } from "../persistence";
 
 const INITIAL_CURL_IMPORT_STATE: CurlImportState = {
   status: "idle",
@@ -12,14 +11,11 @@ const INITIAL_CURL_IMPORT_STATE: CurlImportState = {
 export function useCurlImport(
   setRunnerOptions: Dispatch<SetStateAction<K6Options>>,
 ) {
-  const [curlInput, setCurlInput] = useState(() => loadCurlInput(""));
+  const [curlInput, setCurlInput] = useState("");
   const [curlImportState, setCurlImportState] = useState<CurlImportState>(
     INITIAL_CURL_IMPORT_STATE,
   );
 
-  useEffect(() => {
-    saveCurlInput(curlInput);
-  }, [curlInput]);
 
   function applyCurlCommand() {
     const parsed = parseCurlCommand(curlInput);
@@ -27,7 +23,7 @@ export function useCurlImport(
       setCurlImportState({
         status: "error",
         message:
-          "Could not detect a request URL or bearer/JWT token from that Postman cURL snippet.",
+          "Could not detect a request URL or bearer/JWT token from that Postman cURL command.",
       });
       return;
     }
@@ -37,14 +33,10 @@ export function useCurlImport(
 
       if (parsed.authToken) {
         nextOptions.authToken = parsed.authToken;
-      } else {
-        delete nextOptions.authToken;
       }
 
       if (parsed.baseUrl) {
         nextOptions.baseUrl = parsed.baseUrl;
-      } else {
-        delete nextOptions.baseUrl;
       }
 
       return nextOptions;
@@ -58,12 +50,13 @@ export function useCurlImport(
       applied.push("bearer token");
     }
 
+    setCurlInput("");
     setCurlImportState({
       status: "ready",
       message:
         applied.length > 0
-          ? `Applied ${applied.join(" and ")} from the pasted Postman cURL snippet.`
-          : "Parsed the Postman cURL snippet.",
+          ? `Extracted ${applied.join(" and ")} from the pasted Postman cURL command. The pasted command was cleared to avoid keeping tokens on screen.`
+          : "Parsed the Postman cURL command. The pasted command was cleared to avoid keeping tokens on screen.",
     });
   }
 

@@ -46,6 +46,7 @@ export function RunnerSettingsCard({
   const vusErrorId = useId();
   const p95ThresholdErrorId = useId();
   const errorRateThresholdErrorId = useId();
+  const curlImportStatusId = useId();
 
   return (
     <div className="settings-card">
@@ -174,63 +175,88 @@ export function RunnerSettingsCard({
           </p>
         </div>
 
-        <label className="field field-wide">
-          <span>Bearer token</span>
-          <input
-            type="password"
-            value={runnerOptions.authToken ?? ""}
-            onChange={(event) => onAuthTokenChange(event.target.value)}
-            placeholder="Raw JWT or full Authorization: Bearer ... value"
-          />
-        </label>
+        <section className="auth-setup-panel field-wide" aria-labelledby="auth-setup-title">
+          <div className="auth-setup-heading">
+            <div>
+              <p className="eyebrow">Request target & auth</p>
+              <h4 id="auth-setup-title">Fill from cURL or enter manually</h4>
+            </div>
+            <p className="field-hint">
+              Paste a Postman cURL command to extract values, or type the Base URL
+              and bearer token yourself.
+            </p>
+          </div>
 
-        <label className="field field-wide">
-          <span>Postman cURL snippet</span>
-          <textarea
-            value={curlInput}
-            onChange={(event) => onCurlInputChange(event.target.value)}
-            placeholder="Paste a working Postman cURL snippet here to extract the base URL and Authorization bearer/JWT token."
-            rows={4}
-          />
-        </label>
+          <label className="field field-wide">
+            <span>Paste Postman cURL</span>
+            <textarea
+              value={curlInput}
+              onChange={(event) => onCurlInputChange(event.target.value)}
+              placeholder="curl --location 'https://api.example.com/users' --header 'Authorization: Bearer ...'"
+              rows={4}
+              aria-describedby={curlImportStatusId}
+            />
+          </label>
 
-        <div className="action-row">
-          <button
-            type="button"
-            className="ghost"
-            onClick={onApplyCurlCommand}
-            disabled={!curlInput.trim()}
-          >
-            Apply Curl
-          </button>
-          <p
-            className={`inline-note${
-              curlImportState.status === "error"
-                ? " is-error"
-                : curlImportState.status === "ready"
-                  ? " is-success"
-                  : ""
-            }`}
-          >
-            {curlImportState.message ??
-              "Paste a working Postman cURL snippet to fill Base URL and bearer/JWT token automatically."}
-          </p>
-        </div>
+          <div className="action-row curl-action-row">
+            <button
+              type="button"
+              className="ghost"
+              onClick={onApplyCurlCommand}
+              disabled={!curlInput.trim()}
+            >
+              Extract URL & Token
+            </button>
+            <p
+              id={curlImportStatusId}
+              className={`inline-note${
+                curlImportState.status === "error"
+                  ? " is-error"
+                  : curlImportState.status === "ready"
+                    ? " is-success"
+                    : ""
+              }`}
+              aria-live="polite"
+            >
+              {curlImportState.message ??
+                "Optional shortcut: extract the Base URL and bearer token from a working Postman cURL command."}
+            </p>
+          </div>
 
-        <label className="field field-wide">
-          <span>Base URL</span>
-          <input
-            type="text"
-            inputMode="url"
-            value={runnerOptions.baseUrl ?? ""}
-            aria-label="Base URL"
-            onChange={(event) => onBaseUrlChange(event.target.value)}
-            placeholder="https://api.example.com"
-          />
-          <p className="inline-note">
-            Paste cURL to fill this automatically, or edit it manually.
-          </p>
-        </label>
+          <div className="manual-entry-block">
+            <p className="manual-entry-label">Or enter manually</p>
+            <div className="manual-entry-grid">
+              <label className="field">
+                <span>Base URL</span>
+                <input
+                  type="text"
+                  inputMode="url"
+                  value={runnerOptions.baseUrl ?? ""}
+                  aria-label="Base URL"
+                  onChange={(event) => onBaseUrlChange(event.target.value)}
+                  placeholder="https://api.example.com"
+                />
+                <p className="inline-note">
+                  Used as the request host when the collection has relative or variable URLs.
+                </p>
+              </label>
+
+              <label className="field">
+                <span>Bearer token / JWT</span>
+                <input
+                  type="password"
+                  value={runnerOptions.authToken ?? ""}
+                  aria-label="Bearer token / JWT"
+                  onChange={(event) => onAuthTokenChange(event.target.value)}
+                  placeholder="Raw JWT or Authorization: Bearer ..."
+                />
+                <p className="inline-note">
+                  Optional. Leave empty for unauthenticated requests.
+                </p>
+              </label>
+            </div>
+          </div>
+        </section>
       </div>
     </div>
   );

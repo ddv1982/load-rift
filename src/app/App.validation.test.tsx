@@ -71,12 +71,12 @@ function createSoapSmokeResponse(
 }
 
 function applyCurlSnippet(snippet: string) {
-  fireEvent.change(screen.getByLabelText("Postman cURL snippet"), {
+  fireEvent.change(screen.getByLabelText("Paste Postman cURL"), {
     target: {
       value: snippet,
     },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Apply Curl" }));
+  fireEvent.click(screen.getByRole("button", { name: "Extract URL & Token" }));
 }
 
 async function advanceValidationTimer() {
@@ -261,14 +261,13 @@ describe("App validation lifecycle", () => {
     expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
     );
-    expect((screen.getByLabelText("Bearer token") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value).toBe(
       "integration-token",
     );
     expect(
-      screen.getByText(
-        "Applied base URL https://api.example.com and bearer token from the pasted Postman cURL snippet.",
-      ),
-    ).toBeInTheDocument();
+      screen.getByText(/Extracted base URL https:\/\/api\.example\.com and bearer token/),
+    ).toHaveTextContent("cleared to avoid keeping tokens on screen");
+    expect((screen.getByLabelText("Paste Postman cURL") as HTMLTextAreaElement).value).toBe("");
     fireEvent.click(screen.getByRole("tab", { name: "Variables" }));
     expect((screen.getByLabelText("Environment") as HTMLInputElement).value).toBe(
       "https://api.example.com",
@@ -699,7 +698,7 @@ describe("App validation lifecycle", () => {
     expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
   });
 
-  it("clears the derived base URL when a later snippet does not contain one", () => {
+  it("preserves existing fields when a later cURL command omits them", () => {
     renderApp(createApiMock());
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
@@ -710,8 +709,10 @@ describe("App validation lifecycle", () => {
 
     applyCurlSnippet(TOKEN_ONLY_CURL_SNIPPET);
 
-    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Bearer token") as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
+      "https://api.example.com",
+    );
+    expect((screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value).toBe(
       "token-only",
     );
   });

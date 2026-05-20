@@ -9,7 +9,6 @@ import {
 const STORAGE_KEYS = {
   activeHarnessTab: "loadrift.ui.active-harness-tab",
   collectionFilters: "loadrift.ui.collection-filters",
-  curlInput: "loadrift.ui.curl-input",
   runnerPreferences: "loadrift.ui.runner-preferences",
 } as const;
 
@@ -213,14 +212,6 @@ export function saveCollectionFilters(filters: PersistedCollectionFilters) {
   });
 }
 
-export function loadCurlInput(defaultValue: string) {
-  const stored = readStorage<string>(STORAGE_KEYS.curlInput, "session");
-  return typeof stored === "string" ? stored : defaultValue;
-}
-
-export function saveCurlInput(value: string) {
-  writeStorage(STORAGE_KEYS.curlInput, value, "session");
-}
 
 export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
   const stored = readStorage<Partial<PersistedRunnerPreferences>>(

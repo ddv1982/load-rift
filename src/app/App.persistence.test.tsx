@@ -50,18 +50,18 @@ describe("App persistence", () => {
     expect(screen.getByRole("heading", { name: "Configure and launch" })).toBeInTheDocument();
   });
 
-  it("restores the current curl draft", () => {
+  it("does not restore legacy curl drafts that may contain auth tokens", () => {
     window.sessionStorage.setItem(
       "loadrift.ui.curl-input",
-      JSON.stringify("curl --location 'https://api.example.com/entities/alpha'"),
+      JSON.stringify(
+        "curl --location 'https://api.example.com/entities/alpha' --header 'Authorization: Bearer secret-token'",
+      ),
     );
 
     renderApp(createApiMock());
 
     expect(screen.getByRole("button", { name: "Choose Postman Collection" })).toBeInTheDocument();
-    expect((screen.getByLabelText("Postman cURL snippet") as HTMLTextAreaElement).value).toBe(
-      "curl --location 'https://api.example.com/entities/alpha'",
-    );
+    expect((screen.getByLabelText("Paste Postman cURL") as HTMLTextAreaElement).value).toBe("");
   });
 
   it("does not restore a manually entered base URL", () => {
@@ -128,7 +128,7 @@ describe("App persistence", () => {
     expect((screen.getByLabelText("Error-rate threshold (%)") as HTMLInputElement).value).toBe(
       "5",
     );
-    expect((screen.getByLabelText("Bearer token") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value).toBe("");
   });
 
   it("keeps request filters separately for each collection", () => {
