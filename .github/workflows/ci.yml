@@ -63,6 +63,8 @@ jobs:
 
       - name: Rust tests
         working-directory: src-tauri
+        env:
+          LOADRIFT_REQUIRE_BUNDLED_K6_TESTS: "true"
         run: cargo test
 
       - name: Rust check

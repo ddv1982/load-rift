@@ -1,4 +1,3 @@
-use crate::events::emit_k6_error;
 use crate::models::{LiveMetrics, TestResult, TestResultSource, TestStatus};
 use crate::state::{AppState, RunningTest, SharedAppState};
 
@@ -9,33 +8,6 @@ const FINISH_REASON_STOPPED: &str = "stopped";
 const FINISH_REASON_COMPLETED: &str = "completed";
 const FINISH_REASON_THRESHOLDS_FAILED: &str = "thresholds_failed";
 const FINISH_REASON_EXECUTION_ERROR: &str = "execution_error";
-
-pub(crate) fn record_failure(
-    state: &SharedAppState,
-    app: &tauri::AppHandle,
-    run_id: &str,
-    message: &str,
-) {
-    let should_emit = if let Ok(mut app_state) = state.lock() {
-        if !is_current_run(&app_state, run_id) {
-            false
-        } else {
-            clear_active_run(&mut app_state);
-            app_state.test_status = TestStatus::Failed;
-            app_state.latest_finish_reason = Some(FINISH_REASON_EXECUTION_ERROR.to_string());
-            app_state.latest_error_message = Some(message.to_string());
-            app_state.latest_result_source = None;
-            app_state.latest_summary_issue = None;
-            true
-        }
-    } else {
-        false
-    };
-
-    if should_emit {
-        let _ = emit_k6_error(app, run_id, message);
-    }
-}
 
 pub(crate) fn store_started_state(
     state: &SharedAppState,

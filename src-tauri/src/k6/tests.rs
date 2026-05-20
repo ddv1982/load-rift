@@ -4,6 +4,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use serde_json::Value;
 
@@ -501,6 +502,289 @@ fn private_run_temp_artifacts_live_in_private_directory_and_clean_up_on_drop() {
     );
 }
 
+#[test]
+fn explicit_run_temp_artifact_cleanup_removes_directory() {
+    let artifacts = process::create_run_temp_artifacts("export default function () {}")
+        .expect("private temp artifacts should be created");
+    let temp_dir = artifacts.dir_path().to_path_buf();
+
+    let outcome = artifacts.cleanup(process::ArtifactRetentionPolicy::Delete);
+
+    assert!(matches!(
+        outcome.action,
+        process::ArtifactCleanupAction::Removed
+    ));
+    assert!(
+        !temp_dir.exists(),
+        "explicit cleanup should remove temp dir"
+    );
+}
+
+#[test]
+fn debug_preserve_mode_keeps_artifact_directory() {
+    let artifacts = process::create_run_temp_artifacts("export default function () {}")
+        .expect("private temp artifacts should be created");
+    let temp_dir = artifacts.dir_path().to_path_buf();
+
+    let outcome = artifacts.cleanup(process::ArtifactRetentionPolicy::PreserveDebug);
+
+    assert!(matches!(
+        outcome.action,
+        process::ArtifactCleanupAction::Preserved
+    ));
+    assert!(temp_dir.is_dir(), "preserve mode should keep temp dir");
+    assert!(temp_dir.join("script.js").is_file());
+    let _ = fs::remove_dir_all(&temp_dir);
+}
+
+#[test]
+fn artifact_marker_is_written_without_script_contents() {
+    let script = "export default function secret_request_body_token() {}";
+    let artifacts = process::create_run_temp_artifacts(script)
+        .expect("private temp artifacts should be created");
+    let marker_path = artifacts.dir_path().join(".loadrift-k6-artifacts.json");
+
+    let marker = fs::read_to_string(marker_path).expect("marker should be readable");
+    let marker: Value = serde_json::from_str(&marker).expect("marker should be JSON");
+
+    assert_eq!(
+        marker.get("owner").and_then(Value::as_str),
+        Some("loadrift")
+    );
+    assert_eq!(
+        marker.get("kind").and_then(Value::as_str),
+        Some("k6-run-artifacts")
+    );
+    assert_eq!(
+        marker.get("preserveDebug").and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(marker.get("pid").and_then(Value::as_u64), Some(0));
+    assert_eq!(
+        marker.get("pidRole").and_then(Value::as_str),
+        Some("pendingK6Child")
+    );
+    assert!(marker.get("createdAtUnixSeconds").is_some());
+    assert!(!marker.to_string().contains("secret_request_body_token"));
+    assert!(!marker.to_string().contains(script));
+}
+
+#[test]
+fn artifact_marker_updates_to_spawned_k6_child_pid() {
+    let artifacts = process::create_run_temp_artifacts("export default function () {}")
+        .expect("private temp artifacts should be created");
+    let marker_path = artifacts.dir_path().join(".loadrift-k6-artifacts.json");
+
+    artifacts
+        .mark_spawned_child(42_424, process::ArtifactRetentionPolicy::Delete)
+        .expect("spawned child marker should update");
+
+    let marker = fs::read_to_string(marker_path).expect("marker should be readable");
+    let marker: Value = serde_json::from_str(&marker).expect("marker should be JSON");
+    assert_eq!(marker.get("pid").and_then(Value::as_u64), Some(42_424));
+    assert_eq!(
+        marker.get("pidRole").and_then(Value::as_str),
+        Some("k6Child")
+    );
+    assert_ne!(
+        marker.get("pid").and_then(Value::as_u64),
+        Some(std::process::id() as u64)
+    );
+}
+
+#[test]
+fn startup_cleanup_removes_stale_marker_owned_artifacts() {
+    let root = tempfile::tempdir().expect("cleanup root should be created");
+    let artifact_dir = root.path().join("loadrift-stale-marker");
+    fs::create_dir(&artifact_dir).expect("artifact dir should be created");
+    fs::write(artifact_dir.join("script.js"), "secret script")
+        .expect("artifact file should be written");
+    write_artifact_marker(&artifact_dir, 1, false);
+
+    let report = process::cleanup_stale_k6_temp_artifacts_in(
+        root.path(),
+        SystemTime::now() + Duration::from_secs(8 * 24 * 60 * 60),
+    );
+
+    assert_eq!(report.scanned, 1);
+    assert_eq!(report.removed, 1);
+    assert!(!artifact_dir.exists());
+}
+
+#[test]
+fn startup_cleanup_skips_old_marker_dirs_with_fresh_artifact_activity() {
+    let root = tempfile::tempdir().expect("cleanup root should be created");
+    let artifact_dir = root.path().join("loadrift-active-marker");
+    fs::create_dir(&artifact_dir).expect("artifact dir should be created");
+    fs::write(artifact_dir.join("script.js"), "secret script").expect("script should be written");
+    fs::write(artifact_dir.join("metrics.json"), "{}").expect("metrics should be written");
+    write_artifact_marker(&artifact_dir, 1, false);
+
+    let report = process::cleanup_stale_k6_temp_artifacts_in(root.path(), SystemTime::now());
+
+    assert_eq!(report.scanned, 1);
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.skipped_fresh, 1);
+    assert!(artifact_dir.is_dir());
+}
+
+#[test]
+fn startup_cleanup_skips_provisional_parent_pid_markers_as_unsafe() {
+    let root = tempfile::tempdir().expect("cleanup root should be created");
+    let artifact_dir = root.path().join("loadrift-provisional-marker");
+    fs::create_dir(&artifact_dir).expect("artifact dir should be created");
+    fs::write(artifact_dir.join("script.js"), "secret script")
+        .expect("artifact file should be written");
+    let marker = serde_json::json!({
+        "owner": "loadrift",
+        "kind": "k6-run-artifacts",
+        "schemaVersion": 1,
+        "createdAtUnixSeconds": 1,
+        "pid": std::process::id(),
+        "pidRole": "pendingK6Child",
+        "preserveDebug": false,
+    });
+    fs::write(
+        artifact_dir.join(".loadrift-k6-artifacts.json"),
+        serde_json::to_string(&marker).expect("marker should serialize"),
+    )
+    .expect("marker should be written");
+
+    let report = process::cleanup_stale_k6_temp_artifacts_in(
+        root.path(),
+        SystemTime::now() + Duration::from_secs(8 * 24 * 60 * 60),
+    );
+
+    assert_eq!(report.scanned, 1);
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.skipped_unsafe, 1);
+    assert!(artifact_dir.is_dir());
+}
+
+#[test]
+fn startup_cleanup_skips_bad_schema_and_unexpected_shapes() {
+    let root = tempfile::tempdir().expect("cleanup root should be created");
+    let bad_schema_dir = root.path().join("loadrift-bad-schema");
+    let missing_script_dir = root.path().join("loadrift-missing-script");
+    let unknown_file_dir = root.path().join("loadrift-unknown-file");
+    for dir in [&bad_schema_dir, &missing_script_dir, &unknown_file_dir] {
+        fs::create_dir(dir).expect("artifact dir should be created");
+    }
+    fs::write(bad_schema_dir.join("script.js"), "secret script").expect("script should be written");
+    write_artifact_marker_with_schema(&bad_schema_dir, 1, false, dead_test_pid(), 2);
+    write_artifact_marker(&missing_script_dir, 1, false);
+    fs::write(unknown_file_dir.join("script.js"), "secret script")
+        .expect("script should be written");
+    fs::write(unknown_file_dir.join("notes.txt"), "do not delete")
+        .expect("unknown file should be written");
+    write_artifact_marker(&unknown_file_dir, 1, false);
+
+    let report = process::cleanup_stale_k6_temp_artifacts_in(
+        root.path(),
+        SystemTime::now() + Duration::from_secs(8 * 24 * 60 * 60),
+    );
+
+    assert_eq!(report.scanned, 3);
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.skipped_unsafe, 3);
+    assert!(bad_schema_dir.is_dir());
+    assert!(missing_script_dir.is_dir());
+    assert!(unknown_file_dir.is_dir());
+}
+
+#[cfg(unix)]
+#[test]
+fn startup_cleanup_skips_symlink_artifact_children() {
+    use std::os::unix::fs::symlink;
+
+    let root = tempfile::tempdir().expect("cleanup root should be created");
+    let artifact_dir = root.path().join("loadrift-symlink-child");
+    let target = root.path().join("outside-secret.txt");
+    fs::create_dir(&artifact_dir).expect("artifact dir should be created");
+    fs::write(&target, "do not delete").expect("target should be written");
+    symlink(&target, artifact_dir.join("script.js")).expect("symlink should be created");
+    write_artifact_marker(&artifact_dir, 1, false);
+
+    let report = process::cleanup_stale_k6_temp_artifacts_in(
+        root.path(),
+        SystemTime::now() + Duration::from_secs(8 * 24 * 60 * 60),
+    );
+
+    assert_eq!(report.scanned, 1);
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.skipped_unsafe, 1);
+    assert!(artifact_dir.is_dir());
+    assert!(target.is_file());
+}
+
+#[test]
+fn startup_cleanup_skips_stale_marker_when_pid_is_alive() {
+    let root = tempfile::tempdir().expect("cleanup root should be created");
+    let artifact_dir = root.path().join("loadrift-live-pid-marker");
+    fs::create_dir(&artifact_dir).expect("artifact dir should be created");
+    fs::write(artifact_dir.join("script.js"), "secret script")
+        .expect("artifact file should be written");
+    write_artifact_marker_with_pid(&artifact_dir, 1, false, std::process::id());
+
+    let report = process::cleanup_stale_k6_temp_artifacts_in(
+        root.path(),
+        SystemTime::now() + Duration::from_secs(8 * 24 * 60 * 60),
+    );
+
+    assert_eq!(report.scanned, 1);
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.skipped_fresh, 1);
+    assert!(artifact_dir.is_dir());
+}
+
+#[test]
+fn startup_cleanup_preserves_fresh_and_debug_preserved_marker_dirs() {
+    let root = tempfile::tempdir().expect("cleanup root should be created");
+    let fresh_dir = root.path().join("loadrift-fresh-marker");
+    let preserved_dir = root.path().join("loadrift-preserved-marker");
+    fs::create_dir(&fresh_dir).expect("fresh dir should be created");
+    fs::create_dir(&preserved_dir).expect("preserved dir should be created");
+    write_artifact_marker(&fresh_dir, 10 * 24 * 60 * 60, false);
+    write_artifact_marker(&preserved_dir, 1, true);
+
+    let report = process::cleanup_stale_k6_temp_artifacts_in(
+        root.path(),
+        UNIX_EPOCH + Duration::from_secs(10 * 24 * 60 * 60),
+    );
+
+    assert_eq!(report.scanned, 2);
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.skipped_fresh, 1);
+    assert_eq!(report.skipped_preserved, 1);
+    assert!(fresh_dir.is_dir());
+    assert!(preserved_dir.is_dir());
+}
+
+#[test]
+fn startup_cleanup_skips_markerless_legacy_artifact_dirs() {
+    let root = tempfile::tempdir().expect("cleanup root should be created");
+    let legacy_dir = root.path().join("loadrift-legacy");
+    let unsafe_dir = root.path().join("loadrift-unknown");
+    fs::create_dir(&legacy_dir).expect("legacy dir should be created");
+    fs::create_dir(&unsafe_dir).expect("unsafe dir should be created");
+    fs::write(legacy_dir.join("script.js"), "secret script")
+        .expect("legacy script should be written");
+    fs::write(legacy_dir.join("summary.json"), "{}").expect("legacy summary should be written");
+    fs::write(unsafe_dir.join("notes.txt"), "do not delete")
+        .expect("unknown file should be written");
+
+    let report = process::cleanup_stale_k6_temp_artifacts_in(
+        root.path(),
+        SystemTime::now() + Duration::from_secs(8 * 24 * 60 * 60),
+    );
+
+    assert_eq!(report.scanned, 2);
+    assert_eq!(report.removed, 0);
+    assert_eq!(report.skipped_unsafe, 2);
+    assert!(legacy_dir.is_dir());
+    assert!(unsafe_dir.is_dir());
+}
+
 #[cfg(unix)]
 #[test]
 fn private_run_temp_artifacts_remove_group_and_other_permissions() {
@@ -694,6 +978,19 @@ fn artifact_diagnostics_include_metadata_without_script_contents() {
     assert!(diagnostics.contains("metadataError=none"));
     assert!(!diagnostics.contains("secret_request_body_token"));
     assert!(!diagnostics.contains(script));
+}
+
+#[test]
+fn user_artifact_diagnostics_redact_paths_by_default() {
+    let artifacts = process::create_run_temp_artifacts("export default function () {}")
+        .expect("private temp artifacts should be created");
+
+    let redacted = process::temp_artifact_diagnostics_user_output_for_test(&artifacts, false);
+    let debug = process::temp_artifact_diagnostics_user_output_for_test(&artifacts, true);
+
+    assert!(redacted.contains("path=<redacted>"));
+    assert!(!redacted.contains(&artifacts.script_path.display().to_string()));
+    assert!(debug.contains(&artifacts.script_path.display().to_string()));
 }
 
 #[test]
@@ -993,6 +1290,62 @@ export default function () {
 }
 
 #[test]
+fn bundled_k6_handle_summary_file_export_suppresses_native_console_summary() {
+    let Some(k6_binary) = bundled_k6_binary() else {
+        return;
+    };
+
+    let script = r#"import http from "k6/http";
+
+export const options = {
+  vus: 1,
+  iterations: 1,
+};
+
+export default function () {
+  http.get("http://127.0.0.1:1");
+}
+
+export function handleSummary(data) {
+  const summaryPath = __ENV.LOADRIFT_K6_SUMMARY_PATH;
+  return {
+    [summaryPath]: JSON.stringify(data, null, 2),
+  };
+}
+"#;
+
+    let script_path =
+        process::write_temp_file("js", script).expect("fixture script should be written");
+    let summary_path = process::temp_file_path("json");
+
+    let output = Command::new(&k6_binary)
+        .arg("run")
+        .arg(&script_path)
+        .env("LOADRIFT_K6_SUMMARY_PATH", &summary_path)
+        .env("K6_NO_COLOR", "true")
+        .env("K6_WEB_DASHBOARD", "false")
+        .output()
+        .expect("bundled k6 should run");
+
+    let _ = fs::remove_file(&script_path);
+    let summary_json =
+        fs::read_to_string(&summary_path).expect("handleSummary should write the summary file");
+    let _ = fs::remove_file(&summary_path);
+
+    assert!(
+        output.status.success(),
+        "bundled k6 handleSummary execution failed\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    summary::parse_summary(&summary_json, 1).expect("handleSummary JSON should parse");
+    assert!(
+        !String::from_utf8_lossy(&output.stdout).contains("TOTAL RESULTS"),
+        "handleSummary without a local text-summary renderer should not replace --summary-export yet"
+    );
+}
+
+#[test]
 fn live_metrics_aggregator_tracks_vus_and_request_totals() {
     let mut aggregator = process::LiveMetricsAggregator::default();
 
@@ -1176,11 +1529,74 @@ fn bundled_k6_accepts_advanced_iterations_when_basic_load_shape_is_suppressed() 
     );
 }
 
+fn write_artifact_marker(
+    dir: &std::path::Path,
+    created_at_unix_seconds: u64,
+    preserve_debug: bool,
+) {
+    write_artifact_marker_with_pid(
+        dir,
+        created_at_unix_seconds,
+        preserve_debug,
+        dead_test_pid(),
+    );
+}
+
+fn write_artifact_marker_with_pid(
+    dir: &std::path::Path,
+    created_at_unix_seconds: u64,
+    preserve_debug: bool,
+    pid: u32,
+) {
+    write_artifact_marker_with_schema(dir, created_at_unix_seconds, preserve_debug, pid, 1);
+}
+
+fn write_artifact_marker_with_schema(
+    dir: &std::path::Path,
+    created_at_unix_seconds: u64,
+    preserve_debug: bool,
+    pid: u32,
+    schema_version: u8,
+) {
+    let marker = serde_json::json!({
+        "owner": "loadrift",
+        "kind": "k6-run-artifacts",
+        "schemaVersion": schema_version,
+        "createdAtUnixSeconds": created_at_unix_seconds,
+        "pid": pid,
+        "pidRole": "k6Child",
+        "preserveDebug": preserve_debug,
+    });
+    fs::write(
+        dir.join(".loadrift-k6-artifacts.json"),
+        serde_json::to_string(&marker).expect("marker should serialize"),
+    )
+    .expect("marker should be written");
+}
+
+fn dead_test_pid() -> u32 {
+    9_999_999
+}
+
 fn bundled_k6_binary() -> Option<PathBuf> {
     let k6_binary = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("bin")
         .join(k6_binary_name());
     if !k6_binary.is_file() {
+        if env::var("LOADRIFT_REQUIRE_BUNDLED_K6_TESTS")
+            .map(|value| {
+                matches!(
+                    value.trim().to_ascii_lowercase().as_str(),
+                    "1" | "true" | "yes" | "on"
+                )
+            })
+            .unwrap_or(false)
+        {
+            panic!(
+                "Bundled k6 regression tests are required but {} is missing. Run `npm run install:k6` before `cargo test`.",
+                k6_binary.display()
+            );
+        }
         eprintln!(
             "Skipping bundled k6 summary test because {} is missing.",
             k6_binary.display()

@@ -30,6 +30,8 @@ pub fn run() {
                 )?;
             }
 
+            let _ = crate::k6::cleanup_stale_k6_temp_artifacts_on_startup();
+
             log::info!("Load Rift Tauri foundation booted");
 
             Ok(())

@@ -160,6 +160,10 @@ The app currently provides a slim migration shell with:
 - Tauri bundles those binaries as application resources, so packaged Linux and
   macOS artifacts do not rely on a system-wide k6 install.
 - At runtime the app still honors `LOADRIFT_K6_BIN` first, which is useful for local overrides or debugging.
+- Load Rift writes each run's generated `script.js`, `summary.json`, and `metrics.json` paths into a private per-run temp directory. Startup cleanup only removes old Load Rift-owned k6 artifact directories when the marker schema, k6-child PID role, expected file shape, staleness, and conservative PID-liveness checks all prove deletion is safe; markerless, malformed, preserved, active, symlinked, or unknown-shape directories are skipped.
+- User-visible fallback diagnostics redact local artifact paths by default. Full artifact paths are kept for logs and for explicit debug preservation mode.
+- Set `LOADRIFT_PRESERVE_K6_ARTIFACTS=true` only when debugging k6 temp-file issues. This preserves the per-run temp directory instead of deleting it automatically and allows user-visible diagnostics to include local artifact paths; preserved artifacts can contain request URLs, headers, bodies, and tokens, so delete the directory manually when finished.
+- CI requires bundled-k6 regression coverage with `LOADRIFT_REQUIRE_BUNDLED_K6_TESTS=true`. Local test runs still skip bundled-k6 tests when the platform binary is absent unless that variable is set; run `npm run install:k6` first when you want the mandatory behavior locally.
 
 ## Licensing
 

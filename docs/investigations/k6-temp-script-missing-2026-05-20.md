@@ -114,6 +114,19 @@ The repository does not prove why the file was unavailable to k6. Remaining plau
 - Added k6 binary/source and temp artifact diagnostics without logging generated script contents.
 - Added regression coverage for production private temp artifacts, including dropped-temp missing-script reproduction and macOS/Linux bundled-k6 test helper names.
 - Updated frontend state and result surfaces to show finish reason, primary k6 error, result source, and fallback context.
+- Added explicit k6 temp artifact cleanup after each run, with cleanup failure logging and opt-in preservation via `LOADRIFT_PRESERVE_K6_ARTIFACTS=true` for sensitive local debugging only.
+- Added startup cleanup for stale Load Rift-owned `loadrift-*` k6 artifact directories, deleting only marker-owned dirs after age, k6-child PID role, conservative PID-liveness, expected artifact-shape, and artifact-inactivity checks; markerless legacy dirs are skipped.
+- Evaluated k6 `handleSummary()` with the bundled binary: it can write parseable JSON to the requested file, but defining `handleSummary()` without a local text-summary renderer suppresses the native console summary. Production therefore remains on `--summary-export` for now to preserve report output.
+
+### 2026-05-20 lifecycle hardening update
+
+- Artifact markers now start as provisional (`pidRole: pendingK6Child`, `pid: 0`) and are rewritten immediately after spawn with the actual k6 child PID (`pidRole: k6Child`). Startup cleanup only treats the final k6-child marker role as deletion-eligible.
+- Post-spawn setup failures now settle ownership before returning: if marker update or active-state storage fails after `spawn()`, Load Rift terminates/reaps the child before applying normal artifact cleanup; if the child cannot be settled, artifacts are preserved rather than deleting files a still-running k6 process may need.
+- Waiter uncertainty no longer clears active state while k6 may still be running. Lock poisoning is recovered when possible, `try_wait()` errors trigger a settle attempt, and unsettled children keep the waiter and artifacts alive for another poll instead of recording a terminal failure.
+- Startup cleanup is intentionally conservative: deletion requires owner `loadrift`, kind `k6-run-artifacts`, schema version `1`, k6-child PID role, a stale marker, a definitely-not-alive PID, regular files only, `script.js` present, optional `summary.json`/`metrics.json`, no unknown entries, and no symlinks.
+- PID liveness treats permission-denied, invalid/pending PID, unsupported platform, and unexpected OS errors as unknown/active for deletion purposes.
+- User-visible fallback and artifact diagnostics redact local paths by default. Logs retain full paths, and explicit `LOADRIFT_PRESERVE_K6_ARTIFACTS=true` keeps full paths visible for local debugging with the documented sensitive-data tradeoff.
+- CI now sets `LOADRIFT_REQUIRE_BUNDLED_K6_TESTS=true` for Rust tests after `npm run install:k6`, so bundled-k6 regressions fail if the expected binary is absent instead of silently skipping. Local runs can keep the skip behavior unless the same variable is set.
 
 ## Preventive Measures
 - Keep a regression test that exercises real k6 against the same private temp artifact contract used in production, not only direct temp files created by test helpers.
