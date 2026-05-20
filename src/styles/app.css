@@ -713,7 +713,8 @@ button {
 
 .harness-main,
 .harness-monitor-column,
-.harness-secondary-card {
+.harness-secondary-card,
+.harness-secondary-stack {
   display: flex;
   flex-direction: column;
   gap: 1rem;
@@ -1087,6 +1088,11 @@ button {
   color: var(--success);
 }
 
+.export-notice {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .json-feedback,
 .export-helper {
   font-size: 0.8rem;
@@ -1120,14 +1126,28 @@ button {
 
 .result-summary-header {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 1rem;
 }
 
 .result-summary-header p,
+.result-summary-header h3,
 .result-summary-header strong {
   margin: 0;
+}
+
+.result-summary-header h3 {
+  font-family: "Sora", "Inter", sans-serif;
+  font-size: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.result-summary-actions {
+  display: flex;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: flex-end;
 }
 
 .result-summary-scroll {
@@ -1335,7 +1355,9 @@ button {
   .import-callout,
   .app-title-row,
   .workflow-card-header,
-  .live-metrics-heading {
+  .live-metrics-heading,
+  .result-summary-header,
+  .result-summary-actions {
     flex-direction: column;
     align-items: stretch;
   }

@@ -47,7 +47,10 @@ describe("App persistence", () => {
 
     expect(screen.getByLabelText("Environment")).toBeInTheDocument();
     expect(screen.getByLabelText("Duration")).not.toBeVisible();
-    expect(screen.getByRole("heading", { name: "Configure and launch" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Configure the run" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Validate, launch, and review" }),
+    ).toBeInTheDocument();
   });
 
   it("does not restore legacy curl drafts that may contain auth tokens", () => {

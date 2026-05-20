@@ -1,4 +1,4 @@
-import { act, fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadRiftApi } from "../lib/loadrift/api";
 import type { K6Options, SmokeTestResponse, TestResult } from "../lib/loadrift/types";
@@ -91,6 +91,32 @@ async function flushMicrotasks(count = 1) {
       await Promise.resolve();
     }
   });
+}
+
+function getLatestResultCard() {
+  const latestResultCard = screen.getByText("Latest Result").closest(".result-summary");
+  expect(latestResultCard).not.toBeNull();
+  return latestResultCard as HTMLElement;
+}
+
+function getLiveRunMonitor() {
+  return screen.getByLabelText("Live run monitor");
+}
+
+function createCompletedResult(): TestResult {
+  return {
+    status: "passed",
+    metrics: {
+      totalRequests: 50,
+      failedRequests: 0,
+      avgResponseTime: 120,
+      p50ResponseTime: 100,
+      p95ResponseTime: 180,
+      maxResponseTime: 240,
+      requestsPerSecond: 8.5,
+    },
+    thresholds: [],
+  };
 }
 
 describe("App validation lifecycle", () => {
@@ -717,8 +743,10 @@ describe("App validation lifecycle", () => {
     );
   });
 
-  it("prompts for a report destination before exporting", async () => {
-    dialogMocks.selectReportSavePath.mockResolvedValue("/tmp/loadrift-report.html");
+  it("prompts for a report destination from the latest result card before exporting", async () => {
+    const longSavePath =
+      "/tmp/loadrift/reports/releases/very-long-directory-name-without-natural-breaks/loadrift-report-api-example-com-20260325-151332.html";
+    dialogMocks.selectReportSavePath.mockResolvedValue(longSavePath);
     const api = createApiMock({
       exportReport: vi.fn(async () => undefined),
     });
@@ -727,26 +755,72 @@ describe("App validation lifecycle", () => {
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
-    fireEvent.click(screen.getByRole("button", { name: "Export Latest Report" }));
+    const latestResultCard = getLatestResultCard();
+    const liveRunMonitor = getLiveRunMonitor();
+    const exportButton = within(latestResultCard).getByRole("button", {
+      name: "Export Latest Report",
+    });
+
+    expect(
+      within(liveRunMonitor).queryByRole("button", { name: "Export Latest Report" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(exportButton);
 
     await act(async () => {
       await Promise.resolve();
     });
+
+    const successMessage = `Report saved to ${longSavePath}.`;
 
     expect(dialogMocks.selectReportSavePath).toHaveBeenCalledTimes(1);
     expect(dialogMocks.selectReportSavePath).toHaveBeenCalledWith(
       "loadrift-report-api-example-com-20260325-151332.html",
     );
     expect(api.exportReport).toHaveBeenCalledWith({
-      savePath: "/tmp/loadrift-report.html",
+      savePath: longSavePath,
     });
-    expect(screen.getByText(/Export uses the latest backend report/)).toBeInTheDocument();
-    expect(
-      screen.getByText("Report saved to /tmp/loadrift-report.html."),
-    ).toBeInTheDocument();
+    expect(within(latestResultCard).getByText(/Export uses the latest backend report/)).toBeInTheDocument();
+    const notice = within(latestResultCard).getByRole("status");
+    expect(notice).toHaveTextContent(successMessage);
+    expect(notice).toHaveClass("export-notice");
+    expect(within(liveRunMonitor).queryByText(successMessage)).not.toBeInTheDocument();
   });
 
-  it("shows export failures in the live run monitor", async () => {
+  it("keeps result-state export controls and notices in the latest result card", async () => {
+    dialogMocks.selectReportSavePath.mockResolvedValue("/tmp/loadrift-report.html");
+    const api = createApiMock({
+      exportReport: vi.fn(async () => undefined),
+    });
+
+    appHookTestState.testHookState.state = {
+      ...appHookTestState.testHookState.state,
+      status: "completed",
+      result: createCompletedResult(),
+    };
+
+    renderApp(api);
+
+    const latestResultCard = getLatestResultCard();
+    const liveRunMonitor = getLiveRunMonitor();
+    const exportButton = within(latestResultCard).getByRole("button", {
+      name: "Export Latest Report",
+    });
+
+    expect(
+      within(liveRunMonitor).queryByRole("button", { name: "Export Latest Report" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(exportButton);
+
+    await flushMicrotasks(2);
+
+    const successMessage = "Report saved to /tmp/loadrift-report.html.";
+    expect(within(latestResultCard).getByRole("status")).toHaveTextContent(successMessage);
+    expect(within(liveRunMonitor).queryByText(successMessage)).not.toBeInTheDocument();
+  });
+
+  it("shows export failures in the latest result card", async () => {
     dialogMocks.selectReportSavePath.mockResolvedValue("/tmp/loadrift-report.html");
     const api = createApiMock({
       exportReport: vi.fn(async () => {
@@ -756,12 +830,23 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    fireEvent.click(screen.getByRole("button", { name: "Export Latest Report" }));
+    const latestResultCard = getLatestResultCard();
+    const liveRunMonitor = getLiveRunMonitor();
+
+    expect(
+      within(liveRunMonitor).queryByRole("button", { name: "Export Latest Report" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(
+      within(latestResultCard).getByRole("button", { name: "Export Latest Report" }),
+    );
 
     await flushMicrotasks(2);
 
-    expect(
-      screen.getByText("Run a k6 test before exporting a report."),
-    ).toBeInTheDocument();
+    const failureMessage = "Run a k6 test before exporting a report.";
+    const notice = within(latestResultCard).getByRole("alert");
+    expect(notice).toHaveTextContent(failureMessage);
+    expect(notice).toHaveClass("export-notice");
+    expect(within(liveRunMonitor).queryByText(failureMessage)).not.toBeInTheDocument();
   });
 });

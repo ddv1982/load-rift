@@ -256,103 +256,30 @@ export function TestHarnessSection({
   }
 
   return (
-    <section className="panel harness-panel workflow-panel">
-      <div className="section-heading section-heading-wide">
-        <div className="section-heading-copy">
-          <p className="panel-kicker">Step 2 · Run</p>
-          <h2>Configure and launch</h2>
-          <p className="section-copy">
-            Keep the primary controls front and center, then dip into variables,
-            advanced settings, and diagnostics only when they matter.
-          </p>
+    <>
+      <section className="panel harness-panel workflow-panel configure-panel">
+        <div className="section-heading section-heading-wide">
+          <div className="section-heading-copy">
+            <p className="panel-kicker">Step 2 · Configure</p>
+            <h2>Configure the run</h2>
+            <p className="section-copy">
+              Set the load profile, target, variables, and advanced k6 options before
+              moving into validation and execution.
+            </p>
+          </div>
+
+          <div className="harness-heading-meta">
+            <span className={`status-pill is-${displayedTestStatus}`}>
+              {displayedVerdict}
+            </span>
+            <p className="panel-copy">
+              {collection
+                ? "Configuration is ready for checks once required inputs are valid."
+                : "Import a collection first to unlock configuration."}
+            </p>
+          </div>
         </div>
 
-        <div className="harness-heading-meta">
-          <span className={`status-pill is-${displayedTestStatus}`}>
-            {displayedVerdict}
-          </span>
-          <p className="panel-copy">
-            {collection
-              ? "Ready to validate configuration, run a smoke check, or launch the full load profile."
-              : "Import a collection first to unlock the run workflow."}
-          </p>
-        </div>
-      </div>
-
-      <div className="action-row harness-action-row">
-        <button
-          type="button"
-          className="primary"
-          onClick={onStartTest}
-          disabled={!canStartTest}
-        >
-          {testState.isStarting ? "Starting..." : "Start Test"}
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={onSmokeTest}
-          disabled={!canSmokeTest}
-        >
-          {smokeTestState.isRunning ? "Smoking..." : "Smoke Test"}
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={onValidateConfiguration}
-          disabled={!collection || !runnerOptionsAreValid || configValidation.status === "checking"}
-        >
-          {configValidation.status === "checking" ? "Checking..." : "Check Config"}
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={onStopTest}
-          disabled={!testState.isRunning || testState.isStarting}
-        >
-          Stop
-        </button>
-        <button
-          type="button"
-          className="ghost"
-          onClick={onRefreshStatus}
-          disabled={testState.isBusy}
-        >
-          Refresh Status
-        </button>
-      </div>
-      <p className={`action-guidance is-${readiness.tone}`} aria-live="polite">
-        {readiness.message}
-      </p>
-
-      <div className="live-metrics-heading">
-        <span>Live metrics</span>
-        <small>Final verdict and completed-run stats stay in Latest result.</small>
-      </div>
-      <div className="status-strip" aria-label="Live run metrics overview">
-        <article className="status-chip">
-          <span>Active VUs</span>
-          <strong>{testState.metrics.activeVus}</strong>
-        </article>
-        <article className="status-chip">
-          <span>Total Requests</span>
-          <strong>{testState.metrics.totalRequests}</strong>
-        </article>
-        <article className="status-chip">
-          <span>P95</span>
-          <strong>{testState.metrics.p95ResponseTime} ms</strong>
-        </article>
-        <article className="status-chip">
-          <span>Error Rate</span>
-          <strong>{(testState.metrics.errorRate * 100).toFixed(1)}%</strong>
-        </article>
-        <article className="status-chip">
-          <span>Req/s</span>
-          <strong>{testState.metrics.requestsPerSecond.toFixed(1)}</strong>
-        </article>
-      </div>
-
-      <div className="harness-primary-grid">
         <div className="harness-main">
           {validationBanner ? (
             <div
@@ -475,41 +402,139 @@ export function TestHarnessSection({
             </div>
           </div>
         </div>
+      </section>
 
-        <aside className="harness-monitor-column" aria-label="Live run monitor">
-          <LiveRunMonitorCard
-            output={testState.output}
-            error={testState.error}
-            finishReason={testState.finishReason}
-            resultSource={testState.resultSource}
-            summaryIssue={testState.summaryIssue}
-            notice={exportNotice}
-            hasLatestResult={Boolean(testState.result)}
-            eventLogRef={eventLogRef}
-            onExportLatestReport={onExportLatestReport}
-          />
-        </aside>
-      </div>
+      <section className="panel harness-panel workflow-panel run-review-panel">
+        <div className="section-heading section-heading-wide">
+          <div className="section-heading-copy">
+            <p className="panel-kicker">Step 3 · Run &amp; Review</p>
+            <h2>Validate, launch, and review</h2>
+            <p className="section-copy">
+              Check readiness, run a smoke pass or full load test, then monitor live
+              output and export the retained report from the latest result.
+            </p>
+          </div>
 
-      <div className="harness-secondary-grid">
-        <div className="harness-secondary-card">
-          <SmokeTestCard
-            result={smokeTestState.result}
-            error={smokeTestState.error}
-            isRunning={smokeTestState.isRunning}
-          />
+          <div className="harness-heading-meta">
+            <span className={`status-pill is-${displayedTestStatus}`}>
+              {displayedVerdict}
+            </span>
+            <p className="panel-copy">
+              {collection
+                ? "Ready to validate configuration, run a smoke check, or launch the full load profile."
+                : "Import and configure a collection first to unlock run actions."}
+            </p>
+          </div>
         </div>
-        <div className="harness-secondary-card">
-          <LatestResultCard
-            result={testState.result}
-            finishReason={testState.finishReason}
-            resultSource={testState.resultSource}
-            summaryIssue={testState.summaryIssue}
-            error={testState.error}
-            resultSummaryRef={resultSummaryRef}
-          />
+
+        <div className="action-row harness-action-row">
+          <button
+            type="button"
+            className="primary"
+            onClick={onStartTest}
+            disabled={!canStartTest}
+          >
+            {testState.isStarting ? "Starting..." : "Start Test"}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={onSmokeTest}
+            disabled={!canSmokeTest}
+          >
+            {smokeTestState.isRunning ? "Smoking..." : "Smoke Test"}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={onValidateConfiguration}
+            disabled={!collection || !runnerOptionsAreValid || configValidation.status === "checking"}
+          >
+            {configValidation.status === "checking" ? "Checking..." : "Check Config"}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={onStopTest}
+            disabled={!testState.isRunning || testState.isStarting}
+          >
+            Stop
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={onRefreshStatus}
+            disabled={testState.isBusy}
+          >
+            Refresh Status
+          </button>
         </div>
-      </div>
-    </section>
+        <p className={`action-guidance is-${readiness.tone}`} aria-live="polite">
+          {readiness.message}
+        </p>
+
+        <div className="live-metrics-heading">
+          <span>Live metrics</span>
+          <small>Final verdict and completed-run stats stay in Latest result.</small>
+        </div>
+        <div className="status-strip" aria-label="Live run metrics overview">
+          <article className="status-chip">
+            <span>Active VUs</span>
+            <strong>{testState.metrics.activeVus}</strong>
+          </article>
+          <article className="status-chip">
+            <span>Total Requests</span>
+            <strong>{testState.metrics.totalRequests}</strong>
+          </article>
+          <article className="status-chip">
+            <span>P95</span>
+            <strong>{testState.metrics.p95ResponseTime} ms</strong>
+          </article>
+          <article className="status-chip">
+            <span>Error Rate</span>
+            <strong>{(testState.metrics.errorRate * 100).toFixed(1)}%</strong>
+          </article>
+          <article className="status-chip">
+            <span>Req/s</span>
+            <strong>{testState.metrics.requestsPerSecond.toFixed(1)}</strong>
+          </article>
+        </div>
+
+        <div className="harness-primary-grid">
+          <aside className="harness-monitor-column" aria-label="Live run monitor">
+            <LiveRunMonitorCard
+              output={testState.output}
+              error={testState.error}
+              finishReason={testState.finishReason}
+              resultSource={testState.resultSource}
+              summaryIssue={testState.summaryIssue}
+              eventLogRef={eventLogRef}
+            />
+          </aside>
+
+          <div className="harness-secondary-stack">
+            <div className="harness-secondary-card">
+              <SmokeTestCard
+                result={smokeTestState.result}
+                error={smokeTestState.error}
+                isRunning={smokeTestState.isRunning}
+              />
+            </div>
+            <div className="harness-secondary-card">
+              <LatestResultCard
+                result={testState.result}
+                finishReason={testState.finishReason}
+                resultSource={testState.resultSource}
+                summaryIssue={testState.summaryIssue}
+                error={testState.error}
+                notice={exportNotice}
+                resultSummaryRef={resultSummaryRef}
+                onExportLatestReport={onExportLatestReport}
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+    </>
   );
 }

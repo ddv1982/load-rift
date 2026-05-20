@@ -1,13 +1,20 @@
 import type { RefObject } from "react";
 import type { TestResult, TestResultSource } from "../../lib/loadrift/types";
 
+interface ResultNotice {
+  tone: "error" | "success";
+  message: string;
+}
+
 interface LatestResultCardProps {
   result: TestResult | null;
   finishReason: string | null;
   resultSource: TestResultSource | null;
   summaryIssue: string | null;
   error: string | null;
+  notice: ResultNotice | null;
   resultSummaryRef: RefObject<HTMLDivElement | null>;
+  onExportLatestReport: () => void;
 }
 
 function formatResultSource(source: TestResultSource | null) {
@@ -22,25 +29,59 @@ function formatResultSource(source: TestResultSource | null) {
   return null;
 }
 
+function ExportNotice({ notice }: { notice: ResultNotice | null }) {
+  if (!notice) {
+    return null;
+  }
+
+  return (
+    <p
+      className={`inline-note export-notice${notice.tone === "success" ? " is-success" : " is-error"}`}
+      role={notice.tone === "error" ? "alert" : "status"}
+      aria-atomic="true"
+    >
+      {notice.message}
+    </p>
+  );
+}
+
 export function LatestResultCard({
   result,
   finishReason,
   resultSource,
   summaryIssue,
   error,
+  notice,
   resultSummaryRef,
+  onExportLatestReport,
 }: LatestResultCardProps) {
   if (!result) {
     return (
       <div className="result-summary result-summary-empty">
         <div className="result-summary-header">
-          <p className="eyebrow">Latest Result</p>
+          <div>
+            <p className="eyebrow">Latest Result</p>
+            <h3>Report</h3>
+          </div>
+          <div className="export-action-group">
+            <button
+              type="button"
+              className="ghost"
+              onClick={onExportLatestReport}
+            >
+              Export Latest Report
+            </button>
+            <p className="inline-note export-helper">
+              Export uses the latest backend report if one exists; otherwise Load Rift will explain why.
+            </p>
+          </div>
         </div>
         <div className="result-summary-scroll">
           <p className="panel-copy">
             Run a test to capture the latest request totals, failure count, and
             exported report.
           </p>
+          <ExportNotice notice={notice} />
         </div>
       </div>
     );
@@ -49,9 +90,26 @@ export function LatestResultCard({
   return (
     <div className="result-summary">
       <div className="result-summary-header">
-        <p className="eyebrow">Latest Result</p>
-        <strong>{result.status}</strong>
+        <div>
+          <p className="eyebrow">Latest Result</p>
+          <h3>Report</h3>
+        </div>
+        <div className="result-summary-actions">
+          <strong>{result.status}</strong>
+          <div className="export-action-group">
+            <button
+              type="button"
+              className="ghost"
+              onClick={onExportLatestReport}
+            >
+              Export Latest Report
+            </button>
+            <p className="inline-note export-helper">Exports the latest retained k6 report.</p>
+          </div>
+        </div>
       </div>
+
+      <ExportNotice notice={notice} />
 
       <div ref={resultSummaryRef} className="result-summary-scroll">
         {finishReason || resultSource || error ? (

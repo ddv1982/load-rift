@@ -60,7 +60,10 @@ describe("App accessibility", () => {
       screen.getByRole("heading", { name: "Import a collection" }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("heading", { name: "Configure and launch" }),
+      screen.getByRole("heading", { name: "Configure the run" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("heading", { name: "Validate, launch, and review" }),
     ).toBeInTheDocument();
   });
 
