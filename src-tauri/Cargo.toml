@@ -1,6 +1,6 @@
 [package]
 name = "loadrift"
-version = "0.2.8"
+version = "0.2.9"
 description = "Load Rift Tauri foundation"
 authors = ["Douwe de Vries"]
 license = "MIT"

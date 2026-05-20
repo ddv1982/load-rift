@@ -1,7 +1,7 @@
 import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadRiftApi } from "../lib/loadrift/api";
-import type { K6Options, SmokeTestResponse } from "../lib/loadrift/types";
+import type { K6Options, SmokeTestResponse, TestResult } from "../lib/loadrift/types";
 import {
   appHookTestState,
   resetAppTestEnvironment,
@@ -282,6 +282,49 @@ describe("App validation lifecycle", () => {
     expect(screen.getByText("Run State").closest(".status-chip")).toHaveTextContent("IDLE");
     expect(screen.getByText("Verdict").closest(".status-chip")).toHaveTextContent("IDLE");
     expect(screen.queryByText("PENDING")).not.toBeInTheDocument();
+  });
+
+  it("shows k6 primary error, fallback context, and finish reason", () => {
+    const primaryError =
+      "The moduleSpecifier \"/tmp/loadrift/run/script.js\" couldn't be found on local disk.";
+    const summaryIssue = "summary.json was not written before k6 exited";
+    const fallbackResult: TestResult = {
+      status: "warning",
+      metrics: {
+        totalRequests: 3,
+        failedRequests: 1,
+        avgResponseTime: 120,
+        p50ResponseTime: 100,
+        p95ResponseTime: 180,
+        maxResponseTime: 220,
+        requestsPerSecond: 1.5,
+      },
+      thresholds: [],
+    };
+
+    appHookTestState.testHookState.state = {
+      ...appHookTestState.testHookState.state,
+      status: "failed",
+      result: fallbackResult,
+      finishReason: "execution_error",
+      resultSource: "liveMetricsFallback",
+      summaryIssue,
+      error: primaryError,
+    };
+
+    renderApp(createApiMock());
+
+    expect(screen.getAllByText(`Primary k6 error: ${primaryError}`)).not.toHaveLength(0);
+    expect(screen.getByText("Finish reason: execution_error")).toBeInTheDocument();
+    expect(screen.getByText(/Latest result uses live metrics fallback/)).toHaveTextContent(
+      summaryIssue,
+    );
+    expect(screen.getByText("Result source").closest("p")).toHaveTextContent(
+      "Live metrics fallback",
+    );
+    expect(screen.getByText("Fallback context").closest("p")).toHaveTextContent(
+      summaryIssue,
+    );
   });
 
   it("runs a smoke test, disables conflicting actions, and shows the returned SOAP preview", async () => {

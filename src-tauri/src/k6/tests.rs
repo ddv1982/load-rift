@@ -8,7 +8,9 @@ use std::sync::{Arc, Mutex};
 use serde_json::Value;
 
 use super::{process, report, summary};
-use crate::models::{LiveMetrics, TestMetrics, TestResult, TestResultStatus, TestStatus};
+use crate::models::{
+    LiveMetrics, TestMetrics, TestResult, TestResultSource, TestResultStatus, TestStatus,
+};
 use crate::state::{AppState, RunningTest};
 
 fn summary_report_result() -> TestResult {
@@ -234,11 +236,16 @@ fn store_completion_persists_result_and_clears_running_state() {
     process::store_completion(
         &state,
         "run-1",
-        &metrics,
-        &result,
-        TestStatus::Completed,
-        "thresholds_failed",
-        Some("{\"metrics\":{}}".to_string()),
+        process::CompletionRecord {
+            metrics: metrics.clone(),
+            result: result.clone(),
+            run_state: TestStatus::Completed,
+            finish_reason: "thresholds_failed".to_string(),
+            summary_json: Some("{\"metrics\":{}}".to_string()),
+            result_source: TestResultSource::Summary,
+            summary_issue: None,
+            error_message: None,
+        },
     );
 
     let app_state = state.lock().expect("state should remain readable");
@@ -250,6 +257,11 @@ fn store_completion_persists_result_and_clears_running_state() {
         Some("thresholds_failed")
     );
     assert!(app_state.latest_error_message.is_none());
+    assert_eq!(
+        app_state.latest_result_source,
+        Some(TestResultSource::Summary)
+    );
+    assert!(app_state.latest_summary_issue.is_none());
     assert_eq!(
         app_state
             .latest_metrics
@@ -318,11 +330,16 @@ fn stale_completion_does_not_overwrite_newer_active_run_state() {
     let stored = process::store_completion(
         &state,
         "old-run",
-        &stale_metrics,
-        &result,
-        TestStatus::Completed,
-        "completed",
-        Some("{\"stale\":true}".to_string()),
+        process::CompletionRecord {
+            metrics: stale_metrics,
+            result,
+            run_state: TestStatus::Completed,
+            finish_reason: "completed".to_string(),
+            summary_json: Some("{\"stale\":true}".to_string()),
+            result_source: TestResultSource::Summary,
+            summary_issue: None,
+            error_message: None,
+        },
     );
 
     let app_state = state.lock().expect("state should remain readable");
@@ -512,6 +529,174 @@ fn private_run_temp_artifacts_remove_group_and_other_permissions() {
 }
 
 #[test]
+fn private_run_temp_artifacts_are_readable_by_bundled_k6() {
+    let Some(k6_binary) = bundled_k6_binary() else {
+        return;
+    };
+
+    let artifacts = process::create_run_temp_artifacts(
+        r#"export const options = { vus: 1, iterations: 1 };
+export default function () {}
+"#,
+    )
+    .expect("private temp artifacts should be created");
+    let temp_dir = artifacts
+        .script_path
+        .parent()
+        .expect("script should be inside temp dir")
+        .to_path_buf();
+
+    assert!(artifacts.script_path.is_file());
+    let output = Command::new(&k6_binary)
+        .arg("run")
+        .arg("--summary-export")
+        .arg(&artifacts.summary_path)
+        .arg("--out")
+        .arg(format!("json={}", artifacts.metrics_path.display()))
+        .arg(&artifacts.script_path)
+        .env("K6_NO_COLOR", "true")
+        .env("K6_WEB_DASHBOARD", "false")
+        .output()
+        .expect("bundled k6 should run against private temp artifacts");
+
+    assert!(
+        output.status.success(),
+        "bundled k6 could not read private temp script\nstdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        artifacts.summary_path.is_file(),
+        "bundled k6 should write summary inside private temp directory"
+    );
+    assert!(
+        artifacts.metrics_path.is_file(),
+        "bundled k6 should write live metrics inside private temp directory"
+    );
+
+    drop(artifacts);
+    assert!(
+        !temp_dir.exists(),
+        "private temp dir should clean up after drop"
+    );
+}
+
+#[test]
+fn dropped_private_run_temp_artifacts_reproduce_missing_script_class() {
+    let Some(k6_binary) = bundled_k6_binary() else {
+        return;
+    };
+
+    let artifacts = process::create_run_temp_artifacts("export default function () {}")
+        .expect("private temp artifacts should be created");
+    let script_path = artifacts.script_path.clone();
+    let summary_path = artifacts.summary_path.clone();
+    assert!(script_path.is_file());
+    drop(artifacts);
+    assert!(!script_path.exists());
+
+    let output = Command::new(&k6_binary)
+        .arg("run")
+        .arg("--summary-export")
+        .arg(&summary_path)
+        .arg(&script_path)
+        .env("K6_NO_COLOR", "true")
+        .env("K6_WEB_DASHBOARD", "false")
+        .output()
+        .expect("bundled k6 should run and report the missing entry script");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("script.js")
+            && (stderr.contains("couldn't be found")
+                || stderr.contains("no such file")
+                || stderr.contains("cannot find")
+                || stderr.contains("not found")),
+        "stderr should identify the missing entry script, got:\n{stderr}"
+    );
+    assert!(
+        !summary_path.exists(),
+        "k6 should not create a summary when the entry script cannot be loaded"
+    );
+}
+
+#[test]
+fn primary_error_prefers_bounded_stderr_tail_over_generic_exit_status() {
+    let stderr = "time=error msg=\"The moduleSpecifier \\\"/tmp/loadrift-x/script.js\\\" couldn't be found on local disk.\"";
+
+    assert_eq!(process::primary_error_from_stderr(stderr, Some(1)), stderr);
+    assert_eq!(
+        process::primary_error_from_stderr("", Some(17)),
+        "k6 exited with status code 17."
+    );
+}
+
+#[test]
+fn completion_record_preserves_primary_error_for_fallback_result() {
+    let state = Arc::new(Mutex::new(AppState {
+        launch_in_progress: true,
+        active_test: Some(test_running_test()),
+        latest_metrics: Some(LiveMetrics::default()),
+        ..AppState::default()
+    }));
+    let primary_error =
+        "The moduleSpecifier \"/tmp/loadrift-x/script.js\" couldn't be found on local disk.";
+    let summary_issue =
+        "k6 finished without a readable summary file at /tmp/loadrift-x/summary.json";
+
+    let stored = process::store_completion(
+        &state,
+        "run-1",
+        process::CompletionRecord {
+            metrics: LiveMetrics::default(),
+            result: sample_result(TestResultStatus::Warning),
+            run_state: TestStatus::Failed,
+            finish_reason: "execution_error".to_string(),
+            summary_json: None,
+            result_source: TestResultSource::LiveMetricsFallback,
+            summary_issue: Some(summary_issue.to_string()),
+            error_message: Some(primary_error.to_string()),
+        },
+    );
+
+    assert!(stored);
+    let app_state = state.lock().expect("state should remain readable");
+    assert!(app_state.active_test.is_none());
+    assert!(matches!(app_state.test_status, TestStatus::Failed));
+    assert_eq!(
+        app_state.latest_error_message.as_deref(),
+        Some(primary_error)
+    );
+    assert_eq!(
+        app_state.latest_result_source,
+        Some(TestResultSource::LiveMetricsFallback)
+    );
+    assert_eq!(
+        app_state.latest_summary_issue.as_deref(),
+        Some(summary_issue)
+    );
+}
+
+#[test]
+fn artifact_diagnostics_include_metadata_without_script_contents() {
+    let script = "export default function secret_request_body_token() {}";
+    let artifacts = process::create_run_temp_artifacts(script)
+        .expect("private temp artifacts should be created");
+
+    let diagnostics = process::temp_artifact_diagnostics_output_for_test(&artifacts);
+
+    assert!(diagnostics.contains("script="));
+    assert!(diagnostics.contains("summary="));
+    assert!(diagnostics.contains("metrics="));
+    assert!(diagnostics.contains("exists=true"));
+    assert!(diagnostics.contains("len="));
+    assert!(diagnostics.contains("metadataError=none"));
+    assert!(!diagnostics.contains("secret_request_body_token"));
+    assert!(!diagnostics.contains(script));
+}
+
+#[test]
 fn target_triple_resolver_skips_unsupported_platforms() {
     assert_eq!(
         process::target_triple_for("linux", "x86_64"),
@@ -631,7 +816,7 @@ fn fallback_result_from_live_metrics_preserves_exportable_totals() {
         requests_per_second: 6.2,
     };
 
-    let result = summary::result_from_live_metrics(&metrics, None);
+    let result = summary::result_from_live_metrics(&metrics, Some(0));
 
     assert_eq!(result.metrics.total_requests, 48);
     assert_eq!(result.metrics.failed_requests, 3);
@@ -642,6 +827,20 @@ fn fallback_result_from_live_metrics_preserves_exportable_totals() {
     assert_eq!(result.metrics.requests_per_second, 6.2);
     assert!(result.thresholds.is_empty());
     assert!(matches!(result.status, TestResultStatus::Warning));
+}
+
+#[test]
+fn fallback_result_from_live_metrics_marks_non_zero_exit_as_failed() {
+    let result = summary::result_from_live_metrics(&LiveMetrics::default(), Some(1));
+
+    assert!(matches!(result.status, TestResultStatus::Failed));
+}
+
+#[test]
+fn fallback_result_from_live_metrics_marks_unknown_exit_as_failed() {
+    let result = summary::result_from_live_metrics(&LiveMetrics::default(), None);
+
+    assert!(matches!(result.status, TestResultStatus::Failed));
 }
 
 #[test]
@@ -1020,9 +1219,21 @@ fn k6_binary_name() -> &'static str {
     "k6-aarch64-unknown-linux-gnu"
 }
 
+#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+fn k6_binary_name() -> &'static str {
+    "k6-x86_64-apple-darwin"
+}
+
+#[cfg(all(target_os = "macos", target_arch = "aarch64"))]
+fn k6_binary_name() -> &'static str {
+    "k6-aarch64-apple-darwin"
+}
+
 #[cfg(not(any(
     all(target_os = "linux", target_arch = "x86_64"),
-    all(target_os = "linux", target_arch = "aarch64")
+    all(target_os = "linux", target_arch = "aarch64"),
+    all(target_os = "macos", target_arch = "x86_64"),
+    all(target_os = "macos", target_arch = "aarch64")
 )))]
 fn k6_binary_name() -> &'static str {
     "k6"

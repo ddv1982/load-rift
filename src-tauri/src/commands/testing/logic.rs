@@ -50,6 +50,8 @@ pub(super) fn get_test_status_response(
         result: state.latest_result.clone(),
         finish_reason: state.latest_finish_reason.clone(),
         error_message: state.latest_error_message.clone(),
+        result_source: state.latest_result_source.clone(),
+        summary_issue: state.latest_summary_issue.clone(),
     })
 }
 

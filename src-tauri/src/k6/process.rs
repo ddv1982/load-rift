@@ -7,8 +7,9 @@ pub(crate) use live_metrics::LiveMetricsAggregator;
 pub(crate) use runtime::{analyze_advanced_options_json, validate_advanced_options_json};
 #[cfg(test)]
 pub(crate) use runtime::{
-    create_run_temp_artifacts, target_triple_for, temp_file_path, write_temp_file,
+    create_run_temp_artifacts, primary_error_from_stderr, target_triple_for,
+    temp_artifact_diagnostics_output_for_test, temp_file_path, write_temp_file,
 };
 pub use runtime::{start_k6_process, stop_k6_process};
 #[cfg(test)]
-pub(crate) use state::{completion_status, mark_stopped, store_completion};
+pub(crate) use state::{completion_status, mark_stopped, store_completion, CompletionRecord};

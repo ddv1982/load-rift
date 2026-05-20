@@ -1,5 +1,5 @@
 use crate::events::emit_k6_error;
-use crate::models::{LiveMetrics, TestStatus};
+use crate::models::{LiveMetrics, TestResult, TestResultSource, TestStatus};
 use crate::state::{AppState, RunningTest, SharedAppState};
 
 use super::super::summary::is_threshold_failure_exit;
@@ -24,6 +24,8 @@ pub(crate) fn record_failure(
             app_state.test_status = TestStatus::Failed;
             app_state.latest_finish_reason = Some(FINISH_REASON_EXECUTION_ERROR.to_string());
             app_state.latest_error_message = Some(message.to_string());
+            app_state.latest_result_source = None;
+            app_state.latest_summary_issue = None;
             true
         }
     } else {
@@ -60,33 +62,44 @@ pub(crate) fn mark_stopped(state: &SharedAppState, run_id: &str) -> bool {
         app_state.test_status = TestStatus::Stopped;
         app_state.latest_finish_reason = Some(FINISH_REASON_STOPPED.to_string());
         app_state.latest_error_message = None;
+        app_state.latest_result_source = None;
+        app_state.latest_summary_issue = None;
         return true;
     }
 
     false
 }
 
+pub(crate) struct CompletionRecord {
+    pub(crate) metrics: LiveMetrics,
+    pub(crate) result: TestResult,
+    pub(crate) run_state: TestStatus,
+    pub(crate) finish_reason: String,
+    pub(crate) summary_json: Option<String>,
+    pub(crate) result_source: TestResultSource,
+    pub(crate) summary_issue: Option<String>,
+    pub(crate) error_message: Option<String>,
+}
+
 pub(crate) fn store_completion(
     state: &SharedAppState,
     run_id: &str,
-    metrics: &LiveMetrics,
-    result: &crate::models::TestResult,
-    run_state: TestStatus,
-    finish_reason: &str,
-    summary_json: Option<String>,
+    record: CompletionRecord,
 ) -> bool {
     if let Ok(mut app_state) = state.lock() {
         if !is_current_run(&app_state, run_id) {
             return false;
         }
 
-        app_state.latest_metrics = Some(metrics.clone());
-        app_state.latest_result = Some(result.clone());
-        app_state.latest_summary_json = summary_json;
-        app_state.latest_finish_reason = Some(finish_reason.to_string());
-        app_state.latest_error_message = None;
+        app_state.latest_metrics = Some(record.metrics);
+        app_state.latest_result = Some(record.result);
+        app_state.latest_summary_json = record.summary_json;
+        app_state.latest_finish_reason = Some(record.finish_reason);
+        app_state.latest_error_message = record.error_message;
+        app_state.latest_result_source = Some(record.result_source);
+        app_state.latest_summary_issue = record.summary_issue;
         clear_active_run(&mut app_state);
-        app_state.test_status = run_state;
+        app_state.test_status = record.run_state;
         return true;
     }
 

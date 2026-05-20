@@ -63,6 +63,9 @@ function completionPayload(runId: string): TestCompletion {
     finishReason: "completed",
     metrics,
     result: resultPayload,
+    resultSource: "summary",
+    summaryIssue: null,
+    errorMessage: null,
   };
 }
 
@@ -130,6 +133,8 @@ describe("useTestHarness", () => {
       result: resultPayload,
       finishReason: "completed",
       errorMessage: null,
+      resultSource: "summary",
+      summaryIssue: null,
     };
     const { api } = createApiMock({
       getTestStatus: vi.fn(async () => statusResponse),
@@ -151,6 +156,8 @@ describe("useTestHarness", () => {
     expect(result.current.state.metrics).toEqual(metrics);
     expect(result.current.state.result).toEqual(resultPayload);
     expect(result.current.state.finishReason).toBe("completed");
+    expect(result.current.state.resultSource).toBe("summary");
+    expect(result.current.state.summaryIssue).toBeNull();
     expect(result.current.state.isBusy).toBe(false);
     expect(result.current.state.isRunning).toBe(false);
   });
@@ -186,6 +193,8 @@ describe("useTestHarness", () => {
     expect(result.current.state.metrics).toEqual(metrics);
     expect(result.current.state.result).toEqual(resultPayload);
     expect(result.current.state.finishReason).toBe("thresholds_failed");
+    expect(result.current.state.resultSource).toBe("summary");
+    expect(result.current.state.summaryIssue).toBeNull();
     expect(result.current.state.status).toBe("completed");
     expect(result.current.state.runId).toBe(runId);
 
@@ -242,7 +251,7 @@ describe("useTestHarness", () => {
     expect(result.current.state.isRunning).toBe(false);
   });
 
-  it("accepts a same-run error emitted after a failed completion", async () => {
+  it("keeps the primary completion error when a same-run error follows failed completion", async () => {
     const { api, listeners } = createApiMock();
     const { result } = renderHook(() => useTestHarness(), {
       wrapper: createWrapper(api),
@@ -263,6 +272,7 @@ describe("useTestHarness", () => {
         ...completionPayload(runId),
         runState: "failed",
         finishReason: "execution_error",
+        errorMessage: "The moduleSpecifier \"/tmp/loadrift/run/script.js\" couldn't be found on local disk.",
       });
       listeners.error?.({
         runId,
@@ -272,8 +282,80 @@ describe("useTestHarness", () => {
 
     expect(result.current.state.status).toBe("failed");
     expect(result.current.state.finishReason).toBe("execution_error");
-    expect(result.current.state.error).toBe("k6 exited with a non-zero status");
+    expect(result.current.state.error).toBe(
+      "The moduleSpecifier \"/tmp/loadrift/run/script.js\" couldn't be found on local disk.",
+    );
     expect(result.current.state.runId).toBe(runId);
+  });
+
+  it("preserves primary k6 error and fallback context from completion", async () => {
+    const primaryError =
+      "The moduleSpecifier \"/tmp/loadrift/run/script.js\" couldn't be found on local disk.";
+    const summaryIssue = "summary.json was not written before k6 exited";
+    const { api, listeners } = createApiMock();
+    const { result } = renderHook(() => useTestHarness(), {
+      wrapper: createWrapper(api),
+    });
+
+    await waitFor(() => {
+      expect(listeners.complete).toBeTypeOf("function");
+    });
+
+    await act(async () => {
+      await result.current.startTest(startOptions);
+    });
+    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+
+    act(() => {
+      listeners.complete?.({
+        ...completionPayload(runId),
+        runState: "failed",
+        finishReason: "execution_error",
+        resultSource: "liveMetricsFallback",
+        summaryIssue,
+        errorMessage: primaryError,
+      });
+    });
+
+    expect(result.current.state.status).toBe("failed");
+    expect(result.current.state.finishReason).toBe("execution_error");
+    expect(result.current.state.resultSource).toBe("liveMetricsFallback");
+    expect(result.current.state.summaryIssue).toBe(summaryIssue);
+    expect(result.current.state.error).toBe(primaryError);
+  });
+
+  it("keeps fallback context when a same-run error event follows completion", async () => {
+    const summaryIssue = "summary parsing failed";
+    const { api, listeners } = createApiMock();
+    const { result } = renderHook(() => useTestHarness(), {
+      wrapper: createWrapper(api),
+    });
+
+    await waitFor(() => {
+      expect(listeners.complete).toBeTypeOf("function");
+      expect(listeners.error).toBeTypeOf("function");
+    });
+
+    await act(async () => {
+      await result.current.startTest(startOptions);
+    });
+    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+
+    act(() => {
+      listeners.complete?.({
+        ...completionPayload(runId),
+        runState: "failed",
+        finishReason: "execution_error",
+        resultSource: "liveMetricsFallback",
+        summaryIssue,
+        errorMessage: "primary stderr",
+      });
+      listeners.error?.({ runId, message: "primary stderr from k6:error" });
+    });
+
+    expect(result.current.state.error).toBe("primary stderr");
+    expect(result.current.state.resultSource).toBe("liveMetricsFallback");
+    expect(result.current.state.summaryIssue).toBe(summaryIssue);
   });
 
   it("ignores stale metrics, completion, and error events for older runs", async () => {
@@ -307,6 +389,8 @@ describe("useTestHarness", () => {
     expect(result.current.state.result).toBeNull();
     expect(result.current.state.finishReason).toBeNull();
     expect(result.current.state.error).toBeNull();
+    expect(result.current.state.resultSource).toBeNull();
+    expect(result.current.state.summaryIssue).toBeNull();
     expect(result.current.state.runId).toBe(activeRunId);
 
     act(() => {

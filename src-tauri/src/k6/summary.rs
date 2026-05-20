@@ -71,12 +71,10 @@ pub(crate) fn result_from_live_metrics(
     metrics: &LiveMetrics,
     exit_code: Option<i32>,
 ) -> TestResult {
-    let status = if exit_code == Some(K6_THRESHOLD_FAILURE_EXIT_CODE) {
-        TestResultStatus::Failed
-    } else if metrics.failed_requests > 0 {
-        TestResultStatus::Warning
-    } else {
-        TestResultStatus::Passed
+    let status = match exit_code {
+        Some(0) if metrics.failed_requests > 0 => TestResultStatus::Warning,
+        Some(0) => TestResultStatus::Passed,
+        Some(_) | None => TestResultStatus::Failed,
     };
 
     TestResult {

@@ -132,6 +132,13 @@ pub enum TestStatus {
     Stopped,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum TestResultSource {
+    Summary,
+    LiveMetricsFallback,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TestMetrics {
@@ -180,6 +187,9 @@ pub struct TestCompletion {
     pub finish_reason: String,
     pub metrics: LiveMetrics,
     pub result: TestResult,
+    pub result_source: TestResultSource,
+    pub summary_issue: Option<String>,
+    pub error_message: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,6 +202,8 @@ pub struct GetTestStatusResponse {
     pub result: Option<TestResult>,
     pub finish_reason: Option<String>,
     pub error_message: Option<String>,
+    pub result_source: Option<TestResultSource>,
+    pub summary_issue: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

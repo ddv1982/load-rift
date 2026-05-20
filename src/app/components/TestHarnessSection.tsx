@@ -376,6 +376,9 @@ export function TestHarnessSection({
           <LiveRunMonitorCard
             output={testState.output}
             error={testState.error}
+            finishReason={testState.finishReason}
+            resultSource={testState.resultSource}
+            summaryIssue={testState.summaryIssue}
             notice={exportNotice}
             eventLogRef={eventLogRef}
             onExportLatestReport={onExportLatestReport}
@@ -394,6 +397,10 @@ export function TestHarnessSection({
         <div className="harness-secondary-card">
           <LatestResultCard
             result={testState.result}
+            finishReason={testState.finishReason}
+            resultSource={testState.resultSource}
+            summaryIssue={testState.summaryIssue}
+            error={testState.error}
             resultSummaryRef={resultSummaryRef}
           />
         </div>

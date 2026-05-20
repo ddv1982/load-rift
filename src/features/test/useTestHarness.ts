@@ -6,6 +6,7 @@ import {
   type LiveMetrics,
   type TestCompletion,
   type TestResult,
+  type TestResultSource,
   type TestStatus,
 } from "../../lib/loadrift/types";
 import { getTauriErrorMessage } from "../../lib/tauri/errors";
@@ -15,6 +16,8 @@ export interface TestHarnessState {
   metrics: LiveMetrics;
   result: TestResult | null;
   finishReason: string | null;
+  resultSource: TestResultSource | null;
+  summaryIssue: string | null;
   error: string | null;
   runId: string | null;
   output: string;
@@ -36,6 +39,8 @@ const INITIAL_STATE: TestHarnessState = {
   metrics: DEFAULT_LIVE_METRICS,
   result: null,
   finishReason: null,
+  resultSource: null,
+  summaryIssue: null,
   error: null,
   runId: null,
   output: "",
@@ -116,7 +121,9 @@ export function useTestHarness() {
           metrics: completion.metrics,
           result: completion.result,
           finishReason: completion.finishReason,
-          error: null,
+          resultSource: completion.resultSource,
+          summaryIssue: completion.summaryIssue,
+          error: completion.errorMessage,
           runId: completion.runId,
           isStarting: false,
           isBusy: false,
@@ -143,7 +150,7 @@ export function useTestHarness() {
           ...previous,
           status: "failed",
           finishReason: "execution_error",
-          error: event.message,
+          error: previous.error || event.message,
           runId: event.runId,
           isStarting: false,
           isBusy: false,
@@ -187,6 +194,8 @@ export function useTestHarness() {
         metrics: status.metrics ?? DEFAULT_LIVE_METRICS,
         result: status.result ?? null,
         finishReason: status.finishReason ?? null,
+        resultSource: status.resultSource ?? null,
+        summaryIssue: status.summaryIssue ?? null,
         error: status.errorMessage ?? null,
         runId: status.runId,
         isStarting: false,
@@ -220,6 +229,8 @@ export function useTestHarness() {
         metrics: DEFAULT_LIVE_METRICS,
         result: null,
         finishReason: null,
+        resultSource: null,
+        summaryIssue: null,
         error: null,
         output: "",
         runId,

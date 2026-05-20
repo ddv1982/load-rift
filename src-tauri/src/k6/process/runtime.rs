@@ -1,12 +1,15 @@
+use std::collections::VecDeque;
 use std::env;
+use std::fmt;
 use std::fs;
 use std::fs::OpenOptions;
 use std::io::{BufRead, BufReader, Write};
 #[cfg(unix)]
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
@@ -22,15 +25,161 @@ pub(crate) struct RunTempArtifacts {
     pub(crate) metrics_path: PathBuf,
 }
 
+const STDERR_TAIL_MAX_LINES: usize = 20;
+const STDERR_TAIL_MAX_CHARS: usize = 4_000;
+
+#[derive(Clone, Debug)]
+pub(crate) struct K6BinaryResolution {
+    pub(crate) path: PathBuf,
+    pub(crate) source: K6BinarySource,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum K6BinarySource {
+    LoadriftK6BinEnv,
+    TauriResource,
+    ExecutableDirectory,
+    CurrentExecutableDirectory,
+    ManifestBin,
+    WorkingDirectory,
+    Path,
+}
+
+impl fmt::Display for K6BinarySource {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let value = match self {
+            K6BinarySource::LoadriftK6BinEnv => "LOADRIFT_K6_BIN",
+            K6BinarySource::TauriResource => "tauri_resource",
+            K6BinarySource::ExecutableDirectory => "executable_directory",
+            K6BinarySource::CurrentExecutableDirectory => "current_executable_directory",
+            K6BinarySource::ManifestBin => "manifest_bin",
+            K6BinarySource::WorkingDirectory => "working_directory",
+            K6BinarySource::Path => "PATH",
+        };
+        formatter.write_str(value)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct FileDiagnostic {
+    path: PathBuf,
+    exists: bool,
+    is_file: bool,
+    len: Option<u64>,
+    readonly: Option<bool>,
+    metadata_error: Option<String>,
+    #[cfg(unix)]
+    unix_mode: Option<u32>,
+}
+
+impl FileDiagnostic {
+    fn capture(path: &Path) -> Self {
+        match fs::metadata(path) {
+            Ok(metadata) => Self {
+                path: path.to_path_buf(),
+                exists: true,
+                is_file: metadata.is_file(),
+                len: Some(metadata.len()),
+                readonly: Some(metadata.permissions().readonly()),
+                metadata_error: None,
+                #[cfg(unix)]
+                unix_mode: Some(metadata.permissions().mode() & 0o777),
+            },
+            Err(error) => Self {
+                path: path.to_path_buf(),
+                exists: path.try_exists().unwrap_or(false),
+                is_file: false,
+                len: None,
+                readonly: None,
+                metadata_error: Some(format!("{:?}: {error}", error.kind())),
+                #[cfg(unix)]
+                unix_mode: None,
+            },
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct RunArtifactDiagnostics {
+    script: FileDiagnostic,
+    summary: FileDiagnostic,
+    metrics: FileDiagnostic,
+}
+
+impl RunArtifactDiagnostics {
+    fn capture(artifacts: &RunTempArtifacts) -> Self {
+        Self {
+            script: FileDiagnostic::capture(&artifacts.script_path),
+            summary: FileDiagnostic::capture(&artifacts.summary_path),
+            metrics: FileDiagnostic::capture(&artifacts.metrics_path),
+        }
+    }
+}
+
+#[derive(Debug)]
+struct BoundedLineBuffer {
+    max_lines: usize,
+    max_chars: usize,
+    lines: VecDeque<String>,
+}
+
+impl BoundedLineBuffer {
+    fn new(max_lines: usize, max_chars: usize) -> Self {
+        Self {
+            max_lines,
+            max_chars,
+            lines: VecDeque::new(),
+        }
+    }
+
+    fn push(&mut self, line: &str) {
+        let mut line = line.trim_end_matches(['\r', '\n']).to_string();
+        if line.trim().is_empty() {
+            return;
+        }
+        if line.chars().count() > self.max_chars {
+            line = line
+                .chars()
+                .rev()
+                .take(self.max_chars)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect();
+        }
+        self.lines.push_back(line);
+        self.trim_to_limits();
+    }
+
+    fn text(&self) -> String {
+        self.lines.iter().cloned().collect::<Vec<_>>().join("\n")
+    }
+
+    fn trim_to_limits(&mut self) {
+        while self.lines.len() > self.max_lines {
+            self.lines.pop_front();
+        }
+        while self.total_chars() > self.max_chars {
+            if self.lines.pop_front().is_none() {
+                break;
+            }
+        }
+    }
+
+    fn total_chars(&self) -> usize {
+        self.lines.iter().map(|line| line.chars().count()).sum()
+    }
+}
+
 use crate::events::{emit_k6_complete, emit_k6_error, emit_k6_metrics, emit_k6_output};
-use crate::models::{K6Options, LiveMetrics, TestCompletion, TrafficMode};
+use crate::models::{K6Options, LiveMetrics, TestCompletion, TestResultSource, TrafficMode};
 use crate::state::{RunningTest, SharedAppState};
 
 use super::super::summary::{parse_summary, result_from_live_metrics};
 use super::live_metrics::spawn_metrics_forwarder;
 use super::state::{
     completion_status, mark_stopped, record_failure, store_completion, store_started_state,
-    UPDATE_STATE_ERROR,
+    CompletionRecord, UPDATE_STATE_ERROR,
 };
 
 pub fn start_k6_process(
@@ -54,11 +203,18 @@ pub fn start_k6_process(
     };
     let k6_binary = resolve_k6_binary(&app)?;
     let artifacts = create_run_temp_artifacts(&script)?;
+    let pre_spawn_diagnostics = RunArtifactDiagnostics::capture(&artifacts);
+    log::info!(
+        "Launching k6 run {run_id}: binary={} source={} artifacts={}",
+        k6_binary.path.display(),
+        k6_binary.source,
+        format_artifact_diagnostics(&pre_spawn_diagnostics)
+    );
     let script_path = artifacts.script_path.clone();
     let summary_path = artifacts.summary_path.clone();
     let metrics_path = artifacts.metrics_path.clone();
 
-    let mut command = Command::new(&k6_binary);
+    let mut command = Command::new(&k6_binary.path);
     command
         .arg("run")
         .arg("--summary-export")
@@ -127,16 +283,25 @@ pub fn start_k6_process(
         command.env("BASE_URL", value);
     }
 
-    let child = command
-        .spawn()
-        .map_err(|error| format!("Failed to start k6 at {}: {error}", k6_binary.display()))?;
+    let child = command.spawn().map_err(|error| {
+        format!(
+            "Failed to start k6 at {} (source: {}): {error}. Artifact diagnostics before spawn: {}",
+            k6_binary.path.display(),
+            k6_binary.source,
+            format_artifact_diagnostics(&pre_spawn_diagnostics)
+        )
+    })?;
 
     let mut child = child;
     let stdout = child.stdout.take();
     let stderr = child.stderr.take();
     let child = std::sync::Arc::new(std::sync::Mutex::new(child));
     let stop_requested = std::sync::Arc::new(AtomicBool::new(false));
-    let metrics_shutdown = std::sync::Arc::new(AtomicBool::new(false));
+    let metrics_shutdown = Arc::new(AtomicBool::new(false));
+    let stderr_tail = Arc::new(Mutex::new(BoundedLineBuffer::new(
+        STDERR_TAIL_MAX_LINES,
+        STDERR_TAIL_MAX_CHARS,
+    )));
 
     {
         let initial_metrics = LiveMetrics::default();
@@ -151,9 +316,14 @@ pub fn start_k6_process(
     }
 
     let stdout_forwarder =
-        spawn_output_forwarder(stdout, app.clone(), state.clone(), run_id.clone());
-    let stderr_forwarder =
-        spawn_output_forwarder(stderr, app.clone(), state.clone(), run_id.clone());
+        spawn_output_forwarder(stdout, app.clone(), state.clone(), run_id.clone(), None);
+    let stderr_forwarder = spawn_output_forwarder(
+        stderr,
+        app.clone(),
+        state.clone(),
+        run_id.clone(),
+        Some(stderr_tail.clone()),
+    );
     let metrics_forwarder = spawn_metrics_forwarder(
         metrics_path.clone(),
         app.clone(),
@@ -169,6 +339,9 @@ pub fn start_k6_process(
         stderr_forwarder,
         metrics_forwarder,
         metrics_shutdown,
+        k6_binary,
+        pre_spawn_diagnostics,
+        stderr_tail,
         app,
         state,
         run_id,
@@ -212,6 +385,7 @@ fn spawn_output_forwarder(
     app: AppHandle,
     state: SharedAppState,
     run_id: String,
+    stderr_tail: Option<Arc<Mutex<BoundedLineBuffer>>>,
 ) -> Option<JoinHandle<()>> {
     let Some(stream) = stream else {
         return None;
@@ -223,6 +397,7 @@ fn spawn_output_forwarder(
             let Ok(line) = line else {
                 continue;
             };
+            let raw_line = line.trim_end_matches(['\r', '\n']).to_string();
             let payload = if line.ends_with('\n') {
                 line
             } else {
@@ -245,6 +420,11 @@ fn spawn_output_forwarder(
             };
 
             if should_emit {
+                if let Some(stderr_tail) = stderr_tail.as_ref() {
+                    if let Ok(mut tail) = stderr_tail.lock() {
+                        tail.push(&raw_line);
+                    }
+                }
                 let _ = emit_k6_output(&app, &payload);
             }
         }
@@ -258,7 +438,10 @@ fn spawn_waiter(
     stdout_forwarder: Option<JoinHandle<()>>,
     stderr_forwarder: Option<JoinHandle<()>>,
     metrics_forwarder: JoinHandle<()>,
-    metrics_shutdown: std::sync::Arc<AtomicBool>,
+    metrics_shutdown: Arc<AtomicBool>,
+    k6_binary: K6BinaryResolution,
+    pre_spawn_diagnostics: RunArtifactDiagnostics,
+    stderr_tail: Arc<Mutex<BoundedLineBuffer>>,
     app: AppHandle,
     state: SharedAppState,
     run_id: String,
@@ -293,6 +476,7 @@ fn spawn_waiter(
         metrics_shutdown.store(true, Ordering::SeqCst);
         let _ = metrics_forwarder.join();
         wait_for_output_forwarders([stdout_forwarder, stderr_forwarder]);
+        let stderr_tail = stderr_tail_snapshot(&stderr_tail);
 
         if stop_requested {
             if mark_stopped(&state, &run_id) {
@@ -313,6 +497,9 @@ fn spawn_waiter(
                         metrics,
                         result,
                         Some(summary_json.clone()),
+                        TestResultSource::Summary,
+                        None,
+                        &stderr_tail,
                     );
                 }
                 Err(error) => {
@@ -324,6 +511,10 @@ fn spawn_waiter(
                         exit_status.code(),
                         Some(summary_json.clone()),
                         &error,
+                        &k6_binary,
+                        &pre_spawn_diagnostics,
+                        &RunArtifactDiagnostics::capture(&artifacts),
+                        &stderr_tail,
                     );
                 }
             },
@@ -339,6 +530,10 @@ fn spawn_waiter(
                         "k6 finished without a readable summary file at {}: {error}",
                         summary_path.display()
                     ),
+                    &k6_binary,
+                    &pre_spawn_diagnostics,
+                    &RunArtifactDiagnostics::capture(&artifacts),
+                    &stderr_tail,
                 );
             }
         }
@@ -354,23 +549,36 @@ fn emit_completion(
     metrics: LiveMetrics,
     mut result: crate::models::TestResult,
     summary_json: Option<String>,
-) {
+    result_source: TestResultSource,
+    summary_issue: Option<String>,
+    stderr_tail: &str,
+) -> bool {
     let completion = completion_status(exited_successfully, exit_code, &result);
     if completion.threshold_failure_exit {
         result.status = crate::models::TestResultStatus::Failed;
     }
+    let error_message = if !exited_successfully && !completion.threshold_failure_exit {
+        Some(primary_error_from_stderr(stderr_tail, exit_code))
+    } else {
+        None
+    };
     let stored = store_completion(
         state,
         run_id,
-        &metrics,
-        &result,
-        completion.run_state.clone(),
-        &completion.finish_reason,
-        summary_json,
+        CompletionRecord {
+            metrics: metrics.clone(),
+            result: result.clone(),
+            run_state: completion.run_state.clone(),
+            finish_reason: completion.finish_reason.clone(),
+            summary_json,
+            result_source: result_source.clone(),
+            summary_issue: summary_issue.clone(),
+            error_message: error_message.clone(),
+        },
     );
 
     if !stored {
-        return;
+        return false;
     }
 
     let _ = emit_k6_metrics(app, run_id, metrics.clone());
@@ -382,6 +590,9 @@ fn emit_completion(
             finish_reason: completion.finish_reason.clone(),
             metrics,
             result,
+            result_source,
+            summary_issue,
+            error_message: error_message.clone(),
         },
     );
 
@@ -390,13 +601,11 @@ fn emit_completion(
             app,
             "k6 finished with failed thresholds. Review the latest result for the final metrics.\n",
         );
-    } else if !exited_successfully {
-        let _ = emit_k6_error(
-            app,
-            run_id,
-            "k6 exited with a non-zero status for a reason other than threshold failures.",
-        );
+    } else if let Some(error_message) = error_message {
+        let _ = emit_k6_error(app, run_id, &error_message);
     }
+
+    true
 }
 
 fn emit_live_metrics_fallback_completion(
@@ -407,6 +616,10 @@ fn emit_live_metrics_fallback_completion(
     exit_code: Option<i32>,
     summary_json: Option<String>,
     summary_issue: &str,
+    k6_binary: &K6BinaryResolution,
+    pre_spawn_diagnostics: &RunArtifactDiagnostics,
+    fallback_diagnostics: &RunArtifactDiagnostics,
+    stderr_tail: &str,
 ) {
     let metrics = state
         .lock()
@@ -415,7 +628,7 @@ fn emit_live_metrics_fallback_completion(
         .unwrap_or_default();
     let result = result_from_live_metrics(&metrics, exit_code);
 
-    emit_completion(
+    let stored = emit_completion(
         app,
         state,
         run_id,
@@ -424,12 +637,129 @@ fn emit_live_metrics_fallback_completion(
         metrics,
         result,
         summary_json,
+        TestResultSource::LiveMetricsFallback,
+        Some(summary_issue.to_string()),
+        stderr_tail,
     );
+
+    if !stored {
+        return;
+    }
 
     let message = format!(
         "Load Rift used live metrics because the structured k6 summary could not be processed: {summary_issue}\n"
     );
-    let _ = emit_k6_output(app, &message);
+    append_run_output_and_emit(state, app, run_id, &message);
+
+    let diagnostics = format!(
+        "Load Rift k6 diagnostics: binary={} source={} exitCode={} beforeSpawn=[{}] fallback=[{}]\n",
+        k6_binary.path.display(),
+        k6_binary.source,
+        exit_code
+            .map(|code| code.to_string())
+            .unwrap_or_else(|| "unknown".to_string()),
+        format_artifact_diagnostics(pre_spawn_diagnostics),
+        format_artifact_diagnostics(fallback_diagnostics)
+    );
+    append_run_output_and_emit(state, app, run_id, &diagnostics);
+}
+
+fn append_run_output_and_emit(
+    state: &SharedAppState,
+    app: &AppHandle,
+    run_id: &str,
+    message: &str,
+) {
+    let should_emit = if let Ok(mut app_state) = state.lock() {
+        let latest_run_matches = app_state.latest_run_id.as_deref() == Some(run_id);
+        let active_matches = app_state
+            .active_test
+            .as_ref()
+            .is_some_and(|active| active.run_id == run_id);
+        if latest_run_matches && (active_matches || app_state.active_test.is_none()) {
+            app_state.latest_output.push_str(message);
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+
+    if should_emit {
+        let _ = emit_k6_output(app, message);
+    }
+}
+
+fn stderr_tail_snapshot(stderr_tail: &Arc<Mutex<BoundedLineBuffer>>) -> String {
+    stderr_tail
+        .lock()
+        .map(|tail| tail.text())
+        .unwrap_or_default()
+}
+
+pub(crate) fn primary_error_from_stderr(stderr_tail: &str, exit_code: Option<i32>) -> String {
+    let stderr_tail = stderr_tail.trim();
+    if !stderr_tail.is_empty() {
+        return stderr_tail.to_string();
+    }
+
+    if let Some(code) = exit_code {
+        format!("k6 exited with status code {code}.")
+    } else {
+        "k6 exited with a non-zero status.".to_string()
+    }
+}
+
+fn format_artifact_diagnostics(diagnostics: &RunArtifactDiagnostics) -> String {
+    format!(
+        "script={{ {} }}; summary={{ {} }}; metrics={{ {} }}",
+        format_file_diagnostic(&diagnostics.script),
+        format_file_diagnostic(&diagnostics.summary),
+        format_file_diagnostic(&diagnostics.metrics)
+    )
+}
+
+fn format_file_diagnostic(diagnostic: &FileDiagnostic) -> String {
+    let mut parts = vec![
+        format!("path={}", diagnostic.path.display()),
+        format!("exists={}", diagnostic.exists),
+        format!("isFile={}", diagnostic.is_file),
+        format!(
+            "len={}",
+            diagnostic
+                .len
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string())
+        ),
+        format!(
+            "readonly={}",
+            diagnostic
+                .readonly
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "unknown".to_string())
+        ),
+        format!(
+            "metadataError={}",
+            diagnostic.metadata_error.as_deref().unwrap_or("none")
+        ),
+    ];
+
+    #[cfg(unix)]
+    parts.push(format!(
+        "mode={}",
+        diagnostic
+            .unix_mode
+            .map(|value| format!("{value:o}"))
+            .unwrap_or_else(|| "unknown".to_string())
+    ));
+
+    parts.join(", ")
+}
+
+#[cfg(test)]
+pub(crate) fn temp_artifact_diagnostics_output_for_test(artifacts: &RunTempArtifacts) -> String {
+    format_artifact_diagnostics(&RunArtifactDiagnostics::capture(artifacts))
 }
 
 fn wait_for_output_forwarders(forwarders: [Option<JoinHandle<()>>; 2]) {
@@ -514,24 +844,33 @@ fn write_private_file(path: &PathBuf, content: &str) -> Result<(), String> {
         .map_err(|error| format!("Failed to write {}: {error}", path.display()))
 }
 
-fn resolve_k6_binary(app: &AppHandle) -> Result<PathBuf, String> {
+fn resolve_k6_binary(app: &AppHandle) -> Result<K6BinaryResolution, String> {
     if let Ok(value) = env::var("LOADRIFT_K6_BIN") {
         let path = PathBuf::from(value);
         if path.is_file() {
-            return Ok(path);
+            return Ok(K6BinaryResolution {
+                path,
+                source: K6BinarySource::LoadriftK6BinEnv,
+            });
         }
     }
 
-    for candidate in bundled_k6_candidates(app) {
+    for (candidate, source) in bundled_k6_candidates(app) {
         if candidate.is_file() {
-            return Ok(candidate);
+            return Ok(K6BinaryResolution {
+                path: candidate,
+                source,
+            });
         }
     }
 
     for candidate in ["k6", "./k6", "./bin/k6"] {
         let path = PathBuf::from(candidate);
         if path.is_file() {
-            return Ok(path);
+            return Ok(K6BinaryResolution {
+                path,
+                source: K6BinarySource::WorkingDirectory,
+            });
         }
     }
 
@@ -539,7 +878,10 @@ fn resolve_k6_binary(app: &AppHandle) -> Result<PathBuf, String> {
     for directory in env::split_paths(&path_var) {
         let candidate = directory.join("k6");
         if candidate.is_file() {
-            return Ok(candidate);
+            return Ok(K6BinaryResolution {
+                path: candidate,
+                source: K6BinarySource::Path,
+            });
         }
     }
 
@@ -554,7 +896,7 @@ fn k6_not_found_message() -> &'static str {
     }
 }
 
-fn bundled_k6_candidates(app: &AppHandle) -> Vec<PathBuf> {
+fn bundled_k6_candidates(app: &AppHandle) -> Vec<(PathBuf, K6BinarySource)> {
     let mut candidates = Vec::new();
     let target_binary_name = current_target_triple().map(|triple| format!("k6-{triple}"));
 
@@ -563,8 +905,14 @@ fn bundled_k6_candidates(app: &AppHandle) -> Vec<PathBuf> {
             &mut candidates,
             resource_dir.join("bin"),
             target_binary_name.as_deref(),
+            K6BinarySource::TauriResource,
         );
-        push_bundled_candidates(&mut candidates, resource_dir, target_binary_name.as_deref());
+        push_bundled_candidates(
+            &mut candidates,
+            resource_dir,
+            target_binary_name.as_deref(),
+            K6BinarySource::TauriResource,
+        );
     }
 
     if let Ok(executable_dir) = app.path().executable_dir() {
@@ -572,11 +920,13 @@ fn bundled_k6_candidates(app: &AppHandle) -> Vec<PathBuf> {
             &mut candidates,
             executable_dir.join("bin"),
             target_binary_name.as_deref(),
+            K6BinarySource::ExecutableDirectory,
         );
         push_bundled_candidates(
             &mut candidates,
             executable_dir,
             target_binary_name.as_deref(),
+            K6BinarySource::ExecutableDirectory,
         );
     }
 
@@ -586,32 +936,38 @@ fn bundled_k6_candidates(app: &AppHandle) -> Vec<PathBuf> {
                 &mut candidates,
                 parent.join("bin"),
                 target_binary_name.as_deref(),
+                K6BinarySource::CurrentExecutableDirectory,
             );
             push_bundled_candidates(
                 &mut candidates,
                 parent.to_path_buf(),
                 target_binary_name.as_deref(),
+                K6BinarySource::CurrentExecutableDirectory,
             );
         }
     }
 
     if let Some(target_binary_name) = target_binary_name.as_deref() {
         let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        candidates.push(manifest_dir.join("bin").join(target_binary_name));
+        candidates.push((
+            manifest_dir.join("bin").join(target_binary_name),
+            K6BinarySource::ManifestBin,
+        ));
     }
 
     candidates
 }
 
 fn push_bundled_candidates(
-    candidates: &mut Vec<PathBuf>,
+    candidates: &mut Vec<(PathBuf, K6BinarySource)>,
     directory: PathBuf,
     target_binary_name: Option<&str>,
+    source: K6BinarySource,
 ) {
     if let Some(target_binary_name) = target_binary_name {
-        candidates.push(directory.join(target_binary_name));
+        candidates.push((directory.join(target_binary_name), source.clone()));
     }
-    candidates.push(directory.join(k6_packaged_binary_name()));
+    candidates.push((directory.join(k6_packaged_binary_name()), source));
 }
 
 fn k6_packaged_binary_name() -> &'static str {

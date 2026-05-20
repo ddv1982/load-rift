@@ -1,13 +1,33 @@
 import type { RefObject } from "react";
-import type { TestResult } from "../../lib/loadrift/types";
+import type { TestResult, TestResultSource } from "../../lib/loadrift/types";
 
 interface LatestResultCardProps {
   result: TestResult | null;
+  finishReason: string | null;
+  resultSource: TestResultSource | null;
+  summaryIssue: string | null;
+  error: string | null;
   resultSummaryRef: RefObject<HTMLDivElement | null>;
+}
+
+function formatResultSource(source: TestResultSource | null) {
+  if (source === "liveMetricsFallback") {
+    return "Live metrics fallback";
+  }
+
+  if (source === "summary") {
+    return "Structured summary";
+  }
+
+  return null;
 }
 
 export function LatestResultCard({
   result,
+  finishReason,
+  resultSource,
+  summaryIssue,
+  error,
   resultSummaryRef,
 }: LatestResultCardProps) {
   if (!result) {
@@ -34,6 +54,37 @@ export function LatestResultCard({
       </div>
 
       <div ref={resultSummaryRef} className="result-summary-scroll">
+        {finishReason || resultSource || error ? (
+          <div className="threshold-list">
+            {finishReason ? (
+              <p>
+                <span>Finish reason</span>
+                <strong>{finishReason}</strong>
+              </p>
+            ) : null}
+            {resultSource ? (
+              <p>
+                <span>Result source</span>
+                <strong>{formatResultSource(resultSource)}</strong>
+              </p>
+            ) : null}
+            {resultSource === "liveMetricsFallback" ? (
+              <p>
+                <span>Fallback context</span>
+                <strong>
+                  {summaryIssue ?? "Structured k6 summary could not be processed."}
+                </strong>
+              </p>
+            ) : null}
+            {error ? (
+              <p>
+                <span>Primary k6 error</span>
+                <strong>{error}</strong>
+              </p>
+            ) : null}
+          </div>
+        ) : null}
+
         <div className="result-summary-grid">
           <p>
             <span>Total requests</span>

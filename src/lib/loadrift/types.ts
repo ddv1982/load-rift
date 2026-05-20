@@ -66,6 +66,8 @@ export interface ThresholdResult {
 
 export type TestResultStatus = "passed" | "warning" | "failed";
 
+export type TestResultSource = "summary" | "liveMetricsFallback";
+
 export interface TestMetrics {
   totalRequests: number;
   failedRequests: number;
@@ -102,6 +104,9 @@ export interface TestCompletion {
   finishReason: string;
   metrics: LiveMetrics;
   result: TestResult;
+  resultSource: TestResultSource;
+  summaryIssue: string | null;
+  errorMessage: string | null;
 }
 
 export interface GetTestStatusResponse {
@@ -112,6 +117,8 @@ export interface GetTestStatusResponse {
   result: TestResult | null;
   finishReason: string | null;
   errorMessage: string | null;
+  resultSource: TestResultSource | null;
+  summaryIssue: string | null;
 }
 
 export interface ValidateTestConfigurationResponse {

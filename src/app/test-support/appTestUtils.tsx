@@ -4,6 +4,7 @@ import { App } from "../App";
 import { LoadRiftApiProvider } from "../../lib/loadrift/context";
 import type { LoadRiftApi } from "../../lib/loadrift/api";
 import type { CollectionInfo, SmokeTestResponse } from "../../lib/loadrift/types";
+import type { TestHarnessState } from "../../features/test/useTestHarness";
 export {
   createLoadRiftApiMock as createApiMock,
   deferred,
@@ -150,8 +151,7 @@ export function createImportHookState(collection: CollectionInfo | null = import
 }
 
 export function createTestHookState() {
-  return {
-    state: {
+  const state: TestHarnessState = {
       status: "idle" as const,
       metrics: {
         activeVus: 0,
@@ -166,13 +166,18 @@ export function createTestHookState() {
       },
       result: null,
       finishReason: null,
+      resultSource: null,
+      summaryIssue: null,
       error: null,
       runId: null,
       output: "",
       isStarting: false,
       isBusy: false,
       isRunning: false,
-    },
+    };
+
+  return {
+    state,
     refreshStatus: vi.fn(),
     startTest: vi.fn(),
     stopTest: vi.fn(),

@@ -3,7 +3,7 @@ use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use crate::importing::RuntimeCollection;
-use crate::models::{LiveMetrics, TestResult, TestStatus};
+use crate::models::{LiveMetrics, TestResult, TestResultSource, TestStatus};
 
 #[derive(Clone)]
 pub struct RunningTest {
@@ -20,6 +20,8 @@ pub struct AppState {
     pub latest_summary_json: Option<String>,
     pub latest_finish_reason: Option<String>,
     pub latest_error_message: Option<String>,
+    pub latest_result_source: Option<TestResultSource>,
+    pub latest_summary_issue: Option<String>,
     pub latest_output: String,
     pub latest_run_id: Option<String>,
     pub test_status: TestStatus,
@@ -38,6 +40,8 @@ impl AppState {
         self.latest_summary_json = None;
         self.latest_finish_reason = None;
         self.latest_error_message = None;
+        self.latest_result_source = None;
+        self.latest_summary_issue = None;
         self.latest_output.clear();
     }
 }
@@ -52,6 +56,8 @@ impl Default for AppState {
             latest_summary_json: None,
             latest_finish_reason: None,
             latest_error_message: None,
+            latest_result_source: None,
+            latest_summary_issue: None,
             latest_output: String::new(),
             latest_run_id: None,
             test_status: TestStatus::Idle,
