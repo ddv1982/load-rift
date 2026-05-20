@@ -82,7 +82,22 @@ export interface TestResult {
   thresholds: ThresholdResult[];
 }
 
+export interface StartTestResponse {
+  runId: string;
+}
+
+export interface RunMetricsEvent {
+  runId: string;
+  metrics: LiveMetrics;
+}
+
+export interface RunErrorEvent {
+  runId: string;
+  message: string;
+}
+
 export interface TestCompletion {
+  runId: string;
   runState: TestStatus;
   finishReason: string;
   metrics: LiveMetrics;
@@ -90,6 +105,7 @@ export interface TestCompletion {
 }
 
 export interface GetTestStatusResponse {
+  runId: string | null;
   status: TestStatus;
   isRunning: boolean;
   metrics: LiveMetrics | null;

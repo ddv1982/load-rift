@@ -5,9 +5,9 @@ use std::thread;
 use std::time::Duration;
 
 use super::logic::{
-    begin_test_start_validation, finalize_test_start_reservation, release_failed_start,
-    validate_test_configuration_for_collection, validate_test_configuration_inner,
-    wait_for_test_stop,
+    begin_test_start_validation, finalize_test_start_reservation, get_test_status_response,
+    release_failed_start, validate_test_configuration_for_collection,
+    validate_test_configuration_inner, wait_for_test_stop,
 };
 use crate::k6::export_report_file;
 use crate::models::{TestStatus, TrafficMode};
@@ -42,15 +42,16 @@ fn reserve_test_start_blocks_parallel_starts_until_released() {
     let state = state_with_script(empty_runtime_collection());
 
     let (script, _) =
-        begin_test_start_validation(&state).expect("first start should reserve the slot");
+        begin_test_start_validation(&state, "run-1").expect("first start should reserve the slot");
     assert!(script.contains("export default function"));
 
-    let error = begin_test_start_validation(&state).expect_err("second start should be rejected");
+    let error =
+        begin_test_start_validation(&state, "run-2").expect_err("second start should be rejected");
     assert!(error.contains("already running"));
 
-    release_failed_start(&state);
+    release_failed_start(&state, "run-1");
 
-    begin_test_start_validation(&state).expect("slot should reopen after release");
+    begin_test_start_validation(&state, "run-2").expect("slot should reopen after release");
 }
 
 #[test]
@@ -58,8 +59,8 @@ fn finalize_test_start_reservation_clears_previous_run_artifacts() {
     let state = state_with_stale_run_artifacts();
 
     let (script, _) =
-        begin_test_start_validation(&state).expect("start reservation should succeed");
-    finalize_test_start_reservation(&state, &script)
+        begin_test_start_validation(&state, "run-1").expect("start reservation should succeed");
+    finalize_test_start_reservation(&state, &script, "run-1")
         .expect("finalizing the reservation should succeed");
 
     let app_state = state.lock().expect("state should still be readable");
@@ -72,13 +73,28 @@ fn finalize_test_start_reservation_clears_previous_run_artifacts() {
 fn failed_start_leaves_backend_in_failed_state_without_artifacts() {
     let state = state_with_script(empty_runtime_collection());
 
-    begin_test_start_validation(&state).expect("start reservation should succeed");
-    release_failed_start(&state);
+    begin_test_start_validation(&state, "run-1").expect("start reservation should succeed");
+    release_failed_start(&state, "run-1");
 
     let app_state = state.lock().expect("state should still be readable");
     assert!(!app_state.launch_in_progress);
     assert!(matches!(app_state.test_status, TestStatus::Failed));
+    assert_eq!(app_state.latest_run_id.as_deref(), Some("run-1"));
     assert!(app_state.latest_result.is_none());
+}
+
+#[test]
+fn test_status_response_includes_latest_run_id() {
+    let state = Arc::new(Mutex::new(AppState {
+        latest_run_id: Some("run-1".to_string()),
+        test_status: TestStatus::Completed,
+        ..AppState::default()
+    }));
+
+    let response = get_test_status_response(&state).expect("status should be readable");
+
+    assert_eq!(response.run_id.as_deref(), Some("run-1"));
+    assert!(matches!(response.status, TestStatus::Completed));
 }
 
 #[test]
@@ -86,10 +102,10 @@ fn failed_start_cannot_export_previous_report() {
     let state = state_with_stale_run_artifacts();
 
     let (script, _) =
-        begin_test_start_validation(&state).expect("start reservation should succeed");
-    finalize_test_start_reservation(&state, &script)
+        begin_test_start_validation(&state, "run-1").expect("start reservation should succeed");
+    finalize_test_start_reservation(&state, &script, "run-1")
         .expect("finalizing the reservation should succeed");
-    release_failed_start(&state);
+    release_failed_start(&state, "run-1");
 
     let error = export_report_file(&state, "/tmp/loadrift-review-report.html")
         .expect_err("stale report data should not remain exportable");
@@ -105,6 +121,7 @@ fn wait_for_test_stop_returns_when_active_test_clears() {
         .expect("test child should spawn");
     let state = Arc::new(Mutex::new(AppState {
         active_test: Some(RunningTest {
+            run_id: "run-1".to_string(),
             child: Arc::new(Mutex::new(child)),
             stop_requested: Arc::new(AtomicBool::new(false)),
         }),
@@ -243,6 +260,24 @@ fn validate_test_configuration_rejects_zero_weight_for_selected_weighted_request
         response.message.as_deref(),
         Some("Weighted mix requires at least one selected request with a positive weight.")
     );
+}
+
+#[test]
+fn validate_test_configuration_allows_mixed_zero_and_positive_weighted_requests() {
+    let state = Arc::new(Mutex::new(AppState {
+        runtime_collection: Some(runtime_collection(vec![
+            runtime_request("GET users", "/users"),
+            runtime_request("GET teams", "/teams"),
+        ])),
+        ..AppState::default()
+    }));
+    let mut options = test_k6_options(Some("https://api.example.com"));
+    options.traffic_mode = TrafficMode::Weighted;
+    options.request_weights.insert("request-0".to_string(), 0);
+    options.request_weights.insert("request-1".to_string(), 2);
+
+    let response = validate_test_configuration_inner(&state, &options);
+    assert!(response.ready);
 }
 
 #[test]

@@ -278,14 +278,14 @@ export function CollectionSummaryCard({
                     <label className="request-weight-field">
                       <input
                         type="number"
-                        min={1}
+                        min={0}
                         step={1}
                         value={requestWeight}
                         disabled={!selectedRequestSet.has(row.request.id)}
                         onChange={(event) =>
                           onRequestWeightChange(
                             row.request.id,
-                            Number(event.target.value) || 1,
+                            event.target.value === "" ? 1 : Number(event.target.value),
                           )
                         }
                         aria-label={`Weight for ${row.request.name}`}

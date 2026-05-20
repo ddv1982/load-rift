@@ -322,6 +322,7 @@ jobs:
           key_file="$(mktemp)"
           passphrase_file=""
           setup_extract_dir=""
+          setup_signature_status=""
           cleanup() {
             rm -rf "$gnupg_home" "$verification_home"
             rm -f "$key_file"
@@ -330,6 +331,9 @@ jobs:
             fi
             if [[ -n "$setup_extract_dir" ]]; then
               rm -rf "$setup_extract_dir"
+            fi
+            if [[ -n "$setup_signature_status" ]]; then
+              rm -f "$setup_signature_status"
             fi
           }
           trap cleanup EXIT
@@ -360,6 +364,9 @@ jobs:
           fi
 
           setup_package="load-rift-repository-setup_1.0_all.deb"
+          setup_package_sha256="${setup_package}.sha256"
+          setup_package_sha256_signature="${setup_package_sha256}.asc"
+          setup_installer="install-apt-repo.sh"
           python3 scripts/build_apt_repository.py \
             --clean \
             --output apt-repository \
@@ -384,9 +391,96 @@ jobs:
           grep -Fx "Components: main" "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
           grep -E '^Architectures: .*amd64( |$)' "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
           grep -Fx "Signed-By: /usr/share/keyrings/load-rift-archive-keyring.pgp" "$setup_extract_dir/etc/apt/sources.list.d/load-rift.sources"
-          sh -n scripts/install-apt-repo.sh
+          sha256sum "$setup_package" > "$setup_package_sha256"
+          sha256sum -c "$setup_package_sha256"
+          gpg_sign_args=(
+            --batch
+            --yes
+            --pinentry-mode loopback
+            --armor
+            --detach-sign
+            --local-user "$expected_fingerprint"
+            --output "$setup_package_sha256_signature"
+          )
+          if [[ -n "$signing_passphrase" ]]; then
+            gpg_sign_args+=(--passphrase-file "$passphrase_file")
+          fi
+          gpg "${gpg_sign_args[@]}" "$setup_package_sha256"
+          setup_signature_status="$(mktemp)"
+          gpg --batch --status-fd 3 --verify "$setup_package_sha256_signature" "$setup_package_sha256" 3>"$setup_signature_status"
+          setup_validsig_fingerprints="$(awk '$1 == "[GNUPG:]" && $2 == "VALIDSIG" { gsub(/[[:space:]]/, "", $3); print toupper($3) }' "$setup_signature_status")"
+          setup_validsig_count="$(printf '%s\n' "$setup_validsig_fingerprints" | sed '/^$/d' | wc -l | tr -d '[:space:]')"
+          if [[ "$setup_validsig_count" != "1" ]]; then
+            echo "Expected exactly one VALIDSIG signer for the APT setup SHA256 signature; found ${setup_validsig_count}." >&2
+            exit 1
+          fi
+          setup_signer_fingerprint="$setup_validsig_fingerprints"
+          sed "s/__LOAD_RIFT_APT_SIGNING_KEY_FINGERPRINT__/$setup_signer_fingerprint/g" \
+            scripts/install-apt-repo.sh > "$setup_installer"
+          ! grep -q __LOAD_RIFT_APT_SIGNING_KEY_FINGERPRINT__ "$setup_installer"
+          ! grep -q LOAD_RIFT_ALLOW_UNVERIFIED_REPOSITORY_SETUP "$setup_installer"
+          grep -F "$setup_signer_fingerprint" "$setup_installer"
+          sh -n "$setup_installer"
 
+          installer_keyring_validation="$(GNUPGHOME="$verification_home" gpg --batch --import-options show-only --with-colons --import apt-repository/load-rift-archive-keyring.pgp | awk -F: -v expected="$setup_signer_fingerprint" '
+            function finish_primary_key() {
+              if (!seen_primary_key) {
+                return
+              }
+              primary_key_count++
+              if (primary_key_has_expected_signer) {
+                accepted_primary_key_count++
+              } else {
+                unexpected_primary_key_fingerprint = primary_key_fingerprint
+              }
+              primary_key_has_expected_signer = 0
+              primary_key_fingerprint = ""
+            }
+            $1 == "pub" {
+              finish_primary_key()
+              seen_primary_key = 1
+              next
+            }
+            $1 == "fpr" && seen_primary_key {
+              fingerprint = toupper($10)
+              gsub(/[[:space:]]/, "", fingerprint)
+              if (primary_key_fingerprint == "") {
+                primary_key_fingerprint = fingerprint
+              }
+              if (fingerprint == expected) {
+                primary_key_has_expected_signer = 1
+              }
+            }
+            END {
+              finish_primary_key()
+              if (primary_key_count == 0) {
+                print "NO_PRIMARY_KEY"
+              } else if (accepted_primary_key_count == 0) {
+                print "MISSING_PINNED_SIGNER"
+              } else if (unexpected_primary_key_fingerprint != "") {
+                print "UNEXPECTED_PRIMARY_KEY " unexpected_primary_key_fingerprint
+              } else if (accepted_primary_key_count > 1) {
+                print "MULTIPLE_ACCEPTED_PRIMARY_KEYS"
+              } else {
+                print "OK"
+              }
+            }
+          ')"
+          if [[ "$installer_keyring_validation" != "OK" ]]; then
+            echo "Generated APT keyring failed installer-equivalent validation: ${installer_keyring_validation}" >&2
+            exit 1
+          fi
           GNUPGHOME="$verification_home" gpg --batch --import apt-repository/load-rift-archive-keyring.pgp
+          GNUPGHOME="$verification_home" gpg --batch --status-fd 3 --verify "$setup_package_sha256_signature" "$setup_package_sha256" 3>"$setup_signature_status"
+          installer_validsig_fingerprints="$(awk '$1 == "[GNUPG:]" && $2 == "VALIDSIG" { gsub(/[[:space:]]/, "", $3); print toupper($3) }' "$setup_signature_status")"
+          if [[ "$installer_validsig_fingerprints" != "$setup_signer_fingerprint" ]]; then
+            echo "Generated APT setup signature VALIDSIG did not match rendered installer pin." >&2
+            echo "Expected: $setup_signer_fingerprint" >&2
+            echo "Actual:   $installer_validsig_fingerprints" >&2
+            exit 1
+          fi
+          sha256sum -c "$setup_package_sha256"
+
           GNUPGHOME="$verification_home" gpg --batch --verify apt-repository/dists/stable/InRelease
           GNUPGHOME="$verification_home" gpg --batch --verify \
             apt-repository/dists/stable/Release.gpg \
@@ -403,11 +497,15 @@ jobs:
         run: |
           set -euo pipefail
           test -s load-rift-repository-setup_1.0_all.deb
-          test -s scripts/install-apt-repo.sh
+          test -s load-rift-repository-setup_1.0_all.deb.sha256
+          test -s load-rift-repository-setup_1.0_all.deb.sha256.asc
+          test -s install-apt-repo.sh
 
           gh release upload "${{ steps.release.outputs.tag_name }}" \
             load-rift-repository-setup_1.0_all.deb \
-            scripts/install-apt-repo.sh \
+            load-rift-repository-setup_1.0_all.deb.sha256 \
+            load-rift-repository-setup_1.0_all.deb.sha256.asc \
+            install-apt-repo.sh \
             --clobber
 
           gh release view "${{ steps.release.outputs.tag_name }}" \
@@ -418,6 +516,14 @@ jobs:
             --json assets \
             --jq '.assets[].name' \
             | grep -Fx load-rift-repository-setup_1.0_all.deb
+          gh release view "${{ steps.release.outputs.tag_name }}" \
+            --json assets \
+            --jq '.assets[].name' \
+            | grep -Fx load-rift-repository-setup_1.0_all.deb.sha256
+          gh release view "${{ steps.release.outputs.tag_name }}" \
+            --json assets \
+            --jq '.assets[].name' \
+            | grep -Fx load-rift-repository-setup_1.0_all.deb.sha256.asc
 
       - name: Configure GitHub Pages
         if: matrix.platform == 'ubuntu-22.04'

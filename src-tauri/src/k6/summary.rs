@@ -228,12 +228,66 @@ fn metric_value_from_metric_name(metric_name: &str, metric: &Value) -> f64 {
 }
 
 fn parse_threshold_value(threshold_name: &str) -> f64 {
-    threshold_name
-        .chars()
-        .filter(|character| character.is_ascii_digit() || *character == '.')
-        .collect::<String>()
-        .parse::<f64>()
-        .unwrap_or(0.0)
+    for operator in ["<=", ">=", "==", "!=", "<", ">"] {
+        if let Some((_, right_side)) = threshold_name.split_once(operator) {
+            if let Some(value) = parse_first_number(right_side) {
+                return value;
+            }
+        }
+    }
+
+    parse_first_number(threshold_name).unwrap_or(0.0)
+}
+
+fn parse_first_number(value: &str) -> Option<f64> {
+    let bytes = value.as_bytes();
+    let mut index = 0;
+
+    while index < bytes.len() {
+        let start = index;
+        if bytes[index] == b'+' || bytes[index] == b'-' {
+            index += 1;
+        }
+
+        let mut saw_digit = false;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            saw_digit = true;
+            index += 1;
+        }
+
+        if index < bytes.len() && bytes[index] == b'.' {
+            index += 1;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                saw_digit = true;
+                index += 1;
+            }
+        }
+
+        if saw_digit {
+            if index < bytes.len() && matches!(bytes[index], b'e' | b'E') {
+                let exponent_start = index;
+                index += 1;
+                if index < bytes.len() && matches!(bytes[index], b'+' | b'-') {
+                    index += 1;
+                }
+                let exponent_digits_start = index;
+                while index < bytes.len() && bytes[index].is_ascii_digit() {
+                    index += 1;
+                }
+                if exponent_digits_start == index {
+                    index = exponent_start;
+                }
+            }
+
+            if let Ok(parsed) = value[start..index].parse::<f64>() {
+                return Some(parsed);
+            }
+        }
+
+        index = start + 1;
+    }
+
+    None
 }
 
 fn normalized_percentile_name(value_name: &str) -> &str {

@@ -46,7 +46,24 @@ Enable the repository once per machine:
 bash <(curl -fsSL https://github.com/ddv1982/load-rift/releases/latest/download/install-apt-repo.sh)
 ```
 
-The setup script downloads the repository setup package to a temporary file, installs the Load Rift archive keyring and APT source configuration, then removes the temporary file.
+The setup script downloads the repository setup package to a temporary file, authenticates the SHA256 sidecar with a detached GPG signature whose `VALIDSIG` signer fingerprint matches the release-stamped Load Rift APT signing-key fingerprint, verifies that the downloaded keyring has no unexpected primary keys and contains that pinned signer fingerprint as part of the accepted primary key, verifies the package checksum, installs the Load Rift archive keyring and APT source configuration, then removes the temporary file. A same-channel `.deb.sha256` file is not trusted by itself; if signature authentication is unavailable, the script fails before installing.
+
+For a manual verified install of the repository setup package:
+
+```bash
+curl -fsSLO https://github.com/ddv1982/load-rift/releases/latest/download/load-rift-repository-setup_1.0_all.deb
+curl -fsSLO https://github.com/ddv1982/load-rift/releases/latest/download/load-rift-repository-setup_1.0_all.deb.sha256
+curl -fsSLO https://github.com/ddv1982/load-rift/releases/latest/download/load-rift-repository-setup_1.0_all.deb.sha256.asc
+curl -fsSLo load-rift-archive-keyring.pgp https://ddv1982.github.io/load-rift/apt/load-rift-archive-keyring.pgp
+# Confirm exactly one primary key is listed and one fingerprint row matches the release installer fingerprint.
+# The matching row may be a signing subkey fingerprint; other subkey fingerprints can differ.
+gpg --batch --import-options show-only --with-colons --import load-rift-archive-keyring.pgp | awk -F: '$1 == "pub" { primary += 1 } $1 == "fpr" { print toupper($10) } END { if (primary != 1) exit 1 }'
+gpg --import load-rift-archive-keyring.pgp
+# Confirm the VALIDSIG fingerprint printed here matches the release installer fingerprint.
+gpg --status-fd 1 --verify load-rift-repository-setup_1.0_all.deb.sha256.asc load-rift-repository-setup_1.0_all.deb.sha256 | awk '$1 == "[GNUPG:]" && $2 == "VALIDSIG" { print toupper($3) }'
+sha256sum -c load-rift-repository-setup_1.0_all.deb.sha256
+sudo apt install ./load-rift-repository-setup_1.0_all.deb
+```
 
 Refresh APT metadata:
 
@@ -70,6 +87,8 @@ The standalone `.AppImage`, `.deb`, and `.rpm` release assets remain available a
 npm install
 npm run install:k6
 ```
+
+`npm run install:k6` uses built-in checksums for the default bundled k6 version. If you override `K6_VERSION`, also set `K6_SHA256` to the expected checksum for the selected platform archive.
 
 ## Run In Development
 
@@ -154,6 +173,7 @@ The app currently provides a slim migration shell with:
 
 - Supported Linux and macOS builds vendor `k6` `v1.6.1` into `src-tauri/bin/`
   using the platform-specific target triple filename.
+- Custom `K6_VERSION` installs require `K6_SHA256` for the matching k6 release archive; built-in checksums only apply to the default bundled version.
 - Tauri bundles those binaries as application resources, so packaged Linux and
   macOS artifacts do not rely on a system-wide k6 install.
 - At runtime the app still honors `LOADRIFT_K6_BIN` first, which is useful for local overrides or debugging.

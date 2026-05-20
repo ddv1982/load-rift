@@ -53,6 +53,8 @@ pub(crate) fn runtime_request(name: &str, url: &str) -> RuntimeRequest {
         folder_path: Vec::new(),
         headers: Default::default(),
         body: None,
+        url_encoded_variable_occurrences: Vec::new(),
+        encode_body_variable_values: false,
     }
 }
 

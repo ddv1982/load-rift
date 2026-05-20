@@ -20,7 +20,9 @@ export function createLoadRiftApiMock(
       }),
     ),
     smokeTestRequests: vi.fn(() => Promise.resolve(emptySmokeTestResponse)),
-    startTest: vi.fn(),
+    startTest: vi.fn((input: { options: K6Options; runId?: string }) =>
+      Promise.resolve({ runId: input.runId ?? "test-run" }),
+    ),
     stopTest: vi.fn(),
     exportReport: vi.fn(),
     getTestStatus: vi.fn(),

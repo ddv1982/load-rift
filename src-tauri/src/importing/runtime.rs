@@ -79,7 +79,11 @@ fn validate_weighted_selection(
 }
 
 fn effective_request_weight(options: &K6Options, request_id: &str) -> u32 {
-    options.request_weights.get(request_id).copied().unwrap_or(1)
+    options
+        .request_weights
+        .get(request_id)
+        .copied()
+        .unwrap_or(1)
 }
 
 fn resolve_request(
@@ -95,7 +99,14 @@ fn resolve_request(
     }
 
     let resolved_body = if let Some(body) = request.body.as_deref() {
-        let (resolved_body, missing) = resolve_template(body, &context.values);
+        let (resolved_body, missing) = resolve_template_with_options(
+            body,
+            &context.values,
+            TemplateResolveOptions {
+                encode_variable_values: request.encode_body_variable_values,
+                encode_variable_occurrences: None,
+            },
+        );
         if !missing.is_empty() {
             return Err(format!(
                 "Request {:?} still contains unresolved variables in the body: {}",
@@ -108,7 +119,19 @@ fn resolve_request(
         None
     };
 
-    let (resolved_url, missing_url_variables) = resolve_template(&request.url, &context.values);
+    let url_encoded_variable_occurrences = request
+        .url_encoded_variable_occurrences
+        .iter()
+        .copied()
+        .collect::<BTreeSet<_>>();
+    let (resolved_url, missing_url_variables) = resolve_template_with_options(
+        &request.url,
+        &context.values,
+        TemplateResolveOptions {
+            encode_variable_values: false,
+            encode_variable_occurrences: Some(&url_encoded_variable_occurrences),
+        },
+    );
     if !missing_url_variables.is_empty() {
         return Err(format!(
             "Request {:?} still contains unresolved variables in the URL: {}",
@@ -304,10 +327,32 @@ fn first_non_empty<const N: usize>(candidates: [Option<&str>; N]) -> Option<Stri
         .find_map(normalize_runtime_value)
 }
 
+#[derive(Debug, Clone, Copy)]
+struct TemplateResolveOptions<'a> {
+    encode_variable_values: bool,
+    encode_variable_occurrences: Option<&'a BTreeSet<usize>>,
+}
+
 fn resolve_template(value: &str, context: &BTreeMap<String, String>) -> (String, BTreeSet<String>) {
+    resolve_template_with_options(
+        value,
+        context,
+        TemplateResolveOptions {
+            encode_variable_values: false,
+            encode_variable_occurrences: None,
+        },
+    )
+}
+
+fn resolve_template_with_options(
+    value: &str,
+    context: &BTreeMap<String, String>,
+    options: TemplateResolveOptions,
+) -> (String, BTreeSet<String>) {
     let mut resolved = String::with_capacity(value.len());
     let mut missing = BTreeSet::new();
     let mut search_index = 0;
+    let mut occurrence_index = 0;
 
     while let Some(start_offset) = value[search_index..].find("{{") {
         let start = search_index + start_offset;
@@ -320,15 +365,37 @@ fn resolve_template(value: &str, context: &BTreeMap<String, String>) -> (String,
         let token_end = token_start + end_offset;
         let key = value[token_start..token_end].trim();
         if let Some(resolved_value) = context.get(key) {
-            resolved.push_str(resolved_value);
+            if options.encode_variable_values
+                || options
+                    .encode_variable_occurrences
+                    .is_some_and(|occurrences| occurrences.contains(&occurrence_index))
+            {
+                resolved.push_str(&percent_encode_component(resolved_value));
+            } else {
+                resolved.push_str(resolved_value);
+            }
         } else if !key.is_empty() {
             missing.insert(key.to_string());
         }
+        occurrence_index += 1;
         search_index = token_end + 2;
     }
 
     resolved.push_str(&value[search_index..]);
     (resolved, missing)
+}
+
+fn percent_encode_component(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(*byte as char);
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    encoded
 }
 
 fn resolve_url(url: &str, base_url: Option<&str>) -> String {

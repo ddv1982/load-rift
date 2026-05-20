@@ -20,6 +20,7 @@ pub(crate) fn spawn_metrics_forwarder(
     metrics_path: PathBuf,
     app: AppHandle,
     state: SharedAppState,
+    run_id: String,
     shutdown: std::sync::Arc<AtomicBool>,
 ) -> JoinHandle<()> {
     thread::spawn(move || {
@@ -59,21 +60,39 @@ pub(crate) fn spawn_metrics_forwarder(
             }
 
             if aggregator.apply_line(&line) && last_emit.elapsed() >= Duration::from_millis(200) {
-                publish_live_metrics(&state, &app, aggregator.snapshot());
+                publish_live_metrics(&state, &app, &run_id, aggregator.snapshot());
                 last_emit = Instant::now();
             }
         }
 
-        publish_live_metrics(&state, &app, aggregator.snapshot());
+        publish_live_metrics(&state, &app, &run_id, aggregator.snapshot());
     })
 }
 
-fn publish_live_metrics(state: &SharedAppState, app: &AppHandle, metrics: LiveMetrics) {
-    if let Ok(mut app_state) = state.lock() {
-        app_state.latest_metrics = Some(metrics.clone());
-    }
+fn publish_live_metrics(
+    state: &SharedAppState,
+    app: &AppHandle,
+    run_id: &str,
+    metrics: LiveMetrics,
+) {
+    let should_emit = if let Ok(mut app_state) = state.lock() {
+        if app_state
+            .active_test
+            .as_ref()
+            .is_some_and(|active| active.run_id == run_id)
+        {
+            app_state.latest_metrics = Some(metrics.clone());
+            true
+        } else {
+            false
+        }
+    } else {
+        false
+    };
 
-    let _ = emit_k6_metrics(app, metrics);
+    if should_emit {
+        let _ = emit_k6_metrics(app, run_id, metrics);
+    }
 }
 
 #[derive(Debug, Deserialize)]

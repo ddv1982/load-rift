@@ -87,7 +87,7 @@ describe("App persistence", () => {
     expect((screen.getByLabelText("Ramp-up time") as HTMLInputElement).value).toBe("45s");
     expect((screen.getByLabelText("P95 threshold (ms)") as HTMLInputElement).value).toBe("950");
     expect((screen.getByLabelText("Error-rate threshold (%)") as HTMLInputElement).value).toBe(
-      "2.5",
+      "5",
     );
     expect((screen.getByLabelText("Bearer token") as HTMLInputElement).value).toBe("");
   });

@@ -73,6 +73,30 @@ fn sample_host_placeholder_collection() -> &'static str {
     }"#
 }
 
+#[cfg(target_os = "linux")]
+fn sample_structured_relative_query_collection() -> &'static str {
+    r#"{
+      "info": {
+        "name": "Structured Relative Query Fixture",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+      },
+      "variable": [{ "key": "term", "value": "a&b=c ü!'()*" }],
+      "item": [
+        {
+          "name": "Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "path": ["über"],
+              "query": [{ "key": "q", "value": "{{term}}" }]
+            }
+          }
+        }
+      ]
+    }"#
+}
+
 fn sample_host_typo_placeholder_collection() -> &'static str {
     r#"{
       "info": {
@@ -127,6 +151,260 @@ fn imports_nested_postman_collections() {
     assert_eq!(imported.info.requests[0].folder_path, vec!["Folder"]);
     assert!(imported.script.contains("https://api.example.com"));
     assert!(imported.script.contains("List users"));
+}
+
+#[test]
+fn structured_url_query_pairs_are_percent_encoded() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Encoded query" },
+          "item": [
+            {
+              "name": "Search",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "protocol": "https",
+                  "host": ["api", "example", "com"],
+                  "path": ["search"],
+                  "query": [
+                    { "key": "space key", "value": "a b" },
+                    { "key": "reserved", "value": "a&b=c" },
+                    { "key": "filter[]", "value": "x/y" },
+                    { "key": "template", "value": "{{term}} & more" }
+                  ]
+                }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("collection should import");
+
+    assert_eq!(
+        imported.runtime_collection.requests[0].url,
+        "https://api.example.com/search?space%20key=a%20b&reserved=a%26b%3Dc&filter%5B%5D=x%2Fy&template={{term}}%20%26%20more"
+    );
+    assert_eq!(
+        imported.runtime_collection.requests[0].url_encoded_variable_occurrences,
+        vec![0]
+    );
+}
+
+#[test]
+fn raw_url_query_reserved_characters_are_preserved() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Raw query" },
+          "item": [
+            {
+              "name": "Search",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "raw": "https://api.example.com/search?q=a b&reserved=a&b=c",
+                  "protocol": "https",
+                  "host": ["api", "example", "com"],
+                  "path": ["search"],
+                  "query": [{ "key": "q", "value": "ignored" }]
+                }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("collection should import");
+
+    assert_eq!(
+        imported.runtime_collection.requests[0].url,
+        "https://api.example.com/search?q=a b&reserved=a&b=c"
+    );
+}
+
+#[test]
+fn structured_urlencoded_body_pairs_are_percent_encoded() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Encoded form" },
+          "item": [
+            {
+              "name": "Submit",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "https://api.example.com/form" },
+                "body": {
+                  "mode": "urlencoded",
+                  "urlencoded": [
+                    { "key": "space key", "value": "a b" },
+                    { "key": "reserved", "value": "a&b=c" }
+                  ]
+                }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("collection should import");
+
+    assert_eq!(
+        imported.runtime_collection.requests[0].body.as_deref(),
+        Some("space%20key=a%20b&reserved=a%26b%3Dc")
+    );
+}
+
+#[test]
+fn structured_formdata_text_pairs_are_percent_encoded_and_file_entries_skipped() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Encoded multipart fallback" },
+          "item": [
+            {
+              "name": "Submit",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "https://api.example.com/form" },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [
+                    { "key": "space key", "value": "a b", "type": "text" },
+                    { "key": "reserved", "value": "a&b=c", "type": "text" },
+                    { "key": "upload", "value": "/tmp/file.txt", "type": "file" }
+                  ]
+                }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("collection should import");
+
+    assert_eq!(
+        imported.runtime_collection.requests[0].body.as_deref(),
+        Some("space%20key=a%20b&reserved=a%26b%3Dc")
+    );
+}
+
+#[test]
+fn structured_query_variable_values_are_percent_encoded_after_resolution() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Encoded query variables" },
+          "variable": [{ "key": "term", "value": "a&b=c ü!'()*" }],
+          "item": [
+            {
+              "name": "Search",
+              "request": {
+                "method": "GET",
+                "url": {
+                  "protocol": "https",
+                  "host": ["api", "example", "com"],
+                  "path": ["über", "{{pathSegment}}"],
+                  "query": [{ "key": "q", "value": "{{term}}" }]
+                }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("collection should import");
+    let mut options = imported_test_k6_options(&imported, None);
+    options
+        .variable_overrides
+        .insert("pathSegment".to_string(), "raw path".to_string());
+
+    let requests = super::resolve_test_requests(&imported.runtime_collection, &options)
+        .expect("request should resolve");
+
+    assert_eq!(
+        imported.runtime_collection.requests[0].url_encoded_variable_occurrences,
+        vec![1]
+    );
+    assert_eq!(
+        requests[0].url,
+        "https://api.example.com/über/raw path?q=a%26b%3Dc%20%C3%BC%21%27%28%29%2A"
+    );
+}
+
+#[test]
+fn structured_form_variable_overrides_are_percent_encoded_after_resolution() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Encoded form variables" },
+          "variable": [{ "key": "term", "value": "default" }],
+          "item": [
+            {
+              "name": "Submit urlencoded",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "https://api.example.com/form" },
+                "body": {
+                  "mode": "urlencoded",
+                  "urlencoded": [{ "key": "q", "value": "{{term}}" }]
+                }
+              }
+            },
+            {
+              "name": "Submit formdata",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "https://api.example.com/formdata" },
+                "body": {
+                  "mode": "formdata",
+                  "formdata": [{ "key": "q", "value": "{{term}}", "type": "text" }]
+                }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("collection should import");
+    let mut options = imported_test_k6_options(&imported, None);
+    options
+        .variable_overrides
+        .insert("term".to_string(), "a&b=c ü!'()*".to_string());
+
+    let requests = super::resolve_test_requests(&imported.runtime_collection, &options)
+        .expect("requests should resolve");
+
+    assert_eq!(
+        requests[0].body.as_deref(),
+        Some("q=a%26b%3Dc%20%C3%BC%21%27%28%29%2A")
+    );
+    assert_eq!(
+        requests[1].body.as_deref(),
+        Some("q=a%26b%3Dc%20%C3%BC%21%27%28%29%2A")
+    );
+}
+
+#[test]
+fn raw_url_and_body_variable_values_are_preserved_after_resolution() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Raw variables" },
+          "variable": [{ "key": "term", "value": "a&b=c ü!'()*" }],
+          "item": [
+            {
+              "name": "Raw request",
+              "request": {
+                "method": "POST",
+                "url": { "raw": "https://api.example.com/search?q={{term}}" },
+                "body": { "mode": "raw", "raw": "q={{term}}" }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("collection should import");
+    let options = imported_test_k6_options(&imported, None);
+
+    let requests = super::resolve_test_requests(&imported.runtime_collection, &options)
+        .expect("request should resolve");
+
+    assert_eq!(
+        requests[0].url,
+        "https://api.example.com/search?q=a&b=c ü!'()*"
+    );
+    assert_eq!(requests[0].body.as_deref(), Some("q=a&b=c ü!'()*"));
 }
 
 #[test]
@@ -474,6 +752,26 @@ fn normalizes_bearer_token_inputs() {
         Some("integration-token".to_string())
     );
     assert_eq!(runtime::normalize_auth_token_input("   "), None);
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn structured_query_generated_script_encodes_non_ascii_and_rfc3986_values() {
+    let imported = import_collection(sample_structured_relative_query_collection())
+        .expect("fixture should import");
+
+    let Some((_summary_json, requests)) =
+        run_generated_script_fixture(&imported.script, "loadrift-encoded-query", None)
+    else {
+        return;
+    };
+
+    assert!(
+        requests.iter().any(|request| request.contains(
+            "q=a%26b%3Dc%20%C3%BC%21%27%28%29%2A"
+        )),
+        "expected generated script to encode structured query variable values with RFC3986 escaping, captured requests: {requests:?}"
+    );
 }
 
 #[cfg(target_os = "linux")]

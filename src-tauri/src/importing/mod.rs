@@ -30,6 +30,22 @@ pub struct RuntimeRequest {
     pub folder_path: Vec<String>,
     pub headers: BTreeMap<String, String>,
     pub body: Option<String>,
+    #[serde(
+        default,
+        rename = "urlEncodedVariableOccurrences",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    pub url_encoded_variable_occurrences: Vec<usize>,
+    #[serde(
+        default,
+        rename = "encodeBodyVariableValues",
+        skip_serializing_if = "is_false"
+    )]
+    pub encode_body_variable_values: bool,
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 #[derive(Debug, Clone)]

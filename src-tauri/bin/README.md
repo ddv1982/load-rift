@@ -9,6 +9,8 @@ Bundled component:
 Current bundled upstream version:
 - `k6` `v1.6.1`
 
+`scripts/install-k6.sh` includes checksums for this default version. If you run it with a custom `K6_VERSION`, set `K6_SHA256` to the expected checksum for the matching platform archive; custom versions without an explicit checksum are rejected before download.
+
 License:
 - GNU Affero General Public License v3.0 (`AGPL-3.0`)
 - Full license text: `../../licenses/AGPL-3.0.txt`

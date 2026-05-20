@@ -134,6 +134,8 @@ describe("App collection summary", () => {
   });
 
   it("sends weighted request settings when weighted mix is configured", async () => {
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
+
     renderApp(createApiMock());
 
     await act(async () => {
@@ -150,7 +152,10 @@ describe("App collection summary", () => {
       await Promise.resolve();
     });
 
-    fireEvent.change(screen.getByLabelText("Weight for GET users"), {
+    fireEvent.change(screen.getByLabelText("Weight for POST login"), {
+      target: { value: "0" },
+    });
+    fireEvent.change(screen.getByLabelText("Weight for GET account"), {
       target: { value: "3" },
     });
 
@@ -165,7 +170,8 @@ describe("App collection summary", () => {
       expect.objectContaining({
         trafficMode: "weighted",
         requestWeights: {
-          "request-0": 3,
+          "request-0": 0,
+          "request-1": 3,
         },
       }),
     );

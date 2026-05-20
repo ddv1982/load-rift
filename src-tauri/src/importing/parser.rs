@@ -114,7 +114,7 @@ fn collect_item(
         .and_then(Value::as_str)
         .unwrap_or("GET")
         .to_uppercase();
-    let url = parse_url(request.get("url"));
+    let (url, url_encoded_variable_occurrences) = parse_url(request.get("url"));
     parsed
         .runtime_variable_keys
         .extend(extract_template_keys(&url));
@@ -124,7 +124,7 @@ fn collect_item(
             .runtime_variable_keys
             .extend(extract_template_keys(value));
     }
-    let body = parse_body(request.get("body"));
+    let (body, encode_body_variable_values) = parse_body(request.get("body"));
     if let Some(body) = body.as_deref() {
         parsed
             .runtime_variable_keys
@@ -154,6 +154,8 @@ fn collect_item(
         folder_path: folder_path.clone(),
         headers,
         body,
+        url_encoded_variable_occurrences,
+        encode_body_variable_values,
     });
 }
 
@@ -188,17 +190,17 @@ fn build_request_id(
     }
 }
 
-fn parse_url(url: Option<&Value>) -> String {
+fn parse_url(url: Option<&Value>) -> (String, Vec<usize>) {
     let Some(url) = url else {
-        return String::new();
+        return (String::new(), Vec::new());
     };
 
     if let Some(raw) = url.as_str() {
-        return raw.to_string();
+        return (raw.to_string(), Vec::new());
     }
 
     if let Some(raw) = url.get("raw").and_then(Value::as_str) {
-        return raw.to_string();
+        return (raw.to_string(), Vec::new());
     }
 
     let protocol = url
@@ -208,6 +210,17 @@ fn parse_url(url: Option<&Value>) -> String {
         .unwrap_or_default();
     let host = join_segments(url.get("host"), ".");
     let path = join_segments(url.get("path"), "/");
+
+    let mut parsed_url = format!("{protocol}{host}");
+    if !path.is_empty() {
+        if !parsed_url.ends_with('/') && !path.starts_with('/') {
+            parsed_url.push('/');
+        }
+        parsed_url.push_str(&path);
+    }
+
+    let mut template_occurrence_index = template_occurrence_count(&parsed_url);
+    let mut url_encoded_variable_occurrences = Vec::new();
     let query = url
         .get("query")
         .and_then(Value::as_array)
@@ -226,7 +239,25 @@ fn parse_url(url: Option<&Value>) -> String {
                         .get("value")
                         .and_then(value_to_string)
                         .unwrap_or_default();
-                    Some(format!("{key}={value}"))
+                    let encoded_key = percent_encode_component(key);
+                    url_encoded_variable_occurrences.extend(
+                        encoded_component_template_occurrences(
+                            &encoded_key,
+                            template_occurrence_index,
+                        ),
+                    );
+                    template_occurrence_index += template_occurrence_count(&encoded_key);
+
+                    let encoded_value = percent_encode_component(&value);
+                    url_encoded_variable_occurrences.extend(
+                        encoded_component_template_occurrences(
+                            &encoded_value,
+                            template_occurrence_index,
+                        ),
+                    );
+                    template_occurrence_index += template_occurrence_count(&encoded_value);
+
+                    Some(format!("{encoded_key}={encoded_value}"))
                 })
                 .collect::<Vec<_>>()
                 .join("&")
@@ -235,15 +266,77 @@ fn parse_url(url: Option<&Value>) -> String {
         .map(|value| format!("?{value}"))
         .unwrap_or_default();
 
-    let mut url = format!("{protocol}{host}");
-    if !path.is_empty() {
-        if !url.ends_with('/') && !path.starts_with('/') {
-            url.push('/');
-        }
-        url.push_str(&path);
+    parsed_url.push_str(&query);
+    (parsed_url, url_encoded_variable_occurrences)
+}
+
+fn template_occurrence_count(value: &str) -> usize {
+    let mut count = 0;
+    let mut search_index = 0;
+
+    while let Some(start_offset) = value[search_index..].find("{{") {
+        let token_start = search_index + start_offset + 2;
+        let Some(end_offset) = value[token_start..].find("}}") else {
+            break;
+        };
+        count += 1;
+        search_index = token_start + end_offset + 2;
     }
-    url.push_str(&query);
-    url
+
+    count
+}
+
+fn encoded_component_template_occurrences(
+    encoded_component: &str,
+    starting_index: usize,
+) -> Vec<usize> {
+    let mut occurrences = Vec::new();
+    let mut occurrence_index = starting_index;
+    let mut search_index = 0;
+
+    while let Some(start_offset) = encoded_component[search_index..].find("{{") {
+        let token_start = search_index + start_offset + 2;
+        let Some(end_offset) = encoded_component[token_start..].find("}}") else {
+            break;
+        };
+        occurrences.push(occurrence_index);
+        occurrence_index += 1;
+        search_index = token_start + end_offset + 2;
+    }
+
+    occurrences
+}
+
+fn percent_encode_component(value: &str) -> String {
+    let mut encoded = String::new();
+    let mut search_index = 0;
+
+    while let Some(start_offset) = value[search_index..].find("{{") {
+        let start = search_index + start_offset;
+        encode_plain_component(&value[search_index..start], &mut encoded);
+
+        let Some(end_offset) = value[start + 2..].find("}}") else {
+            encode_plain_component(&value[start..], &mut encoded);
+            return encoded;
+        };
+        let end = start + 2 + end_offset + 2;
+        encoded.push_str(&value[start..end]);
+        search_index = end;
+    }
+
+    encode_plain_component(&value[search_index..], &mut encoded);
+    encoded
+}
+
+fn encode_plain_component(value: &str, encoded: &mut String) {
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(*byte as char);
+            }
+            _ => encoded.push_str(&format!("%{byte:02X}")),
+        }
+    }
 }
 
 fn join_segments(value: Option<&Value>, delimiter: &str) -> String {
@@ -288,20 +381,24 @@ fn parse_headers(headers: Option<&Value>) -> BTreeMap<String, String> {
     parsed
 }
 
-fn parse_body(body: Option<&Value>) -> Option<String> {
-    let body = body?;
+fn parse_body(body: Option<&Value>) -> (Option<String>, bool) {
+    let Some(body) = body else {
+        return (None, false);
+    };
     let disabled = body
         .get("disabled")
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if disabled {
-        return None;
+        return (None, false);
     }
 
     match body.get("mode").and_then(Value::as_str) {
-        Some("raw") => body.get("raw").and_then(value_to_string),
+        Some("raw") => (body.get("raw").and_then(value_to_string), false),
         Some("urlencoded") => {
-            let entries = body.get("urlencoded").and_then(Value::as_array)?;
+            let Some(entries) = body.get("urlencoded").and_then(Value::as_array) else {
+                return (None, false);
+            };
             let encoded = entries
                 .iter()
                 .filter(|entry| {
@@ -316,14 +413,20 @@ fn parse_body(body: Option<&Value>) -> Option<String> {
                         .get("value")
                         .and_then(value_to_string)
                         .unwrap_or_default();
-                    Some(format!("{key}={value}"))
+                    Some(format!(
+                        "{}={}",
+                        percent_encode_component(key),
+                        percent_encode_component(&value)
+                    ))
                 })
                 .collect::<Vec<_>>()
                 .join("&");
-            Some(encoded)
+            (Some(encoded), true)
         }
         Some("formdata") => {
-            let entries = body.get("formdata").and_then(Value::as_array)?;
+            let Some(entries) = body.get("formdata").and_then(Value::as_array) else {
+                return (None, false);
+            };
             let encoded = entries
                 .iter()
                 .filter(|entry| {
@@ -341,13 +444,17 @@ fn parse_body(body: Option<&Value>) -> Option<String> {
                         .get("value")
                         .and_then(value_to_string)
                         .unwrap_or_default();
-                    Some(format!("{key}={value}"))
+                    Some(format!(
+                        "{}={}",
+                        percent_encode_component(key),
+                        percent_encode_component(&value)
+                    ))
                 })
                 .collect::<Vec<_>>()
                 .join("&");
-            Some(encoded)
+            (Some(encoded), true)
         }
-        _ => None,
+        _ => (None, false),
     }
 }
 

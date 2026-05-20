@@ -90,6 +90,15 @@ function hashString(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+function normalizePersistedThreshold(value: unknown): number | undefined {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    Number.isSafeInteger(value) &&
+    value >= 0
+    ? value
+    : undefined;
+}
+
 function normalizePersistedRequestWeights(
   requestWeights: Record<string, number> | undefined,
 ): Record<string, number> {
@@ -220,15 +229,15 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
       : defaultOptions.rampUp;
 
   const thresholds: K6Options["thresholds"] = {};
-  const persistedP95 = stored.thresholds?.p95ResponseTime;
-  if (typeof persistedP95 === "number" && !Number.isNaN(persistedP95)) {
+  const persistedP95 = normalizePersistedThreshold(stored.thresholds?.p95ResponseTime);
+  if (persistedP95 !== undefined) {
     thresholds.p95ResponseTime = persistedP95;
   } else if (defaultOptions.thresholds.p95ResponseTime !== undefined) {
     thresholds.p95ResponseTime = defaultOptions.thresholds.p95ResponseTime;
   }
 
-  const persistedErrorRate = stored.thresholds?.errorRate;
-  if (typeof persistedErrorRate === "number" && !Number.isNaN(persistedErrorRate)) {
+  const persistedErrorRate = normalizePersistedThreshold(stored.thresholds?.errorRate);
+  if (persistedErrorRate !== undefined) {
     thresholds.errorRate = persistedErrorRate;
   } else if (defaultOptions.thresholds.errorRate !== undefined) {
     thresholds.errorRate = defaultOptions.thresholds.errorRate;
@@ -268,11 +277,13 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
 
 export function saveRunnerPreferences(options: K6Options) {
   const thresholds: PersistedRunnerPreferences["thresholds"] = {};
-  if (options.thresholds.p95ResponseTime !== undefined) {
-    thresholds.p95ResponseTime = options.thresholds.p95ResponseTime;
+  const p95ResponseTime = normalizePersistedThreshold(options.thresholds.p95ResponseTime);
+  if (p95ResponseTime !== undefined) {
+    thresholds.p95ResponseTime = p95ResponseTime;
   }
-  if (options.thresholds.errorRate !== undefined) {
-    thresholds.errorRate = options.thresholds.errorRate;
+  const errorRate = normalizePersistedThreshold(options.thresholds.errorRate);
+  if (errorRate !== undefined) {
+    thresholds.errorRate = errorRate;
   }
 
   const persisted: PersistedRunnerPreferences = {

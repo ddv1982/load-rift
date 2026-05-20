@@ -18,10 +18,19 @@ pub async fn import_collection_from_file(
     state: State<'_, SharedAppState>,
     request: ImportCollectionFromFileRequest,
 ) -> Result<CollectionInfo, String> {
-    let content = fs::read_to_string(&request.file_path)
-        .map_err(|error| format!("Failed to read {}: {error}", request.file_path))?;
+    import_collection_from_path(state.inner(), &request.file_path)
+}
 
-    service::import_collection_into_state(state.inner(), &content)
+fn import_collection_from_path(
+    state: &SharedAppState,
+    file_path: &str,
+) -> Result<CollectionInfo, String> {
+    service::ensure_can_import_collection(state)?;
+
+    let content = fs::read_to_string(file_path)
+        .map_err(|error| format!("Failed to read {file_path}: {error}"))?;
+
+    service::import_collection_into_state(state, &content)
 }
 
 #[cfg(test)]

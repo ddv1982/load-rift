@@ -59,6 +59,23 @@ describe("createCollectionStorageKey", () => {
 });
 
 describe("runner preferences persistence", () => {
+  it("drops persisted decimal thresholds in favor of defaults", () => {
+    window.localStorage.setItem(
+      "loadrift.ui.runner-preferences",
+      JSON.stringify({
+        ...DEFAULT_K6_OPTIONS,
+        thresholds: {
+          p95ResponseTime: 2000.5,
+          errorRate: 5.5,
+        },
+      }),
+    );
+
+    expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS).thresholds).toEqual(
+      DEFAULT_K6_OPTIONS.thresholds,
+    );
+  });
+
   it("persists traffic mode and zero-or-positive request weights", () => {
     saveRunnerPreferences({
       ...DEFAULT_K6_OPTIONS,

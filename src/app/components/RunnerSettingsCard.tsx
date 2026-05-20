@@ -1,9 +1,12 @@
 import type { K6Options } from "../../lib/loadrift/types";
+import type { ThresholdInputErrors, ThresholdInputValues } from "../hooks/useRunnerOptions";
 import type { CurlImportState } from "../types";
 import { SettingsCardHeader } from "./SettingsCardHeader";
 
 interface RunnerSettingsCardProps {
   runnerOptions: K6Options;
+  thresholdInputs: ThresholdInputValues;
+  thresholdErrors: ThresholdInputErrors;
   curlInput: string;
   curlImportState: CurlImportState;
   onVusChange: (value: number) => void;
@@ -19,6 +22,8 @@ interface RunnerSettingsCardProps {
 
 export function RunnerSettingsCard({
   runnerOptions,
+  thresholdInputs,
+  thresholdErrors,
   curlInput,
   curlImportState,
   onVusChange,
@@ -90,12 +95,19 @@ export function RunnerSettingsCard({
           <input
             type="number"
             min={0}
-            value={runnerOptions.thresholds.p95ResponseTime ?? ""}
+            step={1}
+            inputMode="numeric"
+            value={thresholdInputs.p95ResponseTime}
+            aria-label="P95 threshold (ms)"
             onChange={(event) =>
               onThresholdChange("p95ResponseTime", event.target.value)
             }
             placeholder="2000"
+            aria-invalid={thresholdErrors.p95ResponseTime ? "true" : undefined}
           />
+          {thresholdErrors.p95ResponseTime ? (
+            <p className="inline-note is-error">{thresholdErrors.p95ResponseTime}</p>
+          ) : null}
         </label>
 
         <label className="field">
@@ -104,10 +116,17 @@ export function RunnerSettingsCard({
             type="number"
             min={0}
             max={100}
-            value={runnerOptions.thresholds.errorRate ?? ""}
+            step={1}
+            inputMode="numeric"
+            value={thresholdInputs.errorRate}
+            aria-label="Error-rate threshold (%)"
             onChange={(event) => onThresholdChange("errorRate", event.target.value)}
             placeholder="5"
+            aria-invalid={thresholdErrors.errorRate ? "true" : undefined}
           />
+          {thresholdErrors.errorRate ? (
+            <p className="inline-note is-error">{thresholdErrors.errorRate}</p>
+          ) : null}
         </label>
 
         <label className="field">

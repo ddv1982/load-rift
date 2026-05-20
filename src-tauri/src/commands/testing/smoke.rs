@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::io::Read;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
@@ -10,24 +10,89 @@ use crate::models::{SmokeTestResponse, SmokeTestResult};
 
 const BODY_PREVIEW_LIMIT_BYTES: usize = 16 * 1024;
 const REQUEST_TIMEOUT_SECS: u64 = 30;
+const MAX_SMOKE_TEST_REQUESTS: usize = 25;
+const TOTAL_SMOKE_TEST_DEADLINE_SECS: u64 = 120;
+
+#[derive(Debug, Clone, Copy)]
+struct SmokeTestLimits {
+    max_requests: usize,
+    total_deadline: Duration,
+    per_request_timeout: Duration,
+}
+
+impl Default for SmokeTestLimits {
+    fn default() -> Self {
+        Self {
+            max_requests: MAX_SMOKE_TEST_REQUESTS,
+            total_deadline: Duration::from_secs(TOTAL_SMOKE_TEST_DEADLINE_SECS),
+            per_request_timeout: Duration::from_secs(REQUEST_TIMEOUT_SECS),
+        }
+    }
+}
 
 pub(super) fn run_smoke_test(
     requests: Vec<ResolvedRuntimeRequest>,
 ) -> Result<SmokeTestResponse, String> {
+    run_smoke_test_with_limits(requests, SmokeTestLimits::default())
+}
+
+fn run_smoke_test_with_limits(
+    requests: Vec<ResolvedRuntimeRequest>,
+    limits: SmokeTestLimits,
+) -> Result<SmokeTestResponse, String> {
+    if requests.len() > limits.max_requests {
+        return Err(format!(
+            "Smoke tests are limited to {} selected requests. Select fewer requests or start a full k6 run.",
+            limits.max_requests
+        ));
+    }
+
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+        .timeout(limits.per_request_timeout)
         .build()
         .map_err(|error| format!("Failed to prepare the smoke test client: {error}"))?;
 
-    let responses = requests
-        .into_iter()
-        .map(|request| execute_request(&client, request))
-        .collect();
+    let started_at = Instant::now();
+    let mut responses = Vec::with_capacity(requests.len());
+    let mut pending_requests = requests.into_iter().peekable();
+    while let Some(request) = pending_requests.next() {
+        if started_at.elapsed() >= limits.total_deadline {
+            responses.push(skipped_deadline_result(request));
+            responses.extend(pending_requests.map(skipped_deadline_result));
+            break;
+        }
+
+        let remaining_deadline = limits.total_deadline.saturating_sub(started_at.elapsed());
+        let request_timeout = remaining_deadline.min(limits.per_request_timeout);
+        responses.push(execute_request(&client, request, request_timeout));
+    }
 
     Ok(SmokeTestResponse { responses })
 }
 
-fn execute_request(client: &Client, request: ResolvedRuntimeRequest) -> SmokeTestResult {
+fn skipped_deadline_result(request: ResolvedRuntimeRequest) -> SmokeTestResult {
+    SmokeTestResult {
+        request_id: request.id,
+        request_name: request.name,
+        method: request.method,
+        url: request.url,
+        status_code: None,
+        duration_ms: 0,
+        ok: false,
+        content_type: None,
+        response_headers: BTreeMap::new(),
+        body_preview: None,
+        error_message: Some(
+            "Smoke test total deadline expired before this request could run.".to_string(),
+        ),
+    }
+}
+
+fn execute_request(
+    client: &Client,
+    request: ResolvedRuntimeRequest,
+    request_timeout: Duration,
+) -> SmokeTestResult {
     let started_at = Instant::now();
     let method = request.method.clone();
     let url = request.url.clone();
@@ -74,7 +139,8 @@ fn execute_request(client: &Client, request: ResolvedRuntimeRequest) -> SmokeTes
         request_builder.body(body)
     } else {
         request_builder
-    };
+    }
+    .timeout(request_timeout);
 
     match request_builder.send() {
         Ok(response) => {
@@ -194,11 +260,24 @@ mod tests {
     use std::io::{Cursor, Read, Write};
     use std::net::TcpListener;
     use std::thread;
+    use std::time::Duration;
 
     use super::{
-        read_body_preview_from_reader, run_smoke_test, truncate_preview, BODY_PREVIEW_LIMIT_BYTES,
+        read_body_preview_from_reader, run_smoke_test, run_smoke_test_with_limits,
+        truncate_preview, SmokeTestLimits, BODY_PREVIEW_LIMIT_BYTES, MAX_SMOKE_TEST_REQUESTS,
     };
     use crate::importing::ResolvedRuntimeRequest;
+
+    fn smoke_request(index: usize) -> ResolvedRuntimeRequest {
+        ResolvedRuntimeRequest {
+            id: format!("request-{index}"),
+            name: format!("Request {index}"),
+            method: "GET".to_string(),
+            url: format!("http://127.0.0.1/{index}"),
+            headers: BTreeMap::new(),
+            body: None,
+        }
+    }
 
     #[test]
     fn truncate_preview_limits_large_payloads() {
@@ -219,6 +298,44 @@ mod tests {
         assert!(preview.len() < 17_000);
         assert!(preview.ends_with("...[truncated]"));
         assert!(preview.starts_with(&"a".repeat(BODY_PREVIEW_LIMIT_BYTES)));
+    }
+
+    #[test]
+    fn run_smoke_test_rejects_request_count_over_limit() {
+        let requests = (0..=MAX_SMOKE_TEST_REQUESTS)
+            .map(smoke_request)
+            .collect::<Vec<_>>();
+
+        let error = run_smoke_test(requests).expect_err("too many requests should be rejected");
+
+        assert!(error.contains("Smoke tests are limited to 25 selected requests"));
+    }
+
+    #[test]
+    fn run_smoke_test_marks_remaining_requests_skipped_after_deadline() {
+        let response = run_smoke_test_with_limits(
+            vec![smoke_request(1), smoke_request(2)],
+            SmokeTestLimits {
+                max_requests: 25,
+                total_deadline: Duration::ZERO,
+                per_request_timeout: Duration::from_millis(1),
+            },
+        )
+        .expect("expired smoke test should return skipped results");
+
+        assert_eq!(response.responses.len(), 2);
+        assert!(response.responses.iter().all(|response| !response.ok));
+        assert!(response
+            .responses
+            .iter()
+            .all(|response| response.status_code.is_none()));
+        assert!(response.responses.iter().all(|response| {
+            response
+                .error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains("total deadline expired")
+        }));
     }
 
     #[test]

@@ -7,6 +7,7 @@ use crate::models::{LiveMetrics, TestResult, TestStatus};
 
 #[derive(Clone)]
 pub struct RunningTest {
+    pub run_id: String,
     pub child: Arc<Mutex<Child>>,
     pub stop_requested: Arc<AtomicBool>,
 }
@@ -20,6 +21,7 @@ pub struct AppState {
     pub latest_finish_reason: Option<String>,
     pub latest_error_message: Option<String>,
     pub latest_output: String,
+    pub latest_run_id: Option<String>,
     pub test_status: TestStatus,
     pub launch_in_progress: bool,
     pub active_test: Option<RunningTest>,
@@ -51,6 +53,7 @@ impl Default for AppState {
             latest_finish_reason: None,
             latest_error_message: None,
             latest_output: String::new(),
+            latest_run_id: None,
             test_status: TestStatus::Idle,
             launch_in_progress: false,
             active_test: None,

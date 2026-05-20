@@ -154,7 +154,28 @@ pub struct TestResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StartTestResponse {
+    pub run_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunMetricsEvent {
+    pub run_id: String,
+    pub metrics: LiveMetrics,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunErrorEvent {
+    pub run_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct TestCompletion {
+    pub run_id: String,
     pub run_state: TestStatus,
     pub finish_reason: String,
     pub metrics: LiveMetrics,
@@ -164,6 +185,7 @@ pub struct TestCompletion {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct GetTestStatusResponse {
+    pub run_id: Option<String>,
     pub status: TestStatus,
     pub is_running: bool,
     pub metrics: Option<LiveMetrics>,

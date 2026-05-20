@@ -1,6 +1,9 @@
 use std::env;
 use std::fs;
-use std::io::{BufRead, BufReader};
+use std::fs::OpenOptions;
+use std::io::{BufRead, BufReader, Write};
+#[cfg(unix)]
+use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -9,7 +12,15 @@ use std::time::Duration;
 
 use serde_json::{Map, Value};
 use tauri::{AppHandle, Manager};
+#[cfg(test)]
 use uuid::Uuid;
+
+pub(crate) struct RunTempArtifacts {
+    _dir: tempfile::TempDir,
+    pub(crate) script_path: PathBuf,
+    pub(crate) summary_path: PathBuf,
+    pub(crate) metrics_path: PathBuf,
+}
 
 use crate::events::{emit_k6_complete, emit_k6_error, emit_k6_metrics, emit_k6_output};
 use crate::models::{K6Options, LiveMetrics, TestCompletion, TrafficMode};
@@ -27,6 +38,7 @@ pub fn start_k6_process(
     state: SharedAppState,
     script: String,
     options: K6Options,
+    run_id: String,
 ) -> Result<(), String> {
     let advanced_options = analyze_advanced_options_json(options.advanced_options_json.as_deref())?;
     let variable_overrides_json = serde_json::to_string(&options.variable_overrides)
@@ -41,9 +53,10 @@ pub fn start_k6_process(
         options.traffic_mode.clone()
     };
     let k6_binary = resolve_k6_binary(&app)?;
-    let script_path = write_temp_file("js", &script)?;
-    let summary_path = temp_file_path("json");
-    let metrics_path = temp_file_path("json");
+    let artifacts = create_run_temp_artifacts(&script)?;
+    let script_path = artifacts.script_path.clone();
+    let summary_path = artifacts.summary_path.clone();
+    let metrics_path = artifacts.metrics_path.clone();
 
     let mut command = Command::new(&k6_binary);
     command
@@ -114,12 +127,9 @@ pub fn start_k6_process(
         command.env("BASE_URL", value);
     }
 
-    let child = command.spawn().map_err(|error| {
-        let _ = fs::remove_file(&script_path);
-        let _ = fs::remove_file(&summary_path);
-        let _ = fs::remove_file(&metrics_path);
-        format!("Failed to start k6 at {}: {error}", k6_binary.display())
-    })?;
+    let child = command
+        .spawn()
+        .map_err(|error| format!("Failed to start k6 at {}: {error}", k6_binary.display()))?;
 
     let mut child = child;
     let stdout = child.stdout.take();
@@ -131,34 +141,37 @@ pub fn start_k6_process(
     {
         let initial_metrics = LiveMetrics::default();
         let running_test = RunningTest {
+            run_id: run_id.clone(),
             child: child.clone(),
             stop_requested: stop_requested.clone(),
         };
 
         store_started_state(&state, initial_metrics.clone(), running_test)?;
-        let _ = emit_k6_metrics(&app, initial_metrics);
+        let _ = emit_k6_metrics(&app, &run_id, initial_metrics);
     }
 
-    let stdout_forwarder = spawn_output_forwarder(stdout, app.clone(), state.clone());
-    let stderr_forwarder = spawn_output_forwarder(stderr, app.clone(), state.clone());
+    let stdout_forwarder =
+        spawn_output_forwarder(stdout, app.clone(), state.clone(), run_id.clone());
+    let stderr_forwarder =
+        spawn_output_forwarder(stderr, app.clone(), state.clone(), run_id.clone());
     let metrics_forwarder = spawn_metrics_forwarder(
         metrics_path.clone(),
         app.clone(),
         state.clone(),
+        run_id.clone(),
         metrics_shutdown.clone(),
     );
     spawn_waiter(
         child,
         stop_requested,
-        summary_path,
-        script_path,
-        metrics_path,
+        artifacts,
         stdout_forwarder,
         stderr_forwarder,
         metrics_forwarder,
         metrics_shutdown,
         app,
         state,
+        run_id,
         options.vus,
     );
 
@@ -171,7 +184,7 @@ pub(crate) fn validate_advanced_options_json(
     analyze_advanced_options_json(value).map(|config| config.normalized_json)
 }
 
-pub fn stop_k6_process(state: &SharedAppState) -> Result<(), String> {
+pub fn stop_k6_process(state: &SharedAppState) -> Result<String, String> {
     let running = {
         let app_state = state.lock().map_err(|_| UPDATE_STATE_ERROR.to_string())?;
         app_state.active_test.clone()
@@ -189,13 +202,16 @@ pub fn stop_k6_process(state: &SharedAppState) -> Result<(), String> {
         .map_err(|_| "Failed to access the active k6 process.".to_string())?;
     child
         .kill()
-        .map_err(|error| format!("Failed to stop the active k6 process: {error}"))
+        .map_err(|error| format!("Failed to stop the active k6 process: {error}"))?;
+
+    Ok(running.run_id)
 }
 
 fn spawn_output_forwarder(
     stream: Option<impl std::io::Read + Send + 'static>,
     app: AppHandle,
     state: SharedAppState,
+    run_id: String,
 ) -> Option<JoinHandle<()>> {
     let Some(stream) = stream else {
         return None;
@@ -213,11 +229,24 @@ fn spawn_output_forwarder(
                 format!("{line}\n")
             };
 
-            if let Ok(mut app_state) = state.lock() {
-                app_state.latest_output.push_str(&payload);
-            }
+            let should_emit = if let Ok(mut app_state) = state.lock() {
+                if app_state
+                    .active_test
+                    .as_ref()
+                    .is_some_and(|active| active.run_id == run_id)
+                {
+                    app_state.latest_output.push_str(&payload);
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
 
-            let _ = emit_k6_output(&app, &payload);
+            if should_emit {
+                let _ = emit_k6_output(&app, &payload);
+            }
         }
     }))
 }
@@ -225,18 +254,18 @@ fn spawn_output_forwarder(
 fn spawn_waiter(
     child: std::sync::Arc<std::sync::Mutex<Child>>,
     stop_requested: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    summary_path: PathBuf,
-    script_path: PathBuf,
-    metrics_path: PathBuf,
+    artifacts: RunTempArtifacts,
     stdout_forwarder: Option<JoinHandle<()>>,
     stderr_forwarder: Option<JoinHandle<()>>,
     metrics_forwarder: JoinHandle<()>,
     metrics_shutdown: std::sync::Arc<AtomicBool>,
     app: AppHandle,
     state: SharedAppState,
+    run_id: String,
     configured_vus: u32,
 ) {
     thread::spawn(move || {
+        let summary_path = artifacts.summary_path.clone();
         let exit_status = loop {
             let maybe_status = {
                 let mut child = match child.lock() {
@@ -247,7 +276,7 @@ fn spawn_waiter(
                     Ok(status) => status,
                     Err(error) => {
                         let message = format!("Failed while waiting for the k6 process: {error}");
-                        record_failure(&state, &app, &message);
+                        record_failure(&state, &app, &run_id, &message);
                         return;
                     }
                 }
@@ -263,14 +292,12 @@ fn spawn_waiter(
         let stop_requested = stop_requested.load(Ordering::SeqCst);
         metrics_shutdown.store(true, Ordering::SeqCst);
         let _ = metrics_forwarder.join();
-        let _ = fs::remove_file(&script_path);
-        let _ = fs::remove_file(&metrics_path);
         wait_for_output_forwarders([stdout_forwarder, stderr_forwarder]);
 
         if stop_requested {
-            mark_stopped(&state);
-            let _ = emit_k6_output(&app, "k6 run stopped.\n");
-            let _ = fs::remove_file(&summary_path);
+            if mark_stopped(&state, &run_id) {
+                let _ = emit_k6_output(&app, "k6 run stopped.\n");
+            }
             return;
         }
 
@@ -280,6 +307,7 @@ fn spawn_waiter(
                     emit_completion(
                         &app,
                         &state,
+                        &run_id,
                         exit_status.success(),
                         exit_status.code(),
                         metrics,
@@ -291,6 +319,7 @@ fn spawn_waiter(
                     emit_live_metrics_fallback_completion(
                         &app,
                         &state,
+                        &run_id,
                         exit_status.success(),
                         exit_status.code(),
                         Some(summary_json.clone()),
@@ -302,6 +331,7 @@ fn spawn_waiter(
                 emit_live_metrics_fallback_completion(
                     &app,
                     &state,
+                    &run_id,
                     exit_status.success(),
                     exit_status.code(),
                     None,
@@ -312,14 +342,13 @@ fn spawn_waiter(
                 );
             }
         }
-
-        let _ = fs::remove_file(&summary_path);
     });
 }
 
 fn emit_completion(
     app: &AppHandle,
     state: &SharedAppState,
+    run_id: &str,
     exited_successfully: bool,
     exit_code: Option<i32>,
     metrics: LiveMetrics,
@@ -330,8 +359,9 @@ fn emit_completion(
     if completion.threshold_failure_exit {
         result.status = crate::models::TestResultStatus::Failed;
     }
-    store_completion(
+    let stored = store_completion(
         state,
+        run_id,
         &metrics,
         &result,
         completion.run_state.clone(),
@@ -339,10 +369,15 @@ fn emit_completion(
         summary_json,
     );
 
-    let _ = emit_k6_metrics(app, metrics.clone());
+    if !stored {
+        return;
+    }
+
+    let _ = emit_k6_metrics(app, run_id, metrics.clone());
     let _ = emit_k6_complete(
         app,
         TestCompletion {
+            run_id: run_id.to_string(),
             run_state: completion.run_state.clone(),
             finish_reason: completion.finish_reason.clone(),
             metrics,
@@ -358,6 +393,7 @@ fn emit_completion(
     } else if !exited_successfully {
         let _ = emit_k6_error(
             app,
+            run_id,
             "k6 exited with a non-zero status for a reason other than threshold failures.",
         );
     }
@@ -366,6 +402,7 @@ fn emit_completion(
 fn emit_live_metrics_fallback_completion(
     app: &AppHandle,
     state: &SharedAppState,
+    run_id: &str,
     exited_successfully: bool,
     exit_code: Option<i32>,
     summary_json: Option<String>,
@@ -381,6 +418,7 @@ fn emit_live_metrics_fallback_completion(
     emit_completion(
         app,
         state,
+        run_id,
         exited_successfully,
         exit_code,
         metrics,
@@ -437,6 +475,45 @@ pub(crate) struct AdvancedOptionsConfig {
     pub(crate) has_scenarios: bool,
 }
 
+pub(crate) fn create_run_temp_artifacts(script: &str) -> Result<RunTempArtifacts, String> {
+    let dir = tempfile::Builder::new()
+        .prefix("loadrift-")
+        .tempdir()
+        .map_err(|error| format!("Failed to create a private k6 temp directory: {error}"))?;
+
+    #[cfg(unix)]
+    fs::set_permissions(dir.path(), fs::Permissions::from_mode(0o700)).map_err(|error| {
+        format!(
+            "Failed to restrict k6 temp directory permissions at {}: {error}",
+            dir.path().display()
+        )
+    })?;
+
+    let script_path = dir.path().join("script.js");
+    write_private_file(&script_path, script)?;
+
+    Ok(RunTempArtifacts {
+        summary_path: dir.path().join("summary.json"),
+        metrics_path: dir.path().join("metrics.json"),
+        script_path,
+        _dir: dir,
+    })
+}
+
+fn write_private_file(path: &PathBuf, content: &str) -> Result<(), String> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+
+    #[cfg(unix)]
+    options.mode(0o600);
+
+    let mut file = options
+        .open(path)
+        .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
+    file.write_all(content.as_bytes())
+        .map_err(|error| format!("Failed to write {}: {error}", path.display()))
+}
+
 fn resolve_k6_binary(app: &AppHandle) -> Result<PathBuf, String> {
     if let Ok(value) = env::var("LOADRIFT_K6_BIN") {
         let path = PathBuf::from(value);
@@ -466,44 +543,75 @@ fn resolve_k6_binary(app: &AppHandle) -> Result<PathBuf, String> {
         }
     }
 
-    Err("Could not find a k6 binary. Run `npm run install:k6`, rebuild the app, or set LOADRIFT_K6_BIN to the executable path.".to_string())
+    Err(k6_not_found_message().to_string())
+}
+
+fn k6_not_found_message() -> &'static str {
+    if current_target_triple().is_some() {
+        "Could not find a k6 binary. Run `npm run install:k6`, rebuild the app, or set LOADRIFT_K6_BIN to the executable path."
+    } else {
+        "No bundled k6 binary is available for this platform. Install k6 on PATH or set LOADRIFT_K6_BIN to an executable path."
+    }
 }
 
 fn bundled_k6_candidates(app: &AppHandle) -> Vec<PathBuf> {
     let mut candidates = Vec::new();
-    let target_binary_name = format!("k6-{}", current_target_triple());
+    let target_binary_name = current_target_triple().map(|triple| format!("k6-{triple}"));
 
     if let Ok(resource_dir) = app.path().resource_dir() {
-        candidates.push(resource_dir.join("bin").join(&target_binary_name));
-        candidates.push(resource_dir.join("bin").join(k6_packaged_binary_name()));
-        candidates.push(resource_dir.join(&target_binary_name));
-        candidates.push(resource_dir.join(k6_packaged_binary_name()));
+        push_bundled_candidates(
+            &mut candidates,
+            resource_dir.join("bin"),
+            target_binary_name.as_deref(),
+        );
+        push_bundled_candidates(&mut candidates, resource_dir, target_binary_name.as_deref());
     }
 
     if let Ok(executable_dir) = app.path().executable_dir() {
-        candidates.push(executable_dir.join("bin").join(&target_binary_name));
-        candidates.push(executable_dir.join("bin").join(k6_packaged_binary_name()));
-        candidates.push(executable_dir.join(&target_binary_name));
-        candidates.push(executable_dir.join(k6_packaged_binary_name()));
+        push_bundled_candidates(
+            &mut candidates,
+            executable_dir.join("bin"),
+            target_binary_name.as_deref(),
+        );
+        push_bundled_candidates(
+            &mut candidates,
+            executable_dir,
+            target_binary_name.as_deref(),
+        );
     }
 
     if let Ok(current_exe) = env::current_exe() {
         if let Some(parent) = current_exe.parent() {
-            candidates.push(parent.join("bin").join(&target_binary_name));
-            candidates.push(parent.join("bin").join(k6_packaged_binary_name()));
-            candidates.push(parent.join(&target_binary_name));
-            candidates.push(parent.join(k6_packaged_binary_name()));
+            push_bundled_candidates(
+                &mut candidates,
+                parent.join("bin"),
+                target_binary_name.as_deref(),
+            );
+            push_bundled_candidates(
+                &mut candidates,
+                parent.to_path_buf(),
+                target_binary_name.as_deref(),
+            );
         }
     }
 
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    candidates.push(
-        manifest_dir
-            .join("bin")
-            .join(format!("k6-{}", current_target_triple())),
-    );
+    if let Some(target_binary_name) = target_binary_name.as_deref() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        candidates.push(manifest_dir.join("bin").join(target_binary_name));
+    }
 
     candidates
+}
+
+fn push_bundled_candidates(
+    candidates: &mut Vec<PathBuf>,
+    directory: PathBuf,
+    target_binary_name: Option<&str>,
+) {
+    if let Some(target_binary_name) = target_binary_name {
+        candidates.push(directory.join(target_binary_name));
+    }
+    candidates.push(directory.join(k6_packaged_binary_name()));
 }
 
 fn k6_packaged_binary_name() -> &'static str {
@@ -518,48 +626,29 @@ fn k6_packaged_binary_name() -> &'static str {
     }
 }
 
-fn current_target_triple() -> &'static str {
-    #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
-    {
-        "x86_64-unknown-linux-gnu"
-    }
-    #[cfg(all(target_os = "linux", target_arch = "aarch64"))]
-    {
-        "aarch64-unknown-linux-gnu"
-    }
-    #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
-    {
-        "x86_64-apple-darwin"
-    }
-    #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
-    {
-        "aarch64-apple-darwin"
-    }
-    #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-    {
-        "x86_64-pc-windows-msvc"
+fn current_target_triple() -> Option<&'static str> {
+    target_triple_for(env::consts::OS, env::consts::ARCH)
+}
+
+pub(crate) fn target_triple_for(os: &str, arch: &str) -> Option<&'static str> {
+    match (os, arch) {
+        ("linux", "x86_64") => Some("x86_64-unknown-linux-gnu"),
+        ("linux", "aarch64") => Some("aarch64-unknown-linux-gnu"),
+        ("macos", "x86_64") => Some("x86_64-apple-darwin"),
+        ("macos", "aarch64") => Some("aarch64-apple-darwin"),
+        ("windows", "x86_64") => Some("x86_64-pc-windows-msvc"),
+        _ => None,
     }
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn temp_file_path(extension: &str) -> PathBuf {
     env::temp_dir().join(format!("loadrift-{}.{}", Uuid::new_v4(), extension))
 }
 
 #[cfg(test)]
-pub(crate) fn write_temp_file(extension: &str, content: &str) -> Result<PathBuf, String> {
-    let path = temp_file_path(extension);
-    fs::write(&path, content)
-        .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
-    Ok(path)
-}
-
-#[cfg(not(test))]
-pub(crate) fn temp_file_path(extension: &str) -> PathBuf {
-    env::temp_dir().join(format!("loadrift-{}.{}", Uuid::new_v4(), extension))
-}
-
-#[cfg(not(test))]
+#[allow(dead_code)]
 pub(crate) fn write_temp_file(extension: &str, content: &str) -> Result<PathBuf, String> {
     let path = temp_file_path(extension);
     fs::write(&path, content)

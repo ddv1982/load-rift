@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoadRiftApi } from "../../lib/loadrift/context";
 import {
   DEFAULT_LIVE_METRICS,
@@ -16,10 +16,19 @@ export interface TestHarnessState {
   result: TestResult | null;
   finishReason: string | null;
   error: string | null;
+  runId: string | null;
   output: string;
   isStarting: boolean;
   isBusy: boolean;
   isRunning: boolean;
+}
+
+function createRunId(startId: number) {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+
+  return `loadrift-${Date.now()}-${startId}`;
 }
 
 const INITIAL_STATE: TestHarnessState = {
@@ -28,6 +37,7 @@ const INITIAL_STATE: TestHarnessState = {
   result: null,
   finishReason: null,
   error: null,
+  runId: null,
   output: "",
   isStarting: false,
   isBusy: false,
@@ -37,10 +47,22 @@ const INITIAL_STATE: TestHarnessState = {
 export function useTestHarness() {
   const api = useLoadRiftApi();
   const [state, setState] = useState<TestHarnessState>(INITIAL_STATE);
+  const startSequenceRef = useRef(0);
+  const pendingStartIdRef = useRef<number | null>(null);
+  const activeRunIdRef = useRef<string | null>(null);
+  const terminalErrorRunIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     const unlistenCallbacks: Array<() => void> = [];
     let isActive = true;
+
+    function isCurrentRun(runId: string) {
+      return activeRunIdRef.current === runId;
+    }
+
+    function isAcceptedErrorRun(runId: string) {
+      return isCurrentRun(runId) || terminalErrorRunIdRef.current === runId;
+    }
 
     async function registerListeners() {
       const unlistenOutput = await api.onK6Output((data) => {
@@ -61,14 +83,14 @@ export function useTestHarness() {
 
       unlistenCallbacks.push(unlistenOutput);
 
-      const unlistenMetrics = await api.onK6Metrics((metrics) => {
-        if (!isActive) {
+      const unlistenMetrics = await api.onK6Metrics((event) => {
+        if (!isActive || !isCurrentRun(event.runId)) {
           return;
         }
 
         setState((previous) => ({
           ...previous,
-          metrics,
+          metrics: event.metrics,
         }));
       });
 
@@ -80,10 +102,14 @@ export function useTestHarness() {
       unlistenCallbacks.push(unlistenMetrics);
 
       const unlistenComplete = await api.onK6Complete((completion: TestCompletion) => {
-        if (!isActive) {
+        if (!isActive || !isCurrentRun(completion.runId)) {
           return;
         }
 
+        activeRunIdRef.current = null;
+        terminalErrorRunIdRef.current =
+          completion.runState === "failed" ? completion.runId : null;
+        pendingStartIdRef.current = null;
         setState((previous) => ({
           ...previous,
           status: completion.runState,
@@ -91,6 +117,7 @@ export function useTestHarness() {
           result: completion.result,
           finishReason: completion.finishReason,
           error: null,
+          runId: completion.runId,
           isStarting: false,
           isBusy: false,
           isRunning: false,
@@ -104,16 +131,20 @@ export function useTestHarness() {
 
       unlistenCallbacks.push(unlistenComplete);
 
-      const unlistenError = await api.onK6Error((error) => {
-        if (!isActive) {
+      const unlistenError = await api.onK6Error((event) => {
+        if (!isActive || !isAcceptedErrorRun(event.runId)) {
           return;
         }
 
+        activeRunIdRef.current = null;
+        terminalErrorRunIdRef.current = null;
+        pendingStartIdRef.current = null;
         setState((previous) => ({
           ...previous,
           status: "failed",
           finishReason: "execution_error",
-          error,
+          error: event.message,
+          runId: event.runId,
           isStarting: false,
           isBusy: false,
           isRunning: false,
@@ -147,6 +178,8 @@ export function useTestHarness() {
 
     try {
       const status = await api.getTestStatus();
+      activeRunIdRef.current = status.isRunning ? status.runId : null;
+      terminalErrorRunIdRef.current = null;
 
       setState((previous) => ({
         ...previous,
@@ -155,6 +188,7 @@ export function useTestHarness() {
         result: status.result ?? null,
         finishReason: status.finishReason ?? null,
         error: status.errorMessage ?? null,
+        runId: status.runId,
         isStarting: false,
         isBusy: false,
         isRunning: status.isRunning,
@@ -174,6 +208,13 @@ export function useTestHarness() {
 
   const startTest = useCallback(
     async (options: K6Options) => {
+      const startId = startSequenceRef.current + 1;
+      startSequenceRef.current = startId;
+      pendingStartIdRef.current = startId;
+      const runId = createRunId(startId);
+      activeRunIdRef.current = runId;
+      terminalErrorRunIdRef.current = null;
+
       setState((previous) => ({
         ...previous,
         metrics: DEFAULT_LIVE_METRICS,
@@ -181,21 +222,38 @@ export function useTestHarness() {
         finishReason: null,
         error: null,
         output: "",
+        runId,
         isStarting: true,
         isBusy: true,
         isRunning: false,
       }));
 
       try {
-        await api.startTest({ options });
+        const response = await api.startTest({ options, runId });
+        if (pendingStartIdRef.current !== startId) {
+          return;
+        }
+
+        const activeRunId = response.runId;
+        activeRunIdRef.current = activeRunId;
+        terminalErrorRunIdRef.current = null;
+        pendingStartIdRef.current = null;
         setState((previous) => ({
           ...previous,
+          runId: activeRunId,
           status: "running",
           isStarting: false,
           isBusy: false,
           isRunning: true,
         }));
       } catch (error) {
+        if (pendingStartIdRef.current !== startId) {
+          return;
+        }
+
+        activeRunIdRef.current = null;
+        terminalErrorRunIdRef.current = null;
+        pendingStartIdRef.current = null;
         setState((previous) => ({
           ...previous,
           status: "failed",
@@ -219,6 +277,9 @@ export function useTestHarness() {
 
     try {
       await api.stopTest();
+      activeRunIdRef.current = null;
+      terminalErrorRunIdRef.current = null;
+      pendingStartIdRef.current = null;
       setState((previous) => ({
         ...previous,
         status: "stopped",

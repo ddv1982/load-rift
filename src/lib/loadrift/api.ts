@@ -2,8 +2,10 @@ import type {
   CollectionInfo,
   GetTestStatusResponse,
   K6Options,
-  LiveMetrics,
+  RunErrorEvent,
+  RunMetricsEvent,
   SmokeTestResponse,
+  StartTestResponse,
   TestCompletion,
   ValidateTestConfigurationResponse,
 } from "./types";
@@ -19,12 +21,12 @@ export interface LoadRiftApi {
     options: K6Options;
   }): Promise<ValidateTestConfigurationResponse>;
   smokeTestRequests(input: { options: K6Options }): Promise<SmokeTestResponse>;
-  startTest(input: { options: K6Options }): Promise<void>;
+  startTest(input: { options: K6Options; runId?: string }): Promise<StartTestResponse>;
   stopTest(): Promise<void>;
   exportReport(input: { savePath: string }): Promise<void>;
   getTestStatus(): Promise<GetTestStatusResponse>;
   onK6Output(callback: (payload: string) => void): Promise<() => void>;
-  onK6Metrics(callback: (payload: LiveMetrics) => void): Promise<() => void>;
+  onK6Metrics(callback: (payload: RunMetricsEvent) => void): Promise<() => void>;
   onK6Complete(callback: (payload: TestCompletion) => void): Promise<() => void>;
-  onK6Error(callback: (payload: string) => void): Promise<() => void>;
+  onK6Error(callback: (payload: RunErrorEvent) => void): Promise<() => void>;
 }

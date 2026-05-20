@@ -170,6 +170,39 @@ describe("App validation lifecycle", () => {
     expect(screen.getByText("Configuration looks ready to run.")).toBeInTheDocument();
   });
 
+  it("requires threshold inputs to be whole numbers before starting", async () => {
+    const api = createApiMock();
+
+    renderApp(api);
+
+    await advanceValidationTimer();
+
+    const startButton = screen.getByRole("button", { name: "Start Test" });
+    expect(startButton).toBeEnabled();
+
+    const p95ThresholdInput = screen.getByLabelText("P95 threshold (ms)");
+
+    fireEvent.change(p95ThresholdInput, {
+      target: { value: "2000.5" },
+    });
+
+    expect(
+      screen.getByText("P95 threshold must be a whole number of milliseconds."),
+    ).toBeInTheDocument();
+    expect(startButton).toBeDisabled();
+
+    fireEvent.change(p95ThresholdInput, {
+      target: { value: "2001" },
+    });
+
+    await advanceValidationTimer();
+
+    expect(startButton).toBeEnabled();
+    const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock.lastCall;
+    expect(lastValidationCall).toBeDefined();
+    expect(lastValidationCall?.[0].options.thresholds.p95ResponseTime).toBe(2001);
+  });
+
   it("applies base URL and bearer token from a pasted curl command", () => {
     renderApp(createApiMock());
 

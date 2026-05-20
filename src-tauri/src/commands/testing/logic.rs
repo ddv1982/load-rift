@@ -43,6 +43,7 @@ pub(super) fn get_test_status_response(
     };
 
     Ok(GetTestStatusResponse {
+        run_id: state.latest_run_id.clone(),
         status,
         is_running,
         metrics: state.latest_metrics.clone(),
@@ -54,6 +55,7 @@ pub(super) fn get_test_status_response(
 
 pub(super) fn begin_test_start_validation(
     state: &SharedAppState,
+    run_id: &str,
 ) -> Result<(String, RuntimeCollection), String> {
     let mut app_state = state.lock().map_err(|_| READ_STATE_ERROR.to_string())?;
 
@@ -71,6 +73,7 @@ pub(super) fn begin_test_start_validation(
         .ok_or(IMPORT_BEFORE_START_ERROR.to_string())?;
 
     app_state.launch_in_progress = true;
+    app_state.latest_run_id = Some(run_id.to_string());
     app_state.test_status = TestStatus::Idle;
 
     Ok((script, runtime_collection))
@@ -79,6 +82,7 @@ pub(super) fn begin_test_start_validation(
 pub(super) fn finalize_test_start_reservation(
     state: &SharedAppState,
     script: &str,
+    run_id: &str,
 ) -> Result<String, String> {
     let mut app_state = state.lock().map_err(|_| READ_STATE_ERROR.to_string())?;
 
@@ -86,7 +90,7 @@ pub(super) fn finalize_test_start_reservation(
         return Err(RUNNER_BUSY_START_ERROR.to_string());
     }
 
-    if !app_state.launch_in_progress {
+    if !app_state.launch_in_progress || app_state.latest_run_id.as_deref() != Some(run_id) {
         return Err(CANCELLED_START_ERROR.to_string());
     }
 
@@ -96,9 +100,20 @@ pub(super) fn finalize_test_start_reservation(
     Ok(script.to_string())
 }
 
-pub(super) fn release_failed_start(state: &SharedAppState) {
+pub(super) fn release_failed_start(state: &SharedAppState, run_id: &str) {
     if let Ok(mut app_state) = state.lock() {
+        if app_state.latest_run_id.as_deref() != Some(run_id) {
+            return;
+        }
+
         app_state.launch_in_progress = false;
+        if app_state
+            .active_test
+            .as_ref()
+            .is_some_and(|active| active.run_id == run_id)
+        {
+            app_state.active_test = None;
+        }
         if app_state.active_test.is_none() {
             app_state.test_status = TestStatus::Failed;
         }

@@ -84,3 +84,31 @@ fn import_collection_into_state_rejects_busy_runner() {
         Some("existing script")
     );
 }
+
+#[test]
+fn import_collection_from_path_checks_busy_before_reading_file() {
+    let state = Arc::new(Mutex::new(AppState {
+        launch_in_progress: true,
+        ..AppState::default()
+    }));
+
+    let error = super::import_collection_from_path(&state, "/definitely/missing/load-rift.json")
+        .expect_err("busy state should reject before file IO");
+
+    assert!(error.contains("Stop the active k6 test before importing a different collection."));
+    assert!(!error.contains("Failed to read"));
+}
+
+#[test]
+fn import_collection_into_state_checks_busy_before_parsing() {
+    let state = Arc::new(Mutex::new(AppState {
+        launch_in_progress: true,
+        ..AppState::default()
+    }));
+
+    let error = service::import_collection_into_state(&state, "not valid json")
+        .expect_err("busy state should reject before parsing");
+
+    assert!(error.contains("Stop the active k6 test before importing a different collection."));
+    assert!(!error.contains("Invalid JSON"));
+}

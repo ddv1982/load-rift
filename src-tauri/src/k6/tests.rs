@@ -233,6 +233,7 @@ fn store_completion_persists_result_and_clears_running_state() {
 
     process::store_completion(
         &state,
+        "run-1",
         &metrics,
         &result,
         TestStatus::Completed,
@@ -279,8 +280,7 @@ fn mark_stopped_sets_stopped_state_and_clears_error() {
         ..AppState::default()
     }));
 
-    process::mark_stopped(&state);
-
+    process::mark_stopped(&state, "run-1");
     let app_state = state.lock().expect("state should remain readable");
     assert!(app_state.active_test.is_none());
     assert!(!app_state.launch_in_progress);
@@ -293,6 +293,81 @@ fn mark_stopped_sets_stopped_state_and_clears_error() {
             .as_ref()
             .map(|value| value.active_vus),
         Some(0)
+    );
+}
+
+#[test]
+fn stale_completion_does_not_overwrite_newer_active_run_state() {
+    let state = Arc::new(Mutex::new(AppState {
+        launch_in_progress: false,
+        active_test: Some(test_running_test_with_id("new-run")),
+        latest_run_id: Some("new-run".to_string()),
+        latest_metrics: Some(LiveMetrics {
+            active_vus: 3,
+            ..LiveMetrics::default()
+        }),
+        test_status: TestStatus::Running,
+        ..AppState::default()
+    }));
+    let result = sample_result(TestResultStatus::Warning);
+    let stale_metrics = LiveMetrics {
+        total_requests: 99,
+        ..LiveMetrics::default()
+    };
+
+    let stored = process::store_completion(
+        &state,
+        "old-run",
+        &stale_metrics,
+        &result,
+        TestStatus::Completed,
+        "completed",
+        Some("{\"stale\":true}".to_string()),
+    );
+
+    let app_state = state.lock().expect("state should remain readable");
+    assert!(!stored);
+    assert!(app_state.active_test.is_some());
+    assert!(matches!(app_state.test_status, TestStatus::Running));
+    assert_eq!(app_state.latest_run_id.as_deref(), Some("new-run"));
+    assert_eq!(
+        app_state
+            .latest_metrics
+            .as_ref()
+            .map(|value| value.total_requests),
+        Some(0)
+    );
+    assert!(app_state.latest_result.is_none());
+    assert!(app_state.latest_summary_json.is_none());
+}
+
+#[test]
+fn stale_stop_does_not_clear_newer_active_run_state() {
+    let state = Arc::new(Mutex::new(AppState {
+        launch_in_progress: false,
+        active_test: Some(test_running_test_with_id("new-run")),
+        latest_run_id: Some("new-run".to_string()),
+        latest_metrics: Some(LiveMetrics {
+            active_vus: 3,
+            ..LiveMetrics::default()
+        }),
+        test_status: TestStatus::Running,
+        ..AppState::default()
+    }));
+
+    let stopped = process::mark_stopped(&state, "old-run");
+
+    let app_state = state.lock().expect("state should remain readable");
+    assert!(!stopped);
+    assert!(app_state.active_test.is_some());
+    assert!(matches!(app_state.test_status, TestStatus::Running));
+    assert_eq!(app_state.latest_finish_reason, None);
+    assert_eq!(
+        app_state
+            .latest_metrics
+            .as_ref()
+            .map(|value| value.active_vus),
+        Some(3)
     );
 }
 
@@ -331,6 +406,119 @@ fn parse_summary_supports_legacy_summary_export_shape() {
     assert_eq!(result.thresholds.len(), 2);
     assert!(result.thresholds.iter().all(|threshold| threshold.passed));
     assert!(matches!(result.status, TestResultStatus::Passed));
+}
+
+#[test]
+fn parse_summary_reads_threshold_targets_after_comparison_operators() {
+    let summary_json = r#"{
+      "metrics": {
+        "http_req_duration": {
+          "type": "trend",
+          "contains": "time",
+          "values": { "avg": 150, "p(95)": 300, "value": 150 },
+          "thresholds": {
+            "p(95)<2000": { "ok": true },
+            "value>=12.5": { "ok": true }
+          }
+        },
+        "http_req_failed": {
+          "type": "rate",
+          "contains": "default",
+          "values": { "rate": 0.005 },
+          "thresholds": { "rate<0.01": { "ok": true } }
+        }
+      }
+    }"#;
+
+    let (result, _) =
+        summary::parse_summary(summary_json, 1).expect("threshold summary should parse");
+
+    let p95 = result
+        .thresholds
+        .iter()
+        .find(|threshold| threshold.name.contains("p(95)<2000"))
+        .expect("p95 threshold should be collected");
+    assert_eq!(p95.threshold, 2000.0);
+    assert_eq!(p95.actual, 300.0);
+
+    let rate = result
+        .thresholds
+        .iter()
+        .find(|threshold| threshold.name.contains("rate<0.01"))
+        .expect("rate threshold should be collected");
+    assert_eq!(rate.threshold, 0.01);
+    assert_eq!(rate.actual, 0.005);
+
+    let value = result
+        .thresholds
+        .iter()
+        .find(|threshold| threshold.name.contains("value>=12.5"))
+        .expect("value threshold should be collected");
+    assert_eq!(value.threshold, 12.5);
+    assert_eq!(value.actual, 150.0);
+}
+
+#[test]
+fn private_run_temp_artifacts_live_in_private_directory_and_clean_up_on_drop() {
+    let artifacts = process::create_run_temp_artifacts("export default function () {}")
+        .expect("private temp artifacts should be created");
+    let temp_dir = artifacts
+        .script_path
+        .parent()
+        .expect("script should be inside a temp dir")
+        .to_path_buf();
+
+    assert!(temp_dir.is_dir());
+    assert!(artifacts.script_path.is_file());
+    assert_eq!(
+        fs::read_to_string(&artifacts.script_path).expect("script should be readable"),
+        "export default function () {}"
+    );
+    assert_eq!(artifacts.summary_path.parent(), Some(temp_dir.as_path()));
+    assert_eq!(artifacts.metrics_path.parent(), Some(temp_dir.as_path()));
+
+    drop(artifacts);
+    assert!(
+        !temp_dir.exists(),
+        "temp dir should be removed when artifacts drop"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn private_run_temp_artifacts_remove_group_and_other_permissions() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let artifacts = process::create_run_temp_artifacts("export default function () {}")
+        .expect("private temp artifacts should be created");
+    let temp_dir = artifacts
+        .script_path
+        .parent()
+        .expect("script should be inside a temp dir");
+
+    let dir_mode = fs::metadata(temp_dir)
+        .expect("temp dir metadata should be readable")
+        .permissions()
+        .mode()
+        & 0o777;
+    let script_mode = fs::metadata(&artifacts.script_path)
+        .expect("script metadata should be readable")
+        .permissions()
+        .mode()
+        & 0o777;
+
+    assert_eq!(dir_mode & 0o077, 0);
+    assert_eq!(script_mode & 0o077, 0);
+}
+
+#[test]
+fn target_triple_resolver_skips_unsupported_platforms() {
+    assert_eq!(
+        process::target_triple_for("linux", "x86_64"),
+        Some("x86_64-unknown-linux-gnu")
+    );
+    assert_eq!(process::target_triple_for("windows", "aarch64"), None);
+    assert_eq!(process::target_triple_for("freebsd", "x86_64"), None);
 }
 
 #[test]
@@ -805,6 +993,10 @@ fn bundled_k6_binary() -> Option<PathBuf> {
 }
 
 fn test_running_test() -> RunningTest {
+    test_running_test_with_id("run-1")
+}
+
+fn test_running_test_with_id(run_id: &str) -> RunningTest {
     let child = Command::new("sh")
         .arg("-c")
         .arg("sleep 0.1")
@@ -812,6 +1004,7 @@ fn test_running_test() -> RunningTest {
         .expect("test child should spawn");
 
     RunningTest {
+        run_id: run_id.to_string(),
         child: Arc::new(Mutex::new(child)),
         stop_requested: Arc::new(AtomicBool::new(false)),
     }

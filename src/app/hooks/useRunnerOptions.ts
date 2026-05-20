@@ -13,10 +13,49 @@ import {
   syncVariableOverrides,
 } from "../utils";
 
+type ThresholdKey = keyof K6Options["thresholds"];
+
+export type ThresholdInputValues = Record<ThresholdKey, string>;
+export type ThresholdInputErrors = Partial<Record<ThresholdKey, string>>;
+
+function thresholdValueToInput(value: number | undefined): string {
+  return value === undefined ? "" : String(value);
+}
+
+function createThresholdInputs(thresholds: K6Options["thresholds"]): ThresholdInputValues {
+  return {
+    p95ResponseTime: thresholdValueToInput(thresholds.p95ResponseTime),
+    errorRate: thresholdValueToInput(thresholds.errorRate),
+  };
+}
+
+function validateThresholdInput(key: ThresholdKey, value: string): string | null {
+  const trimmedValue = value.trim();
+  if (!trimmedValue) {
+    return null;
+  }
+
+  if (!/^\d+$/.test(trimmedValue)) {
+    return key === "errorRate"
+      ? "Error-rate threshold must be a whole percentage from 0 to 100."
+      : "P95 threshold must be a whole number of milliseconds.";
+  }
+
+  if (key === "errorRate" && Number(trimmedValue) > 100) {
+    return "Error-rate threshold must be a whole percentage from 0 to 100.";
+  }
+
+  return null;
+}
+
 export function useRunnerOptions(collection: CollectionInfo | null) {
   const [runnerOptions, setRunnerOptions] = useState<K6Options>(() =>
     loadRunnerPreferences(DEFAULT_K6_OPTIONS),
   );
+  const [thresholdInputs, setThresholdInputs] = useState<ThresholdInputValues>(() =>
+    createThresholdInputs(runnerOptions.thresholds),
+  );
+  const [thresholdErrors, setThresholdErrors] = useState<ThresholdInputErrors>({});
 
   useEffect(() => {
     setRunnerOptions((previous) => ({
@@ -62,10 +101,27 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     }));
   }
 
-  function updateThreshold(
-    key: keyof K6Options["thresholds"],
-    value: string,
-  ) {
+  function updateThreshold(key: ThresholdKey, value: string) {
+    const error = validateThresholdInput(key, value);
+
+    setThresholdInputs((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
+    setThresholdErrors((previous) => {
+      const next = { ...previous };
+      if (error) {
+        next[key] = error;
+      } else {
+        delete next[key];
+      }
+      return next;
+    });
+
+    if (error) {
+      return;
+    }
+
     setRunnerOptions((previous) => ({
       ...previous,
       thresholds: {
@@ -97,15 +153,20 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
       ...previous,
       requestWeights: {
         ...previous.requestWeights,
-        [requestId]: Math.max(1, Math.trunc(weight) || 1),
+        [requestId]: Number.isFinite(weight) ? Math.max(0, Math.trunc(weight)) : 1,
       },
     }));
   }
+
+  const runnerOptionsAreValid = Object.keys(thresholdErrors).length === 0;
 
   return {
     runnerOptions,
     setRunnerOptions,
     emptyRuntimeVariables,
+    thresholdInputs,
+    thresholdErrors,
+    runnerOptionsAreValid,
     updateRunnerOption,
     updateThreshold,
     updateRuntimeVariable,

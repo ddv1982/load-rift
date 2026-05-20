@@ -160,15 +160,48 @@ export const options = mergeOptions(
   parseJsonEnv("LOADRIFT_ADVANCED_OPTIONS_JSON", null),
 );
 
-function resolveTemplate(value, context) {{
+function encodeRfc3986Component(value) {{
+  return encodeURIComponent(value).replace(/[!'()*]/g, (character) =>
+    `%${{character.charCodeAt(0).toString(16).toUpperCase()}}`
+  );
+}}
+
+function resolveTemplate(value, context, options = {{}}) {{
   if (value === null || value === undefined) {{
     return value;
   }}
 
-  return String(value).replace(/{{{{\s*([^}}\s]+)\s*}}}}/g, (_, key) => {{
-    const resolved = context[key];
-    return resolved === undefined || resolved === null ? "" : String(resolved);
-  }});
+  const text = String(value);
+  const encodedOccurrences = new Set(options.encodedVariableOccurrences || []);
+  let resolved = "";
+  let searchIndex = 0;
+  let occurrenceIndex = 0;
+
+  while (true) {{
+    const start = text.indexOf("{{{{", searchIndex);
+    if (start === -1) {{
+      return resolved + text.slice(searchIndex);
+    }}
+
+    resolved += text.slice(searchIndex, start);
+    const tokenStart = start + 2;
+    const tokenEnd = text.indexOf("}}}}", tokenStart);
+    if (tokenEnd === -1) {{
+      return resolved + text.slice(start);
+    }}
+
+    const key = text.slice(tokenStart, tokenEnd).trim();
+    const replacement = context[key];
+    if (replacement !== undefined && replacement !== null) {{
+      const resolvedValue = String(replacement);
+      resolved += options.encodeVariableValues || encodedOccurrences.has(occurrenceIndex)
+        ? encodeRfc3986Component(resolvedValue)
+        : resolvedValue;
+    }}
+
+    occurrenceIndex += 1;
+    searchIndex = tokenEnd + 2;
+  }}
 }}
 
 function buildContext() {{
@@ -220,8 +253,10 @@ function resolveHeaders(headers, context) {{
   return resolved;
 }}
 
-function resolveUrl(url, context) {{
-  const resolved = resolveTemplate(url, context);
+function resolveUrl(request, context) {{
+  const resolved = resolveTemplate(request.url, context, {{
+    encodedVariableOccurrences: request.urlEncodedVariableOccurrences || [],
+  }});
   if (!resolved) {{
     return resolved;
   }}
@@ -296,9 +331,13 @@ function findRequestById(requestId) {{
 }}
 
 function executeRequest(request, context, trafficMode) {{
-  const url = resolveUrl(request.url, context);
+  const url = resolveUrl(request, context);
   const headers = resolveHeaders(request.headers, context);
-  const payload = request.body ? resolveTemplate(request.body, context) : undefined;
+  const payload = request.body
+    ? resolveTemplate(request.body, context, {{
+        encodeVariableValues: request.encodeBodyVariableValues === true,
+      }})
+    : undefined;
   const response = http.request(request.method, url, payload, {{
     headers,
     tags: {{

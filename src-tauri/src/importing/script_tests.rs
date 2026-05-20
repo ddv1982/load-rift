@@ -1,5 +1,29 @@
 use super::import_collection;
 
+fn sample_structured_query_template_collection() -> &'static str {
+    r#"{
+      "info": {
+        "name": "Structured Query Fixture",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+      },
+      "item": [
+        {
+          "name": "Search",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "protocol": "https",
+              "host": ["api", "example", "com"],
+              "path": ["über"],
+              "query": [{ "key": "q", "value": "{{term}}" }]
+            }
+          }
+        }
+      ]
+    }"#
+}
+
 fn sample_host_placeholder_collection() -> &'static str {
     r#"{
       "info": {
@@ -53,6 +77,41 @@ fn generated_script_aborts_the_test_on_authorization_failures() {
 }
 
 #[test]
+fn generated_script_uses_occurrence_metadata_and_rfc3986_encoding() {
+    let imported = import_collection(sample_structured_query_template_collection())
+        .expect("fixture should import");
+
+    assert!(
+        imported.script.contains("urlEncodedVariableOccurrences"),
+        "expected generated request JSON to carry encoded variable occurrence metadata"
+    );
+    assert!(
+        imported
+            .script
+            .contains("encodedVariableOccurrences: request.urlEncodedVariableOccurrences || []"),
+        "expected generated URL resolution to use occurrence metadata"
+    );
+    assert!(
+        imported
+            .script
+            .contains("function encodeRfc3986Component(value)"),
+        "expected generated script to define a strict RFC3986 encoder"
+    );
+    assert!(
+        imported.script.contains("replace(/[!'()*]/g"),
+        "expected generated script to escape RFC3986 reserved sub-delims left raw by encodeURIComponent"
+    );
+    assert!(
+        !imported.script.contains("encodeVariablesFrom"),
+        "expected generated script to avoid offset-based encoding metadata"
+    );
+    assert!(
+        !imported.script.contains("urlVariableEncodingStart"),
+        "expected generated request JSON to avoid byte-offset metadata"
+    );
+}
+
+#[test]
 fn generated_script_supports_weighted_request_scheduling_and_tags() {
     let imported =
         import_collection(sample_host_placeholder_collection()).expect("fixture should import");
@@ -74,7 +133,9 @@ fn generated_script_supports_weighted_request_scheduling_and_tags() {
         "expected generated script to build a constant-time request lookup map"
     );
     assert!(
-        imported.script.contains("buildWeightedSchedule(runnableRequests, requestWeights)"),
+        imported
+            .script
+            .contains("buildWeightedSchedule(runnableRequests, requestWeights)"),
         "expected generated script to build a deterministic weighted schedule"
     );
     assert!(

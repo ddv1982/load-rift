@@ -1,6 +1,6 @@
 [package]
 name = "loadrift"
-version = "0.2.6"
+version = "0.2.7"
 description = "Load Rift Tauri foundation"
 authors = ["Douwe de Vries"]
 license = "MIT"
@@ -27,3 +27,4 @@ tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-log = "2"
 uuid = { version = "1.22.0", features = ["v4", "v5"] }
+tempfile = "3.23.0"

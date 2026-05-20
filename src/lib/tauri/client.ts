@@ -12,8 +12,10 @@ import type {
   CollectionInfo,
   GetTestStatusResponse,
   K6Options,
-  LiveMetrics,
+  RunErrorEvent,
+  RunMetricsEvent,
   SmokeTestResponse,
+  StartTestResponse,
   TestCompletion,
   ValidateTestConfigurationResponse,
 } from "../loadrift/types";
@@ -56,8 +58,8 @@ export function createTauriLoadRiftApi(): LoadRiftApi {
         request: input,
       });
     },
-    startTest(input: { options: K6Options }) {
-      return command<void>("start_test", {
+    startTest(input: { options: K6Options; runId?: string }) {
+      return command<StartTestResponse>("start_test", {
         request: input,
       });
     },
@@ -75,14 +77,14 @@ export function createTauriLoadRiftApi(): LoadRiftApi {
     onK6Output(callback: (payload: string) => void) {
       return listenScoped<string>(K6_OUTPUT_EVENT, callback);
     },
-    onK6Metrics(callback: (payload: LiveMetrics) => void) {
-      return listenScoped<LiveMetrics>(K6_METRICS_EVENT, callback);
+    onK6Metrics(callback: (payload: RunMetricsEvent) => void) {
+      return listenScoped<RunMetricsEvent>(K6_METRICS_EVENT, callback);
     },
     onK6Complete(callback: (payload: TestCompletion) => void) {
       return listenScoped<TestCompletion>(K6_COMPLETE_EVENT, callback);
     },
-    onK6Error(callback: (payload: string) => void) {
-      return listenScoped<string>(K6_ERROR_EVENT, callback);
+    onK6Error(callback: (payload: RunErrorEvent) => void) {
+      return listenScoped<RunErrorEvent>(K6_ERROR_EVENT, callback);
     },
   };
 }

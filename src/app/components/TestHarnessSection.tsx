@@ -17,6 +17,7 @@ import { RunnerSettingsCard } from "./RunnerSettingsCard";
 import { RuntimeVariablesCard } from "./RuntimeVariablesCard";
 import { SmokeTestCard } from "./SmokeTestCard";
 import type { SmokeTestState } from "../../features/test/useSmokeTest";
+import type { ThresholdInputErrors, ThresholdInputValues } from "../hooks/useRunnerOptions";
 
 interface TestHarnessStatusProps {
   collection: CollectionInfo | null;
@@ -35,6 +36,8 @@ interface TestHarnessStatusProps {
 
 interface TestHarnessControlsProps {
   runnerOptions: K6Options;
+  thresholdInputs: ThresholdInputValues;
+  thresholdErrors: ThresholdInputErrors;
   emptyRuntimeVariables: RuntimeVariable[];
   curlInput: string;
   curlImportState: CurlImportState;
@@ -86,6 +89,8 @@ export function TestHarnessSection({
   } = status;
   const {
     runnerOptions,
+    thresholdInputs,
+    thresholdErrors,
     emptyRuntimeVariables,
     curlInput,
     curlImportState,
@@ -322,6 +327,8 @@ export function TestHarnessSection({
               >
                 <RunnerSettingsCard
                   runnerOptions={runnerOptions}
+                  thresholdInputs={thresholdInputs}
+                  thresholdErrors={thresholdErrors}
                   curlInput={curlInput}
                   curlImportState={curlImportState}
                   onVusChange={onVusChange}

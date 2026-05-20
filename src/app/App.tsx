@@ -86,6 +86,9 @@ export function App() {
     runnerOptions,
     setRunnerOptions,
     emptyRuntimeVariables,
+    thresholdInputs,
+    thresholdErrors,
+    runnerOptionsAreValid,
     updateRunnerOption,
     updateThreshold,
     updateRuntimeVariable,
@@ -125,8 +128,9 @@ export function App() {
     () =>
       Boolean(importState.collection) &&
       configValidation.status === "ready" &&
+      runnerOptionsAreValid &&
       !isHarnessBusy,
-    [configValidation.status, importState.collection, isHarnessBusy],
+    [configValidation.status, importState.collection, isHarnessBusy, runnerOptionsAreValid],
   );
   const canSmokeTest = useMemo(
     () => Boolean(importState.collection) && !isHarnessBusy,
@@ -175,6 +179,8 @@ export function App() {
 
   const harnessControls = {
     runnerOptions,
+    thresholdInputs,
+    thresholdErrors,
     emptyRuntimeVariables,
     curlInput,
     curlImportState,

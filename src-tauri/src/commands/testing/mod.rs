@@ -5,14 +5,17 @@ use tauri::{AppHandle, State};
 
 use crate::importing::resolve_test_requests;
 use crate::models::{
-    GetTestStatusResponse, K6Options, SmokeTestResponse, ValidateTestConfigurationResponse,
+    GetTestStatusResponse, K6Options, SmokeTestResponse, StartTestResponse,
+    ValidateTestConfigurationResponse,
 };
 use crate::state::SharedAppState;
+use uuid::Uuid;
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct StartTestRequest {
     pub options: K6Options,
+    pub run_id: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -40,34 +43,47 @@ pub async fn start_test(
     app: AppHandle,
     state: State<'_, SharedAppState>,
     request: StartTestRequest,
-) -> Result<(), String> {
-    let (script, runtime_collection) = logic::begin_test_start_validation(state.inner())?;
+) -> Result<StartTestResponse, String> {
+    let run_id = request
+        .run_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+        .unwrap_or_else(|| Uuid::new_v4().to_string());
+    let (script, runtime_collection) = logic::begin_test_start_validation(state.inner(), &run_id)?;
 
     if let Some(error) =
         logic::validate_test_configuration_for_collection(&runtime_collection, &request.options)
     {
-        logic::release_failed_start(state.inner());
+        logic::release_failed_start(state.inner(), &run_id);
         return Err(error);
     }
 
-    let script = logic::finalize_test_start_reservation(state.inner(), &script)?;
+    let script = logic::finalize_test_start_reservation(state.inner(), &script, &run_id)?;
 
-    if let Err(error) =
-        crate::k6::start_k6_process(app, state.inner().clone(), script, request.options)
-    {
-        logic::release_failed_start(state.inner());
+    if let Err(error) = crate::k6::start_k6_process(
+        app,
+        state.inner().clone(),
+        script,
+        request.options,
+        run_id.clone(),
+    ) {
+        logic::release_failed_start(state.inner(), &run_id);
         return Err(error);
     }
 
-    Ok(())
+    Ok(StartTestResponse { run_id })
 }
 
 #[tauri::command]
 pub async fn stop_test(state: State<'_, SharedAppState>) -> Result<(), String> {
-    crate::k6::stop_k6_process(state.inner())?;
+    let run_id = crate::k6::stop_k6_process(state.inner())?;
     logic::wait_for_test_stop(state.inner())?;
     if let Ok(mut app_state) = state.inner().lock() {
-        app_state.test_status = crate::models::TestStatus::Stopped;
+        if app_state.latest_run_id.as_deref() == Some(&run_id) && !app_state.test_is_busy() {
+            app_state.test_status = crate::models::TestStatus::Stopped;
+        }
         return Ok(());
     }
 
