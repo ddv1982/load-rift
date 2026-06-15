@@ -257,7 +257,7 @@ export function TestHarnessSection({
 
   return (
     <>
-      <section className="panel harness-panel workflow-panel configure-panel">
+      <section className={`panel harness-panel workflow-panel configure-panel${collection ? " is-current" : " is-locked"}`}>
         <div className="section-heading section-heading-wide">
           <div className="section-heading-copy">
             <p className="panel-kicker">Step 2 · Configure</p>
@@ -404,7 +404,7 @@ export function TestHarnessSection({
         </div>
       </section>
 
-      <section className="panel harness-panel workflow-panel run-review-panel">
+      <section className={`panel harness-panel workflow-panel run-review-panel${canStartTest || testState.isRunning || testState.result || smokeTestState.result ? " is-current" : " is-locked"}`}>
         <div className="section-heading section-heading-wide">
           <div className="section-heading-copy">
             <p className="panel-kicker">Step 3 · Run &amp; Review</p>

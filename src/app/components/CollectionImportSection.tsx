@@ -29,7 +29,7 @@ export function CollectionImportSection({
   onRequestWeightChange,
 }: CollectionImportSectionProps) {
   return (
-    <section className="panel import-panel workflow-panel">
+    <section className={`panel import-panel workflow-panel source-panel${collection ? " is-complete" : " is-current"}`}>
       <div className="section-heading section-heading-tight">
         <div className="section-heading-copy">
           <p className="panel-kicker">Step 1 · Source</p>
