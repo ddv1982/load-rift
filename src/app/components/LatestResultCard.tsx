@@ -68,11 +68,12 @@ export function LatestResultCard({
               type="button"
               className="ghost"
               onClick={onExportLatestReport}
+              disabled
             >
               Export Latest Report
             </button>
             <p className="inline-note export-helper">
-              Export uses the latest backend report if one exists; otherwise Load Rift will explain why.
+              Run a test before exporting the retained k6 report.
             </p>
           </div>
         </div>

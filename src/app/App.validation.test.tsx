@@ -743,6 +743,22 @@ describe("App validation lifecycle", () => {
     );
   });
 
+  it("keeps empty result export and reset actions disabled until they are actionable", () => {
+    appHookTestState.importHookState = createImportHookState(null);
+
+    renderApp(createApiMock());
+
+    expect(screen.getByRole("button", { name: "Reset" })).toBeDisabled();
+    expect(
+      within(getLatestResultCard()).getByRole("button", {
+        name: "Export Latest Report",
+      }),
+    ).toBeDisabled();
+    expect(
+      within(getLatestResultCard()).getByText("Run a test before exporting the retained k6 report."),
+    ).toBeInTheDocument();
+  });
+
   it("prompts for a report destination from the latest result card before exporting", async () => {
     const longSavePath =
       "/tmp/loadrift/reports/releases/very-long-directory-name-without-natural-breaks/loadrift-report-api-example-com-20260325-151332.html";
@@ -750,6 +766,12 @@ describe("App validation lifecycle", () => {
     const api = createApiMock({
       exportReport: vi.fn(async () => undefined),
     });
+
+    appHookTestState.testHookState.state = {
+      ...appHookTestState.testHookState.state,
+      status: "completed",
+      result: createCompletedResult(),
+    };
 
     renderApp(api);
 
@@ -780,7 +802,7 @@ describe("App validation lifecycle", () => {
     expect(api.exportReport).toHaveBeenCalledWith({
       savePath: longSavePath,
     });
-    expect(within(latestResultCard).getByText(/Export uses the latest backend report/)).toBeInTheDocument();
+    expect(within(latestResultCard).getByText("Exports the latest retained k6 report.")).toBeInTheDocument();
     const notice = within(latestResultCard).getByRole("status");
     expect(notice).toHaveTextContent(successMessage);
     expect(notice).toHaveClass("export-notice");
@@ -827,6 +849,12 @@ describe("App validation lifecycle", () => {
         throw new Error("Run a k6 test before exporting a report.");
       }),
     });
+
+    appHookTestState.testHookState.state = {
+      ...appHookTestState.testHookState.state,
+      status: "completed",
+      result: createCompletedResult(),
+    };
 
     renderApp(api);
 

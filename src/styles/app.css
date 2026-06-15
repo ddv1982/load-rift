@@ -59,6 +59,18 @@ button {
   cursor: pointer;
 }
 
+:where(button, input, select, textarea, summary):focus-visible {
+  outline: 3px solid var(--accent-cool);
+  outline-offset: 3px;
+}
+
+:where(.primary, .ghost, .segmented-control button, .folder-toggle):focus-visible {
+  border-color: rgba(134, 196, 216, 0.72);
+  box-shadow:
+    0 0 0 3px rgba(134, 196, 216, 0.2),
+    0 0 0 6px rgba(5, 9, 13, 0.9);
+}
+
 .app-shell {
   max-width: 1380px;
   margin: 0 auto;
@@ -1304,6 +1316,23 @@ button {
 }
 
 @media (max-width: 640px) {
+  :root {
+    --monitor-panel-height: auto;
+    --secondary-panel-height: auto;
+  }
+
+  .monitor-card-live,
+  .harness-secondary-card > .smoke-test-card,
+  .harness-secondary-card > .result-summary {
+    min-height: 0;
+    height: auto;
+    max-height: none;
+  }
+
+  .event-log-tall {
+    min-height: 14rem;
+  }
+
   .overview-grid,
   .status-strip {
     grid-template-columns: 1fr;
@@ -1401,4 +1430,23 @@ button {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .primary:hover,
+  .ghost:hover,
+  .segmented-control button:hover,
+  .folder-toggle-icon,
+  .folder-toggle-icon.is-open {
+    transform: none;
+  }
 }

@@ -66,7 +66,7 @@ export function CollectionImportSection({
             type="button"
             className="ghost"
             onClick={onReset}
-            disabled={isLoading}
+            disabled={isLoading || !collection}
           >
             Reset
           </button>
