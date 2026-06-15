@@ -4,6 +4,7 @@ import type { CollectionInfo } from "../../lib/loadrift/types";
 import {
   createLoadRiftApiMock as createApiMock,
   createLoadRiftApiWrapper as createWrapper,
+  deferred,
 } from "../../test/loadRiftApiTestUtils";
 import { useCollectionImport } from "./useCollectionImport";
 
@@ -21,6 +22,11 @@ const importedCollection: CollectionInfo = {
     },
   ],
   runtimeVariables: [],
+};
+
+const replacementCollection: CollectionInfo = {
+  ...importedCollection,
+  name: "Replacement Collection",
 };
 
 describe("useCollectionImport", () => {
@@ -95,6 +101,132 @@ describe("useCollectionImport", () => {
       isLoading: false,
       error: "HTTP 404",
       collection: importedCollection,
+    });
+  });
+
+  it("ignores stale imports after a newer import completes", async () => {
+    const firstImport = deferred<CollectionInfo>();
+    const api = createApiMock({
+      importCollectionFromFile: vi
+        .fn()
+        .mockReturnValueOnce(firstImport.promise)
+        .mockResolvedValueOnce(replacementCollection),
+    });
+    const { result } = renderHook(() => useCollectionImport(), {
+      wrapper: createWrapper(api),
+    });
+
+    await act(async () => {
+      void result.current.importFromFile("/tmp/stale.postman_collection.json");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await result.current.importFromFile("/tmp/replacement.postman_collection.json");
+    });
+
+    await act(async () => {
+      firstImport.resolve(importedCollection);
+      await firstImport.promise;
+    });
+
+    expect(result.current.state).toEqual({
+      isLoading: false,
+      error: null,
+      collection: replacementCollection,
+    });
+  });
+
+  it("ignores stale import failures after a newer import completes", async () => {
+    const firstImport = deferred<CollectionInfo>();
+    const api = createApiMock({
+      importCollectionFromFile: vi
+        .fn()
+        .mockReturnValueOnce(firstImport.promise)
+        .mockResolvedValueOnce(replacementCollection),
+    });
+    const { result } = renderHook(() => useCollectionImport(), {
+      wrapper: createWrapper(api),
+    });
+
+    await act(async () => {
+      void result.current.importFromFile("/tmp/stale.postman_collection.json");
+      await Promise.resolve();
+    });
+
+    await act(async () => {
+      await result.current.importFromFile("/tmp/replacement.postman_collection.json");
+    });
+
+    await act(async () => {
+      firstImport.reject(new Error("Stale import failure"));
+      await firstImport.promise.catch(() => {});
+    });
+
+    expect(result.current.state).toEqual({
+      isLoading: false,
+      error: null,
+      collection: replacementCollection,
+    });
+  });
+
+  it("ignores stale imports after reset", async () => {
+    const importRequest = deferred<CollectionInfo>();
+    const api = createApiMock({
+      importCollectionFromFile: vi.fn(() => importRequest.promise),
+    });
+    const { result } = renderHook(() => useCollectionImport(), {
+      wrapper: createWrapper(api),
+    });
+
+    await act(async () => {
+      void result.current.importFromFile("/tmp/stale.postman_collection.json");
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.reset();
+    });
+
+    await act(async () => {
+      importRequest.resolve(importedCollection);
+      await importRequest.promise;
+    });
+
+    expect(result.current.state).toEqual({
+      isLoading: false,
+      error: null,
+      collection: null,
+    });
+  });
+
+  it("ignores stale imports after reportError", async () => {
+    const importRequest = deferred<CollectionInfo>();
+    const api = createApiMock({
+      importCollectionFromFile: vi.fn(() => importRequest.promise),
+    });
+    const { result } = renderHook(() => useCollectionImport(), {
+      wrapper: createWrapper(api),
+    });
+
+    await act(async () => {
+      void result.current.importFromFile("/tmp/stale.postman_collection.json");
+      await Promise.resolve();
+    });
+
+    act(() => {
+      result.current.reportError("Picker failed");
+    });
+
+    await act(async () => {
+      importRequest.resolve(importedCollection);
+      await importRequest.promise;
+    });
+
+    expect(result.current.state).toEqual({
+      isLoading: false,
+      error: "Picker failed",
+      collection: null,
     });
   });
 });

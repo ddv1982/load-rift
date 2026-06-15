@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import type { CollectionInfo } from "../../lib/loadrift/types";
 import { useLoadRiftApi } from "../../lib/loadrift/context";
 import { getTauriErrorMessage } from "../../lib/tauri/errors";
@@ -11,6 +11,7 @@ export interface ImportState {
 
 export function useCollectionImport() {
   const api = useLoadRiftApi();
+  const importRequestIdRef = useRef(0);
   const [state, setState] = useState<ImportState>({
     isLoading: false,
     error: null,
@@ -19,6 +20,9 @@ export function useCollectionImport() {
 
   const runImport = useCallback(
     async (load: () => Promise<CollectionInfo>) => {
+      const requestId = importRequestIdRef.current + 1;
+      importRequestIdRef.current = requestId;
+
       setState((previous) => ({
         ...previous,
         isLoading: true,
@@ -27,6 +31,9 @@ export function useCollectionImport() {
 
       try {
         const collection = await load();
+        if (importRequestIdRef.current !== requestId) {
+          return;
+        }
 
         setState({
           isLoading: false,
@@ -34,6 +41,10 @@ export function useCollectionImport() {
           collection,
         });
       } catch (error) {
+        if (importRequestIdRef.current !== requestId) {
+          return;
+        }
+
         setState((previous) => ({
           ...previous,
           isLoading: false,
@@ -55,6 +66,7 @@ export function useCollectionImport() {
   );
 
   const reportError = useCallback((message: string) => {
+    importRequestIdRef.current += 1;
     setState((previous) => ({
       ...previous,
       isLoading: false,
@@ -63,6 +75,7 @@ export function useCollectionImport() {
   }, []);
 
   const reset = useCallback(() => {
+    importRequestIdRef.current += 1;
     setState({
       isLoading: false,
       error: null,
