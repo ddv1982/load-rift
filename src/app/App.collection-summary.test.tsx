@@ -30,6 +30,10 @@ vi.mock("../lib/tauri/dialog", () => ({
   selectReportSavePath: vi.fn(),
 }));
 
+function openWorkflowStep(step: "Source" | "Configure" | "Run") {
+  fireEvent.click(screen.getByRole("tab", { name: new RegExp(step) }));
+}
+
 describe("App collection summary", () => {
   beforeEach(() => {
     resetAppTestEnvironment();
@@ -43,6 +47,7 @@ describe("App collection summary", () => {
     appHookTestState.importHookState = createImportHookState(anotherCollection);
 
     renderApp(createApiMock());
+    openWorkflowStep("Source");
 
     expect(screen.getByText("POST login")).toBeInTheDocument();
     expect(screen.getByText("GET account")).toBeInTheDocument();
@@ -63,6 +68,7 @@ describe("App collection summary", () => {
     appHookTestState.importHookState = createImportHookState(orderedCollection);
 
     renderApp(createApiMock());
+    openWorkflowStep("Source");
 
     const rowTexts = screen
       .getAllByRole("listitem")
@@ -85,6 +91,7 @@ describe("App collection summary", () => {
     appHookTestState.importHookState = createImportHookState(separatorFolderCollection);
 
     renderApp(createApiMock());
+    openWorkflowStep("Source");
 
     expect(screen.getByText("Slash folder request")).toBeInTheDocument();
     expect(screen.getByText("Nested folder request")).toBeInTheDocument();
@@ -99,6 +106,7 @@ describe("App collection summary", () => {
     appHookTestState.importHookState = createImportHookState(anotherCollection);
 
     renderApp(createApiMock());
+    openWorkflowStep("Source");
 
     fireEvent.change(screen.getByLabelText("Search requests"), {
       target: { value: "login" },
@@ -130,6 +138,7 @@ describe("App collection summary", () => {
     appHookTestState.importHookState = createImportHookState(anotherCollection);
 
     renderApp(createApiMock());
+    openWorkflowStep("Source");
 
     fireEvent.change(screen.getByLabelText("Search requests"), {
       target: { value: "does-not-exist" },
@@ -158,6 +167,7 @@ describe("App collection summary", () => {
     appHookTestState.importHookState = createImportHookState(anotherCollection);
 
     renderApp(createApiMock());
+    openWorkflowStep("Source");
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
@@ -183,6 +193,7 @@ describe("App collection summary", () => {
       await vi.advanceTimersByTimeAsync(250);
     });
 
+    openWorkflowStep("Run");
     fireEvent.click(screen.getByRole("button", { name: "Start Test" }));
 
     expect(appHookTestState.testHookState.startTest).toHaveBeenCalledWith(
@@ -206,6 +217,7 @@ describe("App collection summary", () => {
       target: { value: "weighted" },
     });
 
+    openWorkflowStep("Source");
     expect(screen.getByText(/Weighted mix uses selected requests/)).toBeInTheDocument();
 
     await act(async () => {
@@ -225,6 +237,7 @@ describe("App collection summary", () => {
       await Promise.resolve();
     });
 
+    openWorkflowStep("Run");
     fireEvent.click(screen.getByRole("button", { name: "Start Test" }));
 
     expect(appHookTestState.testHookState.startTest).toHaveBeenCalledWith(

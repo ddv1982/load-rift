@@ -69,7 +69,7 @@ button {
   outline-offset: 3px;
 }
 
-:where(.primary, .ghost, .segmented-control button, .folder-toggle):focus-visible {
+:where(.primary, .ghost, .segmented-control button, .workflow-step-tabs button, .folder-toggle):focus-visible {
   border-color: rgba(134, 196, 216, 0.72);
   box-shadow:
     0 0 0 3px rgba(134, 196, 216, 0.2),
@@ -256,6 +256,80 @@ button {
   align-items: stretch;
 }
 
+.workflow-stepper {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
+}
+
+.workflow-step-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  flex: 1;
+}
+
+.workflow-step-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.72rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 0.8rem;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 700;
+  transition:
+    transform 150ms ease,
+    color 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.workflow-step-tabs button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.045);
+  transform: translateY(-1px);
+}
+
+.workflow-step-tabs button.is-active {
+  color: #130d07;
+  border-color: rgba(255, 209, 138, 0.24);
+  background: linear-gradient(180deg, #ffd18a 0%, #e89b3e 100%);
+  box-shadow: 0 12px 26px rgba(125, 80, 23, 0.2);
+}
+
+.workflow-step-index {
+  display: inline-grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.78rem;
+}
+
+.workflow-step-tabs button.is-active .workflow-step-index {
+  background: rgba(19, 13, 7, 0.12);
+}
+
+.workflow-step-status {
+  margin: 0;
+  padding: 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
 .import-panel,
 .harness-panel {
   min-width: 0;
@@ -267,6 +341,26 @@ button {
   background:
     linear-gradient(180deg, rgba(255, 255, 255, 0.032), rgba(255, 255, 255, 0.012)),
     var(--bg-panel);
+}
+
+.workspace-shell > [role="tabpanel"]:not([hidden]) {
+  animation: panel-enter 180ms ease-out;
+}
+
+.control-deck > [role="tabpanel"]:not([hidden]) {
+  animation: panel-enter 140ms ease-out;
+}
+
+@keyframes panel-enter {
+  from {
+    opacity: 0.86;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .section-heading,
@@ -1441,6 +1535,26 @@ button {
     inset-block: 0.95rem;
   }
 
+  .workflow-stepper {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .workflow-step-tabs {
+    width: 100%;
+  }
+
+  .workflow-step-tabs button {
+    gap: 0.38rem;
+    padding-inline: 0.55rem;
+  }
+
+  .workflow-step-status {
+    padding: 0 0.25rem;
+    text-align: center;
+  }
+
   .primary,
   .ghost,
   .segmented-control button {
@@ -1603,6 +1717,7 @@ button {
 
   .primary:hover,
   .ghost:hover,
+  .workflow-step-tabs button:hover,
   .segmented-control button:hover,
   .folder-toggle-icon,
   .folder-toggle-icon.is-open {

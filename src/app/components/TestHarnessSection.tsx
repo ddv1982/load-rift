@@ -75,6 +75,7 @@ interface TestHarnessSectionProps {
   status: TestHarnessStatusProps;
   controls: TestHarnessControlsProps;
   actions: TestHarnessActionsProps;
+  activeStep: "configure" | "run";
 }
 
 type ReadinessTone = "ready" | "blocked" | "busy" | "checking";
@@ -155,6 +156,7 @@ export function TestHarnessSection({
   status,
   controls,
   actions,
+  activeStep,
 }: TestHarnessSectionProps) {
   const {
     collection,
@@ -257,14 +259,14 @@ export function TestHarnessSection({
 
   return (
     <>
+      {activeStep === "configure" ? (
       <section className={`panel harness-panel workflow-panel configure-panel${collection ? " is-current" : " is-locked"}`}>
         <div className="section-heading section-heading-wide">
           <div className="section-heading-copy">
             <p className="panel-kicker">Step 2 · Configure</p>
             <h2>Configure the run</h2>
             <p className="section-copy">
-              Set the load profile, target, variables, and advanced k6 options before
-              moving into validation and execution.
+              Set the load profile, target, variables, and k6 overrides.
             </p>
           </div>
 
@@ -274,8 +276,8 @@ export function TestHarnessSection({
             </span>
             <p className="panel-copy">
               {collection
-                ? "Configuration is ready for checks once required inputs are valid."
-                : "Import a collection first to unlock configuration."}
+                ? "Ready once required inputs are valid."
+                : "Import a collection to configure."}
             </p>
           </div>
         </div>
@@ -303,8 +305,7 @@ export function TestHarnessSection({
                 <h3>Primary controls</h3>
               </div>
               <p className="field-hint">
-                Use the common settings first. Variables and advanced JSON stay
-                one click away when the collection needs them.
+                Common settings first. Variables and JSON stay one click away.
               </p>
             </div>
 
@@ -403,15 +404,16 @@ export function TestHarnessSection({
           </div>
         </div>
       </section>
+      ) : null}
 
+      {activeStep === "run" ? (
       <section className={`panel harness-panel workflow-panel run-review-panel${canStartTest || testState.isRunning || testState.result || smokeTestState.result ? " is-current" : " is-locked"}`}>
         <div className="section-heading section-heading-wide">
           <div className="section-heading-copy">
             <p className="panel-kicker">Step 3 · Run &amp; Review</p>
             <h2>Validate, launch, and review</h2>
             <p className="section-copy">
-              Check readiness, run a smoke pass or full load test, then monitor live
-              output and export the retained report from the latest result.
+              Check readiness, run smoke or load, then review the latest result.
             </p>
           </div>
 
@@ -421,8 +423,8 @@ export function TestHarnessSection({
             </span>
             <p className="panel-copy">
               {collection
-                ? "Ready to validate configuration, run a smoke check, or launch the full load profile."
-                : "Import and configure a collection first to unlock run actions."}
+                ? "Validate, smoke, or start the load profile."
+                : "Import and configure to unlock runs."}
             </p>
           </div>
         </div>
@@ -442,7 +444,7 @@ export function TestHarnessSection({
             onClick={onSmokeTest}
             disabled={!canSmokeTest}
           >
-            {smokeTestState.isRunning ? "Smoking..." : "Smoke Test"}
+            {smokeTestState.isRunning ? "Smoke testing..." : "Smoke Test"}
           </button>
           <button
             type="button"
@@ -475,7 +477,7 @@ export function TestHarnessSection({
 
         <div className="live-metrics-heading">
           <span>Live metrics</span>
-          <small>Final verdict and completed-run stats stay in Latest result.</small>
+          <small>Completed-run stats stay in Latest result.</small>
         </div>
         <div className="status-strip" aria-label="Live run metrics overview">
           <article className="status-chip">
@@ -535,6 +537,7 @@ export function TestHarnessSection({
           </div>
         </div>
       </section>
+      ) : null}
     </>
   );
 }

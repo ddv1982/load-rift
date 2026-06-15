@@ -48,6 +48,7 @@ describe("App persistence", () => {
     expect(screen.getByLabelText("Environment")).toBeInTheDocument();
     expect(screen.getByLabelText("Duration")).not.toBeVisible();
     expect(screen.getByRole("heading", { name: "Configure the run" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /Run/ }));
     expect(
       screen.getByRole("heading", { name: "Validate, launch, and review" }),
     ).toBeInTheDocument();
@@ -63,7 +64,9 @@ describe("App persistence", () => {
 
     renderApp(createApiMock());
 
+    fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
     expect(screen.getByRole("button", { name: "Choose Postman Collection" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("tab", { name: /Configure/ }));
     expect((screen.getByLabelText("Paste Postman cURL") as HTMLTextAreaElement).value).toBe("");
   });
 
@@ -138,6 +141,7 @@ describe("App persistence", () => {
     const api = createApiMock();
     const { rerender } = renderApp(api);
 
+    fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
     fireEvent.change(screen.getByLabelText("Search requests"), {
       target: { value: "users" },
     });
@@ -151,6 +155,7 @@ describe("App persistence", () => {
     };
 
     rerender(createAppElement(api));
+    fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
 
     fireEvent.change(screen.getByLabelText("Search requests"), {
       target: { value: "login" },
@@ -165,6 +170,7 @@ describe("App persistence", () => {
     };
 
     rerender(createAppElement(api));
+    fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
 
     expect((screen.getByLabelText("Search requests") as HTMLInputElement).value).toBe("users");
   });
@@ -173,6 +179,7 @@ describe("App persistence", () => {
     const api = createApiMock();
     const { rerender } = renderApp(api);
 
+    fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
     fireEvent.change(screen.getByLabelText("Search requests"), {
       target: { value: "users" },
     });
@@ -186,6 +193,7 @@ describe("App persistence", () => {
     };
 
     rerender(createAppElement(api));
+    fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
 
     expect((screen.getByLabelText("Search requests") as HTMLInputElement).value).toBe("");
 
@@ -202,6 +210,7 @@ describe("App persistence", () => {
     };
 
     rerender(createAppElement(api));
+    fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
 
     expect((screen.getByLabelText("Search requests") as HTMLInputElement).value).toBe("users");
   });
@@ -218,6 +227,7 @@ describe("App persistence", () => {
 
     renderApp(createApiMock());
 
+    fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
     expect((screen.getByLabelText("Search requests") as HTMLInputElement).value).toBe("");
     expect((screen.getByLabelText("Method") as HTMLSelectElement).value).toBe("all");
   });

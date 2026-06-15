@@ -5,7 +5,10 @@ import {
   resetAppTestEnvironment,
 } from "./test-support/appTestState";
 import {
+  createAppElement,
   createApiMock,
+  createImportHookState,
+  importedCollection,
   renderApp,
 } from "./test-support/appTestUtils";
 
@@ -56,15 +59,68 @@ describe("App accessibility", () => {
   it("surfaces the redesigned workflow stages with explicit headings", () => {
     renderApp(createApiMock());
 
+    const sourceTab = screen.getByRole("tab", { name: /Source/ });
+    const configureTab = screen.getByRole("tab", { name: /Configure/ });
+    const runTab = screen.getByRole("tab", { name: /Run/ });
+
+    expect(sourceTab).toHaveAttribute("aria-selected", "false");
+    expect(configureTab).toHaveAttribute("aria-selected", "true");
+    expect(runTab).toHaveAttribute("aria-selected", "false");
+    for (const tab of [sourceTab, configureTab, runTab]) {
+      expect(document.getElementById(tab.getAttribute("aria-controls") ?? "")).not.toBeNull();
+    }
+
+    fireEvent.click(sourceTab);
     expect(
       screen.getByRole("heading", { name: "Import a collection" }),
     ).toBeInTheDocument();
+
+    fireEvent.click(configureTab);
     expect(
       screen.getByRole("heading", { name: "Configure the run" }),
     ).toBeInTheDocument();
+
+    fireEvent.click(runTab);
     expect(
       screen.getByRole("heading", { name: "Validate, launch, and review" }),
     ).toBeInTheDocument();
+  });
+
+  it("supports keyboard navigation across workflow tabs", () => {
+    renderApp(createApiMock());
+
+    const sourceTab = screen.getByRole("tab", { name: /Source/ });
+    const configureTab = screen.getByRole("tab", { name: /Configure/ });
+    const runTab = screen.getByRole("tab", { name: /Run/ });
+
+    fireEvent.keyDown(configureTab, { key: "ArrowRight" });
+    expect(runTab).toHaveAttribute("aria-selected", "true");
+    expect(runTab).toHaveFocus();
+
+    fireEvent.keyDown(runTab, { key: "Home" });
+    expect(sourceTab).toHaveAttribute("aria-selected", "true");
+    expect(sourceTab).toHaveFocus();
+
+    fireEvent.keyDown(sourceTab, { key: "End" });
+    expect(runTab).toHaveAttribute("aria-selected", "true");
+    expect(runTab).toHaveFocus();
+  });
+
+  it("moves focus to Configure when Source auto-advances after import", () => {
+    appHookTestState.importHookState = createImportHookState(null);
+    const api = createApiMock();
+    const { rerender } = renderApp(api);
+
+    const chooseButton = screen.getByRole("button", { name: "Choose Postman Collection" });
+    chooseButton.focus();
+    expect(chooseButton).toHaveFocus();
+
+    appHookTestState.importHookState = createImportHookState(importedCollection);
+    rerender(createAppElement(api));
+
+    const configureTab = screen.getByRole("tab", { name: /Configure/ });
+    expect(configureTab).toHaveAttribute("aria-selected", "true");
+    expect(configureTab).toHaveFocus();
   });
 
   it("links VU validation feedback to the VU input", () => {

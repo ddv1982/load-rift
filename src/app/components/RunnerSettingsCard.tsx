@@ -53,7 +53,7 @@ export function RunnerSettingsCard({
       <SettingsCardHeader
         eyebrow="Runner Settings"
         title="Basic k6 Controls"
-        hint="Configure the common load profile here. Use advanced JSON for scenarios, tags, and other k6 options that do not fit the simple form."
+        hint="Set the common load profile. Use advanced JSON for scenarios and tags."
       />
 
       <div className="settings-grid">
@@ -168,11 +168,11 @@ export function RunnerSettingsCard({
 
         <div className="field field-note">
           <span>Traffic mode notes</span>
-          <p className="inline-note">
-            {runnerOptions.trafficMode === "weighted"
-              ? "Edit per-request weights in the collection summary above. Use advanced scenarios for strict fixed ratios."
-              : "Sequential mode runs every selected request in order during each iteration."}
-          </p>
+            <p className="inline-note">
+              {runnerOptions.trafficMode === "weighted"
+              ? "Edit request weights in Source."
+              : "Runs selected requests in order."}
+            </p>
         </div>
 
         <section className="auth-setup-panel field-wide" aria-labelledby="auth-setup-title">
@@ -182,8 +182,7 @@ export function RunnerSettingsCard({
               <h4 id="auth-setup-title">Fill from cURL or enter manually</h4>
             </div>
             <p className="field-hint">
-              Paste a Postman cURL command to extract values, or type the Base URL
-              and bearer token yourself.
+              Paste cURL or type values manually.
             </p>
           </div>
 
@@ -219,7 +218,7 @@ export function RunnerSettingsCard({
               aria-live="polite"
             >
               {curlImportState.message ??
-                "Optional shortcut: extract the Base URL and bearer token from a working Postman cURL command."}
+                "Optional: extract Base URL and bearer token from Postman cURL."}
             </p>
           </div>
 
@@ -237,7 +236,7 @@ export function RunnerSettingsCard({
                   placeholder="https://api.example.com"
                 />
                 <p className="inline-note">
-                  Used as the request host when the collection has relative or variable URLs.
+                  Request host for relative or variable URLs.
                 </p>
               </label>
 
@@ -251,7 +250,7 @@ export function RunnerSettingsCard({
                   placeholder="Raw JWT or Authorization: Bearer ..."
                 />
                 <p className="inline-note">
-                  Optional. Leave empty for unauthenticated requests.
+                  Optional for unauthenticated requests.
                 </p>
               </label>
             </div>

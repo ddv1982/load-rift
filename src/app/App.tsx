@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { CollectionImportSection } from "./components/CollectionImportSection";
 import { TestHarnessSection } from "./components/TestHarnessSection";
 import {
@@ -60,7 +60,27 @@ function AppIcon() {
   return <img className="app-icon" src={appIconUrl} alt="" aria-hidden="true" />;
 }
 
+type WorkflowStep = "source" | "configure" | "run";
+
+const workflowSteps: WorkflowStep[] = ["source", "configure", "run"];
+
+function getWorkflowStepLabel(step: WorkflowStep) {
+  if (step === "source") {
+    return "Source";
+  }
+
+  if (step === "configure") {
+    return "Configure";
+  }
+
+  return "Run";
+}
+
 export function App() {
+  const workflowTabsId = useId();
+  const sourcePanelRef = useRef<HTMLDivElement | null>(null);
+  const workflowTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeWorkflowStep, setActiveWorkflowStep] = useState<WorkflowStep>("source");
   const [lastSmokeInputKey, setLastSmokeInputKey] = useState<string | null>(null);
   const [collectionRevision, setCollectionRevision] = useState(0);
   const [exportNotice, setExportNotice] = useState<{
@@ -179,6 +199,7 @@ export function App() {
     ...testState,
     output: truncateLog(testState.output),
   };
+  const activeWorkflowIndex = workflowSteps.indexOf(activeWorkflowStep);
 
   const harnessStatus = {
     collection,
@@ -237,6 +258,54 @@ export function App() {
   useEffect(() => {
     setCollectionRevision((previous) => previous + 1);
   }, [collection]);
+
+  useEffect(() => {
+    if (!collection) {
+      setActiveWorkflowStep("source");
+      return;
+    }
+
+    setActiveWorkflowStep((currentStep) => {
+      if (currentStep !== "source") {
+        return currentStep;
+      }
+
+      if (sourcePanelRef.current?.contains(document.activeElement)) {
+        workflowTabRefs.current[1]?.focus();
+      }
+
+      return "configure";
+    });
+  }, [collection]);
+
+  function focusWorkflowTab(index: number) {
+    workflowTabRefs.current[index]?.focus();
+  }
+
+  function handleWorkflowTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
+    let nextIndex: number;
+
+    if (event.key === "ArrowRight") {
+      nextIndex = (index + 1) % workflowSteps.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (index - 1 + workflowSteps.length) % workflowSteps.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = workflowSteps.length - 1;
+    } else {
+      return;
+    }
+
+    event.preventDefault();
+    const nextStep = workflowSteps[nextIndex];
+    if (!nextStep) {
+      return;
+    }
+
+    setActiveWorkflowStep(nextStep);
+    focusWorkflowTab(nextIndex);
+  }
 
   async function handleFileImport() {
     setIsPickingFile(true);
@@ -335,8 +404,8 @@ export function App() {
           </div>
           <p className="app-subtitle">
             {collection
-              ? `${collection.name} is loaded. Move from collection setup to run controls and live diagnostics without the old dashboard clutter.`
-              : "Import a Postman collection, derive runtime inputs, and run local k6 checks from one tighter, more professional workspace."}
+              ? `${collection.name} is ready. Configure, run, and review without dashboard clutter.`
+              : "Import a Postman collection, set runtime inputs, and run local k6 checks."}
           </p>
         </div>
 
@@ -365,25 +434,93 @@ export function App() {
       </header>
 
       <main ref={workspaceShellRef} className="workspace-shell">
-        <CollectionImportSection
-          collection={collection}
-          selectedRequestIds={runnerOptions.selectedRequestIds}
-          requestWeights={runnerOptions.requestWeights}
-          trafficMode={runnerOptions.trafficMode}
-          error={importState.error}
-          isLoading={importState.isLoading}
-          isPickingFile={isPickingFile}
-          onFileImport={() => void handleFileImport()}
-          onReset={reset}
-          onSelectionChange={updateSelectedRequestIds}
-          onRequestWeightChange={updateRequestWeight}
-        />
+        <nav className="workflow-stepper" aria-label="Load test workflow">
+          <div className="workflow-step-tabs" role="tablist" aria-label="Workflow steps">
+            {workflowSteps.map((step, index) => {
+              const isActive = activeWorkflowStep === step;
+              const tabId = `${workflowTabsId}-${step}-tab`;
+              const panelId = `${workflowTabsId}-${step}-panel`;
 
-        <TestHarnessSection
-          status={harnessStatus}
-          controls={harnessControls}
-          actions={harnessActions}
-        />
+              return (
+                <button
+                  key={step}
+                  ref={(element) => {
+                    workflowTabRefs.current[index] = element;
+                  }}
+                  type="button"
+                  role="tab"
+                  id={tabId}
+                  aria-selected={isActive}
+                  aria-controls={panelId}
+                  tabIndex={isActive ? 0 : -1}
+                  className={isActive ? "is-active" : ""}
+                  onClick={() => setActiveWorkflowStep(step)}
+                  onKeyDown={(event) => handleWorkflowTabKeyDown(event, index)}
+                >
+                  <span className="workflow-step-index">{index + 1}</span>
+                  <span>{getWorkflowStepLabel(step)}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="workflow-step-status">
+            Step {activeWorkflowIndex + 1} of {workflowSteps.length}
+          </p>
+        </nav>
+
+        <div
+          ref={sourcePanelRef}
+          role="tabpanel"
+          id={`${workflowTabsId}-source-panel`}
+          aria-labelledby={`${workflowTabsId}-source-tab`}
+          hidden={activeWorkflowStep !== "source"}
+        >
+          <CollectionImportSection
+            collection={collection}
+            selectedRequestIds={runnerOptions.selectedRequestIds}
+            requestWeights={runnerOptions.requestWeights}
+            trafficMode={runnerOptions.trafficMode}
+            error={importState.error}
+            isLoading={importState.isLoading}
+            isPickingFile={isPickingFile}
+            onFileImport={() => void handleFileImport()}
+            onReset={reset}
+            onSelectionChange={updateSelectedRequestIds}
+            onRequestWeightChange={updateRequestWeight}
+          />
+        </div>
+
+        <div
+          role="tabpanel"
+          id={`${workflowTabsId}-configure-panel`}
+          aria-labelledby={`${workflowTabsId}-configure-tab`}
+          hidden={activeWorkflowStep !== "configure"}
+        >
+          {activeWorkflowStep === "configure" ? (
+            <TestHarnessSection
+              status={harnessStatus}
+              controls={harnessControls}
+              actions={harnessActions}
+              activeStep="configure"
+            />
+          ) : null}
+        </div>
+
+        <div
+          role="tabpanel"
+          id={`${workflowTabsId}-run-panel`}
+          aria-labelledby={`${workflowTabsId}-run-tab`}
+          hidden={activeWorkflowStep !== "run"}
+        >
+          {activeWorkflowStep === "run" ? (
+            <TestHarnessSection
+              status={harnessStatus}
+              controls={harnessControls}
+              actions={harnessActions}
+              activeStep="run"
+            />
+          ) : null}
+        </div>
       </main>
     </div>
   );

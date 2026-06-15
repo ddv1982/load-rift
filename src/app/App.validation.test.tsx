@@ -71,6 +71,8 @@ function createSoapSmokeResponse(
 }
 
 function applyCurlSnippet(snippet: string) {
+  openWorkflowStep("Configure");
+  fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
   fireEvent.change(screen.getByLabelText("Paste Postman cURL"), {
     target: {
       value: snippet,
@@ -94,13 +96,31 @@ async function flushMicrotasks(count = 1) {
 }
 
 function getLatestResultCard() {
+  openWorkflowStep("Run");
   const latestResultCard = screen.getByText("Latest Result").closest(".result-summary");
   expect(latestResultCard).not.toBeNull();
   return latestResultCard as HTMLElement;
 }
 
 function getLiveRunMonitor() {
+  openWorkflowStep("Run");
   return screen.getByLabelText("Live run monitor");
+}
+
+function openWorkflowStep(step: "Source" | "Configure" | "Run") {
+  act(() => {
+    fireEvent.click(screen.getByRole("tab", { name: new RegExp(step) }));
+  });
+}
+
+function getRunAction(name: string | RegExp) {
+  openWorkflowStep("Run");
+  return screen.getByRole("button", { name });
+}
+
+function getConfigureField(label: string) {
+  openWorkflowStep("Configure");
+  return screen.getByLabelText(label);
 }
 
 function createCompletedResult(): TestResult {
@@ -141,10 +161,8 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    const startButton = screen.getByRole("button", { name: "Start Test" });
-    const durationInput = screen.getByLabelText("Duration");
-
-    expect(startButton).toBeDisabled();
+    expect(getRunAction("Start Test")).toBeDisabled();
+    openWorkflowStep("Configure");
     expect(screen.getByText("Validating current configuration...")).toBeInTheDocument();
 
     await act(async () => {
@@ -153,10 +171,11 @@ describe("App validation lifecycle", () => {
 
     expect(api.validateTestConfiguration).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(durationInput, { target: { value: "2m" } });
+    fireEvent.change(getConfigureField("Duration"), { target: { value: "2m" } });
 
-    expect(startButton).toBeDisabled();
+    openWorkflowStep("Configure");
     expect(screen.getByText("Validating current configuration...")).toBeInTheDocument();
+    expect(getRunAction("Start Test")).toBeDisabled();
 
     await act(async () => {
       const firstValidation = validations[0];
@@ -168,8 +187,9 @@ describe("App validation lifecycle", () => {
       await Promise.resolve();
     });
 
-    expect(startButton).toBeDisabled();
+    openWorkflowStep("Configure");
     expect(screen.getByText("Validating current configuration...")).toBeInTheDocument();
+    expect(getRunAction("Start Test")).toBeDisabled();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
@@ -192,7 +212,8 @@ describe("App validation lifecycle", () => {
       await Promise.resolve();
     });
 
-    expect(startButton).toBeEnabled();
+    expect(getRunAction("Start Test")).toBeEnabled();
+    openWorkflowStep("Configure");
     expect(screen.getByText("Configuration looks ready to run.")).toBeInTheDocument();
   });
 
@@ -203,44 +224,42 @@ describe("App validation lifecycle", () => {
 
     await advanceValidationTimer();
 
-    const startButton = screen.getByRole("button", { name: "Start Test" });
-    const checkConfigButton = screen.getByRole("button", { name: "Check Config" });
-    expect(startButton).toBeEnabled();
-    expect(checkConfigButton).toBeEnabled();
+    expect(getRunAction("Start Test")).toBeEnabled();
+    expect(getRunAction("Check Config")).toBeEnabled();
 
-    const vusInput = screen.getByLabelText("Virtual users");
-    fireEvent.change(vusInput, { target: { value: "" } });
+    fireEvent.change(getConfigureField("Virtual users"), { target: { value: "" } });
 
     expect(screen.getByText("Virtual users is required.")).toBeInTheDocument();
+    expect(getRunAction("Start Test")).toBeDisabled();
     expect(screen.getByText("Fix the highlighted runner inputs before starting.")).toBeInTheDocument();
+    openWorkflowStep("Configure");
     expect(
       screen.getByText("Fix the highlighted runner inputs before checking configuration or starting."),
     ).toBeInTheDocument();
-    expect(startButton).toBeDisabled();
-    expect(checkConfigButton).toBeDisabled();
+    expect(getRunAction("Check Config")).toBeDisabled();
 
-    fireEvent.change(vusInput, { target: { value: "3.5" } });
-
-    expect(
-      screen.getByText("Virtual users must be a whole number of 1 or more."),
-    ).toBeInTheDocument();
-    expect(startButton).toBeDisabled();
-    expect(checkConfigButton).toBeDisabled();
-
-    fireEvent.change(vusInput, { target: { value: "9007199254740992" } });
+    fireEvent.change(getConfigureField("Virtual users"), { target: { value: "3.5" } });
 
     expect(
       screen.getByText("Virtual users must be a whole number of 1 or more."),
     ).toBeInTheDocument();
-    expect(startButton).toBeDisabled();
-    expect(checkConfigButton).toBeDisabled();
+    expect(getRunAction("Start Test")).toBeDisabled();
+    expect(getRunAction("Check Config")).toBeDisabled();
 
-    fireEvent.change(vusInput, { target: { value: "25" } });
+    fireEvent.change(getConfigureField("Virtual users"), { target: { value: "9007199254740992" } });
+
+    expect(
+      screen.getByText("Virtual users must be a whole number of 1 or more."),
+    ).toBeInTheDocument();
+    expect(getRunAction("Start Test")).toBeDisabled();
+    expect(getRunAction("Check Config")).toBeDisabled();
+
+    fireEvent.change(getConfigureField("Virtual users"), { target: { value: "25" } });
 
     await advanceValidationTimer();
 
-    expect(startButton).toBeEnabled();
-    expect(checkConfigButton).toBeEnabled();
+    expect(getRunAction("Start Test")).toBeEnabled();
+    expect(getRunAction("Check Config")).toBeEnabled();
     const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock.lastCall;
     expect(lastValidationCall).toBeDefined();
     expect(lastValidationCall?.[0].options.vus).toBe(25);
@@ -253,27 +272,24 @@ describe("App validation lifecycle", () => {
 
     await advanceValidationTimer();
 
-    const startButton = screen.getByRole("button", { name: "Start Test" });
-    expect(startButton).toBeEnabled();
+    expect(getRunAction("Start Test")).toBeEnabled();
 
-    const p95ThresholdInput = screen.getByLabelText("P95 threshold (ms)");
-
-    fireEvent.change(p95ThresholdInput, {
+    fireEvent.change(getConfigureField("P95 threshold (ms)"), {
       target: { value: "2000.5" },
     });
 
     expect(
       screen.getByText("P95 threshold must be a whole number of milliseconds."),
     ).toBeInTheDocument();
-    expect(startButton).toBeDisabled();
+    expect(getRunAction("Start Test")).toBeDisabled();
 
-    fireEvent.change(p95ThresholdInput, {
+    fireEvent.change(getConfigureField("P95 threshold (ms)"), {
       target: { value: "2001" },
     });
 
     await advanceValidationTimer();
 
-    expect(startButton).toBeEnabled();
+    expect(getRunAction("Start Test")).toBeEnabled();
     const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock.lastCall;
     expect(lastValidationCall).toBeDefined();
     expect(lastValidationCall?.[0].options.thresholds.p95ResponseTime).toBe(2001);
@@ -330,7 +346,7 @@ describe("App validation lifecycle", () => {
       "https://manual.example.com",
     );
 
-    fireEvent.click(screen.getByRole("button", { name: "Start Test" }));
+    fireEvent.click(getRunAction("Start Test"));
     expect(appHookTestState.testHookState.startTest).toHaveBeenCalledWith(
       expect.objectContaining({ baseUrl: "https://manual.example.com" }),
     );
@@ -390,6 +406,7 @@ describe("App validation lifecycle", () => {
     renderApp(api);
 
     expect(screen.getByText("Runner").closest(".overview-card")).toHaveTextContent("IDLE");
+    openWorkflowStep("Run");
     expect(screen.getByText("Live metrics")).toBeInTheDocument();
     expect(screen.getByLabelText("Live run metrics overview")).toHaveTextContent("Active VUs");
     expect(screen.queryByText("Run State")).not.toBeInTheDocument();
@@ -404,9 +421,9 @@ describe("App validation lifecycle", () => {
 
     await advanceValidationTimer();
 
-    const startButton = screen.getByRole("button", { name: "Start Test" });
-    const smokeButton = screen.getByRole("button", { name: "Smoke Test" });
-    const checkConfigButton = screen.getByRole("button", { name: "Check Config" });
+    const startButton = getRunAction("Start Test");
+    const smokeButton = getRunAction("Smoke Test");
+    const checkConfigButton = getRunAction("Check Config");
     expect(startButton).toBeEnabled();
     expect(smokeButton).toBeEnabled();
     expect(checkConfigButton).toBeEnabled();
@@ -414,23 +431,29 @@ describe("App validation lifecycle", () => {
     vi.mocked(api.validateTestConfiguration).mockClear();
     vi.mocked(api.smokeTestRequests).mockClear();
 
+    openWorkflowStep("Configure");
     fireEvent.click(screen.getByRole("tab", { name: "Advanced" }));
     fireEvent.change(screen.getByLabelText("Advanced options JSON"), {
       target: { value: "{bad" },
     });
 
-    expect(screen.getByText(/Invalid JSON:/)).toBeInTheDocument();
+    expect(getRunAction("Start Test")).toBeDisabled();
     expect(screen.getByText("Fix the highlighted runner inputs before starting.")).toBeInTheDocument();
-    expect(startButton).toBeDisabled();
-    expect(smokeButton).toBeDisabled();
-    expect(checkConfigButton).toBeDisabled();
+    expect(getRunAction("Smoke Test")).toBeDisabled();
+    expect(getRunAction("Check Config")).toBeDisabled();
+    openWorkflowStep("Configure");
+    expect(screen.getByText(/Invalid JSON:/)).toBeInTheDocument();
+    expect(
+      screen.getByText("Fix the highlighted runner inputs before checking configuration or starting."),
+    ).toBeInTheDocument();
 
     await advanceValidationTimer();
 
     expect(api.validateTestConfiguration).not.toHaveBeenCalled();
-    fireEvent.click(smokeButton);
+    fireEvent.click(getRunAction("Smoke Test"));
     expect(api.smokeTestRequests).not.toHaveBeenCalled();
 
+    openWorkflowStep("Configure");
     fireEvent.change(screen.getByLabelText("Advanced options JSON"), {
       target: { value: '{"tags":{"team":"qa"}}' },
     });
@@ -439,8 +462,8 @@ describe("App validation lifecycle", () => {
 
     await advanceValidationTimer();
 
-    expect(startButton).toBeEnabled();
-    expect(checkConfigButton).toBeEnabled();
+    expect(getRunAction("Start Test")).toBeEnabled();
+    expect(getRunAction("Check Config")).toBeEnabled();
   });
 
   it("shows k6 primary error, fallback context, and finish reason", () => {
@@ -473,6 +496,7 @@ describe("App validation lifecycle", () => {
 
     renderApp(createApiMock());
 
+    openWorkflowStep("Run");
     expect(screen.getAllByText(`Primary k6 error: ${primaryError}`)).not.toHaveLength(0);
     expect(screen.getByText("Finish reason: execution_error")).toBeInTheDocument();
     expect(screen.getByText(/Latest result uses live metrics fallback/)).toHaveTextContent(
@@ -497,8 +521,8 @@ describe("App validation lifecycle", () => {
 
     await advanceValidationTimer();
 
-    const startButton = screen.getByRole("button", { name: "Start Test" });
-    const smokeButton = screen.getByRole("button", { name: "Smoke Test" });
+    const startButton = getRunAction("Start Test");
+    const smokeButton = getRunAction("Smoke Test");
 
     expect(startButton).toBeEnabled();
 
@@ -506,7 +530,7 @@ describe("App validation lifecycle", () => {
 
     expect(api.smokeTestRequests).toHaveBeenCalledTimes(1);
     expect(screen.getByText("Running the selected requests once to capture live response samples.")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Smoking..." })).toBeDisabled();
+    expect(getRunAction("Smoke testing...")).toBeDisabled();
     expect(startButton).toBeDisabled();
 
     await act(async () => {
@@ -516,6 +540,7 @@ describe("App validation lifecycle", () => {
 
     expect(screen.getByText("SOAP login")).toBeInTheDocument();
     expect(screen.getByText(`POST ${SOAP_RESPONSE_URL}`)).toBeInTheDocument();
+    openWorkflowStep("Run");
     expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
   });
 
@@ -529,15 +554,17 @@ describe("App validation lifecycle", () => {
 
     await advanceValidationTimer();
 
-    fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
+    fireEvent.click(getRunAction("Smoke Test"));
 
     await flushMicrotasks();
 
+    openWorkflowStep("Run");
     expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Start Test" }));
+    fireEvent.click(getRunAction("Start Test"));
 
     expect(appHookTestState.testHookState.startTest).toHaveBeenCalledTimes(1);
+    openWorkflowStep("Run");
     expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
     expect(screen.getByText(EMPTY_SMOKE_TEST_MESSAGE)).toBeInTheDocument();
   });
@@ -554,15 +581,16 @@ describe("App validation lifecycle", () => {
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
-    fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
+    fireEvent.click(getRunAction("Smoke Test"));
 
-    expect(screen.getByRole("button", { name: "Smoking..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Start Test" })).toBeDisabled();
+    expect(getRunAction("Smoke testing...")).toBeDisabled();
+    expect(getRunAction("Start Test")).toBeDisabled();
 
+    openWorkflowStep("Configure");
     applyCurlSnippet(CHANGED_BASE_URL_CURL_SNIPPET);
 
-    expect(screen.getByRole("button", { name: "Smoking..." })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Start Test" })).toBeDisabled();
+    expect(getRunAction("Smoke testing...")).toBeDisabled();
+    expect(getRunAction("Start Test")).toBeDisabled();
 
     await act(async () => {
       smokeRequest.resolve(createSoapSmokeResponse());
@@ -570,7 +598,7 @@ describe("App validation lifecycle", () => {
     });
 
     expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Smoke Test" })).toBeEnabled();
+    expect(getRunAction("Smoke Test")).toBeEnabled();
   });
 
   it("keeps smoke test results visible when only load settings change", async () => {
@@ -581,23 +609,24 @@ describe("App validation lifecycle", () => {
     renderApp(api);
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
-    fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
+    fireEvent.click(getRunAction("Smoke Test"));
 
     await flushMicrotasks();
 
     expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText("Virtual users"), {
+    fireEvent.change(getConfigureField("Virtual users"), {
       target: {
         value: "25",
       },
     });
-    fireEvent.change(screen.getByLabelText("Duration"), {
+    fireEvent.change(getConfigureField("Duration"), {
       target: {
         value: "2m",
       },
     });
 
+    openWorkflowStep("Run");
     expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
   });
 
@@ -610,18 +639,20 @@ describe("App validation lifecycle", () => {
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
-    fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
+    fireEvent.click(getRunAction("Smoke Test"));
 
     await flushMicrotasks();
 
     expect(screen.getByText(SOAP_RESPONSE_PREVIEW)).toBeInTheDocument();
 
+    applyCurlSnippet(CHANGED_BASE_URL_CURL_SNIPPET);
+
     await act(async () => {
-      applyCurlSnippet(CHANGED_BASE_URL_CURL_SNIPPET);
       await Promise.resolve();
       await Promise.resolve();
     });
 
+    openWorkflowStep("Run");
     expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
     expect(screen.getByText(EMPTY_SMOKE_TEST_MESSAGE)).toBeInTheDocument();
   });
@@ -636,10 +667,11 @@ describe("App validation lifecycle", () => {
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
-    fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
+    fireEvent.click(getRunAction("Smoke Test"));
+
+    applyCurlSnippet(CHANGED_BASE_URL_CURL_SNIPPET);
 
     await act(async () => {
-      applyCurlSnippet(CHANGED_BASE_URL_CURL_SNIPPET);
       smokeRequest.resolve(createSoapSmokeResponse());
       await smokeRequest.promise;
       await Promise.resolve();
@@ -667,7 +699,7 @@ describe("App validation lifecycle", () => {
 
     const view = renderApp(api);
 
-    fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
+    fireEvent.click(getRunAction("Smoke Test"));
 
     await flushMicrotasks();
 
@@ -704,7 +736,7 @@ describe("App validation lifecycle", () => {
 
     const view = renderApp(api);
 
-    fireEvent.click(screen.getByRole("button", { name: "Smoke Test" }));
+    fireEvent.click(getRunAction("Smoke Test"));
 
     await flushMicrotasks();
 

@@ -35,8 +35,7 @@ export function CollectionImportSection({
           <p className="panel-kicker">Step 1 · Source</p>
           <h2>Import a collection</h2>
           <p className="section-copy">
-            Start by loading a Postman collection. Once it is in, keep request
-            selection close by but out of the way of the run setup.
+            Load a Postman collection, then refine request scope only when needed.
           </p>
         </div>
 
@@ -49,8 +48,7 @@ export function CollectionImportSection({
         <div>
           <p className="callout-title">Bring in a Postman collection</p>
           <p className="panel-copy">
-            Use the file picker for the fastest path, then refine request scope
-            and variables only when you need to.
+            Use the picker, then move on to configuration.
           </p>
         </div>
         <div className="action-row action-row-compact">
@@ -76,8 +74,8 @@ export function CollectionImportSection({
       <details className="progressive-panel" open={Boolean(collection)}>
         <summary>
           {collection
-            ? "Collection details and request selection"
-            : "What appears after import"}
+            ? "Collection details"
+            : "After import"}
         </summary>
         <div className="progressive-panel-body">
           <CollectionSummaryCard
