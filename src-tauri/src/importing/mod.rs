@@ -122,6 +122,10 @@ pub fn resolve_test_requests(
     runtime::resolve_test_requests(collection, options)
 }
 
+pub(crate) fn normalize_auth_token_input(value: &str) -> Option<String> {
+    runtime::normalize_auth_token_input(value)
+}
+
 #[cfg(test)]
 mod script_tests;
 

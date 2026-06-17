@@ -10,14 +10,19 @@ import {
 } from "../loadrift/api";
 import type {
   CollectionInfo,
-  GetTestStatusResponse,
   K6Options,
   RunErrorEvent,
   RunMetricsEvent,
   SmokeTestResponse,
-  StartTestResponse,
   TestCompletion,
   ValidateTestConfigurationResponse,
+} from "../loadrift/types";
+import {
+  normalizeGetTestStatusResponse,
+  normalizeRunErrorEvent,
+  normalizeRunMetricsEvent,
+  normalizeStartTestResponse,
+  normalizeTestCompletion,
 } from "../loadrift/types";
 
 function command<TResponse>(
@@ -59,9 +64,9 @@ export function createTauriLoadRiftApi(): LoadRiftApi {
       });
     },
     startTest(input: { options: K6Options; runId?: string }) {
-      return command<StartTestResponse>("start_test", {
+      return command<unknown>("start_test", {
         request: input,
-      });
+      }).then((response) => normalizeStartTestResponse(response, input.runId ?? ""));
     },
     stopTest() {
       return command<void>("stop_test");
@@ -72,19 +77,38 @@ export function createTauriLoadRiftApi(): LoadRiftApi {
       });
     },
     getTestStatus() {
-      return command<GetTestStatusResponse>("get_test_status");
+      return command<unknown>("get_test_status").then(normalizeGetTestStatusResponse);
     },
     onK6Output(callback: (payload: string) => void) {
-      return listenScoped<string>(K6_OUTPUT_EVENT, callback);
+      return listenScoped<unknown>(K6_OUTPUT_EVENT, (payload) => {
+        if (typeof payload === "string") {
+          callback(payload);
+        }
+      });
     },
     onK6Metrics(callback: (payload: RunMetricsEvent) => void) {
-      return listenScoped<RunMetricsEvent>(K6_METRICS_EVENT, callback);
+      return listenScoped<unknown>(K6_METRICS_EVENT, (payload) => {
+        const event = normalizeRunMetricsEvent(payload);
+        if (event) {
+          callback(event);
+        }
+      });
     },
     onK6Complete(callback: (payload: TestCompletion) => void) {
-      return listenScoped<TestCompletion>(K6_COMPLETE_EVENT, callback);
+      return listenScoped<unknown>(K6_COMPLETE_EVENT, (payload) => {
+        const completion = normalizeTestCompletion(payload);
+        if (completion) {
+          callback(completion);
+        }
+      });
     },
     onK6Error(callback: (payload: RunErrorEvent) => void) {
-      return listenScoped<RunErrorEvent>(K6_ERROR_EVENT, callback);
+      return listenScoped<unknown>(K6_ERROR_EVENT, (payload) => {
+        const event = normalizeRunErrorEvent(payload);
+        if (event) {
+          callback(event);
+        }
+      });
     },
   };
 }

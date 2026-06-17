@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appHookTestState,
@@ -144,5 +144,44 @@ describe("App accessibility", () => {
     const feedback = screen.getByText(/Invalid JSON:/);
     expect(advancedJsonInput).toHaveAttribute("aria-describedby", feedback.id);
     expect(advancedJsonInput).toHaveAttribute("aria-invalid", "true");
+  });
+
+  it("announces successful configuration validation as a polite status", async () => {
+    renderApp(createApiMock());
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    const validationStatus = screen.getByRole("status");
+    expect(validationStatus).toHaveTextContent("Configuration Check");
+    expect(validationStatus).toHaveTextContent("Configuration looks ready to run.");
+    expect(validationStatus).toHaveAttribute("aria-live", "polite");
+    expect(validationStatus).toHaveAttribute("aria-atomic", "true");
+  });
+
+  it("announces failed configuration validation as an alert", async () => {
+    renderApp(
+      createApiMock({
+        validateTestConfiguration: vi.fn(() =>
+          Promise.resolve({
+            ready: false,
+            message: "Set a base URL before starting.",
+          }),
+        ),
+      }),
+    );
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    const validationAlert = screen.getByRole("alert");
+    expect(validationAlert).toHaveTextContent("Configuration Check");
+    expect(validationAlert).toHaveTextContent("Set a base URL before starting.");
+    expect(validationAlert).toHaveAttribute("aria-live", "assertive");
+    expect(validationAlert).toHaveAttribute("aria-atomic", "true");
   });
 });

@@ -776,7 +776,7 @@ fn structured_query_generated_script_encodes_non_ascii_and_rfc3986_values() {
 
 #[cfg(target_os = "linux")]
 #[test]
-fn host_placeholder_generated_script_runs_with_bundled_k6() {
+fn host_placeholder_generated_script_runs_with_authorization_header_token() {
     let imported =
         import_collection(sample_host_placeholder_collection()).expect("fixture should import");
 
@@ -797,12 +797,41 @@ fn host_placeholder_generated_script_runs_with_bundled_k6() {
             .any(|request| request.starts_with("GET /entities/")),
         "expected a generated fixture request path, captured requests: {requests:?}"
     );
-    assert!(
-        requests
-            .iter()
-            .any(|request| { request.contains("Authorization: Bearer integration-token") }),
-        "expected the injected bearer token header, captured requests: {requests:?}"
-    );
+    assert_captured_authorization_header(&requests, "Bearer integration-token");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn host_placeholder_generated_script_runs_with_bearer_prefixed_token() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    let Some((_summary_json, requests)) = run_generated_script_fixture(
+        &imported.script,
+        "loadrift-bearer-token",
+        Some("Bearer integration-token"),
+    ) else {
+        return;
+    };
+
+    assert_captured_authorization_header(&requests, "Bearer integration-token");
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn host_placeholder_generated_script_runs_with_raw_token() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    let Some((_summary_json, requests)) = run_generated_script_fixture(
+        &imported.script,
+        "loadrift-raw-token",
+        Some("integration-token"),
+    ) else {
+        return;
+    };
+
+    assert_captured_authorization_header(&requests, "Bearer integration-token");
 }
 
 #[cfg(target_os = "linux")]
@@ -1021,6 +1050,23 @@ fn temp_artifact_path(prefix: &str, extension: &str) -> PathBuf {
         .expect("time should be monotonic enough for test temp files")
         .as_nanos();
     std::env::temp_dir().join(format!("{prefix}-{nonce}.{extension}"))
+}
+
+#[cfg(target_os = "linux")]
+fn assert_captured_authorization_header(requests: &[String], expected_header: &str) {
+    let expected_line = format!("Authorization: {expected_header}\r\n");
+    assert!(
+        requests
+            .iter()
+            .any(|request| request.contains(&expected_line)),
+        "expected exact Authorization header {expected_header:?}, captured requests: {requests:?}"
+    );
+    assert!(
+        requests
+            .iter()
+            .all(|request| !request.contains("Authorization: Bearer Bearer")),
+        "expected generated script not to double-prefix bearer tokens, captured requests: {requests:?}"
+    );
 }
 
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]

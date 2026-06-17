@@ -9,6 +9,7 @@ import {
 const STORAGE_KEYS = {
   activeHarnessTab: "loadrift.ui.active-harness-tab",
   collectionFilters: "loadrift.ui.collection-filters",
+  collectionRequestWeights: "loadrift.ui.collection-request-weights",
   runnerPreferences: "loadrift.ui.runner-preferences",
 } as const;
 
@@ -25,6 +26,16 @@ interface PersistedCollectionFilterStore {
   entries: Record<string, PersistedCollectionFilters>;
 }
 
+interface PersistedCollectionRequestWeights {
+  collectionKey: string;
+  requestWeights: Record<string, number>;
+}
+
+interface PersistedCollectionRequestWeightStore {
+  version: 1;
+  entries: Record<string, PersistedCollectionRequestWeights>;
+}
+
 interface PersistedRunnerPreferences {
   vus: number;
   duration: string;
@@ -35,7 +46,6 @@ interface PersistedRunnerPreferences {
     errorRate?: number;
   };
   trafficMode?: TrafficMode;
-  requestWeights?: Record<string, number>;
 }
 
 type StorageArea = "local" | "session";
@@ -173,6 +183,23 @@ function normalizeCollectionFilterStore(
   return null;
 }
 
+function normalizeCollectionRequestWeightStore(
+  stored: unknown,
+): PersistedCollectionRequestWeightStore | null {
+  if (!stored || typeof stored !== "object") {
+    return null;
+  }
+
+  if ("version" in stored && "entries" in stored) {
+    const versionedStore = stored as PersistedCollectionRequestWeightStore;
+    if (versionedStore.version === 1 && versionedStore.entries) {
+      return versionedStore;
+    }
+  }
+
+  return null;
+}
+
 export function loadHarnessTab(defaultTab: HarnessTab): HarnessTab {
   const stored = readStorage<string>(STORAGE_KEYS.activeHarnessTab);
   if (stored === "controls" || stored === "variables" || stored === "advanced") {
@@ -212,6 +239,41 @@ export function saveCollectionFilters(filters: PersistedCollectionFilters) {
   });
 }
 
+export function loadCollectionRequestWeights(
+  collectionKey: string,
+): Record<string, number> | null {
+  const stored = normalizeCollectionRequestWeightStore(
+    readStorage(STORAGE_KEYS.collectionRequestWeights),
+  );
+  if (!stored) {
+    return null;
+  }
+
+  const entry = stored.entries[collectionKey];
+  return entry ? normalizePersistedRequestWeights(entry.requestWeights) : null;
+}
+
+export function saveCollectionRequestWeights(
+  collectionKey: string,
+  requestWeights: Record<string, number>,
+) {
+  const stored = normalizeCollectionRequestWeightStore(
+    readStorage(STORAGE_KEYS.collectionRequestWeights),
+  );
+  writeStorage<PersistedCollectionRequestWeightStore>(
+    STORAGE_KEYS.collectionRequestWeights,
+    {
+      version: 1,
+      entries: {
+        ...(stored?.entries ?? {}),
+        [collectionKey]: {
+          collectionKey,
+          requestWeights: normalizePersistedRequestWeights(requestWeights),
+        },
+      },
+    },
+  );
+}
 
 export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
   const stored = readStorage<Partial<PersistedRunnerPreferences>>(
@@ -259,7 +321,7 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
     rampUp,
     thresholds,
     trafficMode,
-    requestWeights: normalizePersistedRequestWeights(stored.requestWeights),
+    requestWeights: normalizePersistedRequestWeights(defaultOptions.requestWeights),
   };
 
   const resolvedRampUpTime =
@@ -290,7 +352,6 @@ export function saveRunnerPreferences(options: K6Options) {
     rampUp: options.rampUp,
     thresholds,
     trafficMode: options.trafficMode,
-    requestWeights: normalizePersistedRequestWeights(options.requestWeights),
   };
   if (options.rampUpTime !== undefined) {
     persisted.rampUpTime = options.rampUpTime;

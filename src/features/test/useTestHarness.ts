@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoadRiftApi } from "../../lib/loadrift/context";
 import {
   DEFAULT_LIVE_METRICS,
+  normalizeGetTestStatusResponse,
+  normalizeRunErrorEvent,
+  normalizeRunMetricsEvent,
+  normalizeStartTestResponse,
+  normalizeTestCompletion,
   type K6Options,
   type LiveMetrics,
   type TestCompletion,
@@ -71,7 +76,7 @@ export function useTestHarness() {
 
     async function registerListeners() {
       const unlistenOutput = await api.onK6Output((data) => {
-        if (!isActive) {
+        if (!isActive || typeof data !== "string") {
           return;
         }
 
@@ -89,13 +94,14 @@ export function useTestHarness() {
       unlistenCallbacks.push(unlistenOutput);
 
       const unlistenMetrics = await api.onK6Metrics((event) => {
-        if (!isActive || !isCurrentRun(event.runId)) {
+        const metricsEvent = normalizeRunMetricsEvent(event);
+        if (!metricsEvent || !isActive || !isCurrentRun(metricsEvent.runId)) {
           return;
         }
 
         setState((previous) => ({
           ...previous,
-          metrics: event.metrics,
+          metrics: metricsEvent.metrics,
         }));
       });
 
@@ -107,24 +113,25 @@ export function useTestHarness() {
       unlistenCallbacks.push(unlistenMetrics);
 
       const unlistenComplete = await api.onK6Complete((completion: TestCompletion) => {
-        if (!isActive || !isCurrentRun(completion.runId)) {
+        const normalizedCompletion = normalizeTestCompletion(completion);
+        if (!normalizedCompletion || !isActive || !isCurrentRun(normalizedCompletion.runId)) {
           return;
         }
 
         activeRunIdRef.current = null;
         terminalErrorRunIdRef.current =
-          completion.runState === "failed" ? completion.runId : null;
+          normalizedCompletion.runState === "failed" ? normalizedCompletion.runId : null;
         pendingStartIdRef.current = null;
         setState((previous) => ({
           ...previous,
-          status: completion.runState,
-          metrics: completion.metrics,
-          result: completion.result,
-          finishReason: completion.finishReason,
-          resultSource: completion.resultSource,
-          summaryIssue: completion.summaryIssue,
-          error: completion.errorMessage,
-          runId: completion.runId,
+          status: normalizedCompletion.runState,
+          metrics: normalizedCompletion.metrics,
+          result: normalizedCompletion.result,
+          finishReason: normalizedCompletion.finishReason,
+          resultSource: normalizedCompletion.resultSource,
+          summaryIssue: normalizedCompletion.summaryIssue,
+          error: normalizedCompletion.errorMessage,
+          runId: normalizedCompletion.runId,
           isStarting: false,
           isBusy: false,
           isRunning: false,
@@ -139,7 +146,8 @@ export function useTestHarness() {
       unlistenCallbacks.push(unlistenComplete);
 
       const unlistenError = await api.onK6Error((event) => {
-        if (!isActive || !isAcceptedErrorRun(event.runId)) {
+        const errorEvent = normalizeRunErrorEvent(event);
+        if (!errorEvent || !isActive || !isAcceptedErrorRun(errorEvent.runId)) {
           return;
         }
 
@@ -150,8 +158,8 @@ export function useTestHarness() {
           ...previous,
           status: "failed",
           finishReason: "execution_error",
-          error: previous.error || event.message,
-          runId: event.runId,
+          error: previous.error || errorEvent.message,
+          runId: errorEvent.runId,
           isStarting: false,
           isBusy: false,
           isRunning: false,
@@ -184,7 +192,7 @@ export function useTestHarness() {
     }));
 
     try {
-      const status = await api.getTestStatus();
+      const status = normalizeGetTestStatusResponse(await api.getTestStatus());
       activeRunIdRef.current = status.isRunning ? status.runId : null;
       terminalErrorRunIdRef.current = null;
 
@@ -240,7 +248,10 @@ export function useTestHarness() {
       }));
 
       try {
-        const response = await api.startTest({ options, runId });
+        const response = normalizeStartTestResponse(
+          await api.startTest({ options, runId }),
+          runId,
+        );
         if (pendingStartIdRef.current !== startId) {
           return;
         }

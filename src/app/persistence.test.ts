@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   createCollectionStorageKey,
+  loadCollectionRequestWeights,
   loadRunnerPreferences,
+  saveCollectionRequestWeights,
   saveRunnerPreferences,
 } from "./persistence";
 import type { CollectionInfo } from "../lib/loadrift/types";
@@ -104,7 +106,7 @@ describe("runner preferences persistence", () => {
     );
   });
 
-  it("persists traffic mode and zero-or-positive request weights", () => {
+  it("persists traffic mode without global request weights", () => {
     saveRunnerPreferences({
       ...DEFAULT_K6_OPTIONS,
       trafficMode: "weighted",
@@ -116,10 +118,37 @@ describe("runner preferences persistence", () => {
 
     expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS)).toMatchObject({
       trafficMode: "weighted",
-      requestWeights: {
-        "request-a": 3,
-        "request-b": 0,
-      },
+      requestWeights: {},
+    });
+  });
+
+  it("scopes request weights by collection key", () => {
+    const firstCollectionKey = createCollectionStorageKey(orderedCollection);
+    const secondCollectionKey = createCollectionStorageKey({
+      ...orderedCollection,
+      name: "Different Collection",
+      requests: [
+        {
+          ...orderedCollection.requests[0]!,
+          name: "Different request with reused id",
+        },
+      ],
+    });
+
+    saveCollectionRequestWeights(firstCollectionKey, {
+      "request-a": 3,
+      "request-b": 0,
+    });
+    saveCollectionRequestWeights(secondCollectionKey, {
+      "request-a": 8,
+    });
+
+    expect(loadCollectionRequestWeights(firstCollectionKey)).toEqual({
+      "request-a": 3,
+      "request-b": 0,
+    });
+    expect(loadCollectionRequestWeights(secondCollectionKey)).toEqual({
+      "request-a": 8,
     });
   });
 });

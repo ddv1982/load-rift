@@ -16,14 +16,14 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
-  pages: write
-  id-token: write
+  contents: read
 
 jobs:
   verify:
     name: Verify (Ubuntu)
     runs-on: ubuntu-22.04
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
@@ -79,6 +79,8 @@ jobs:
 
       - name: Rust tests
         working-directory: src-tauri
+        env:
+          LOADRIFT_REQUIRE_BUNDLED_K6_TESTS: "true"
         run: cargo test
 
       - name: Rust check
@@ -89,6 +91,8 @@ jobs:
     name: Publish (${{ matrix.platform_label }})
     needs: verify
     runs-on: ${{ matrix.platform }}
+    permissions:
+      contents: write
 
     strategy:
       fail-fast: false
@@ -525,18 +529,39 @@ jobs:
             --jq '.assets[].name' \
             | grep -Fx load-rift-repository-setup_1.0_all.deb.sha256.asc
 
-      - name: Configure GitHub Pages
+      - name: Upload APT repository site artifact
         if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: apt-pages-site
+          path: pages-site
+          if-no-files-found: error
+
+  deploy-apt-pages:
+    name: Deploy APT repository pages
+    needs: publish-tauri
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - name: Download APT repository site artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: apt-pages-site
+          path: pages-site
+
+      - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
         with:
           enablement: true
 
       - name: Upload APT repository Pages artifact
-        if: matrix.platform == 'ubuntu-22.04'
         uses: actions/upload-pages-artifact@v4
         with:
           path: pages-site
 
       - name: Deploy APT repository to GitHub Pages
-        if: matrix.platform == 'ubuntu-22.04'
         uses: actions/deploy-pages@v4

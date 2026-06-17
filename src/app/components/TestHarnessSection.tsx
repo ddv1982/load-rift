@@ -285,6 +285,9 @@ export function TestHarnessSection({
         <div className="harness-main">
           {validationBanner ? (
             <div
+              role={validationBanner.status === "invalid" ? "alert" : "status"}
+              aria-live={validationBanner.status === "invalid" ? "assertive" : "polite"}
+              aria-atomic="true"
               className={`validation-banner${
                 validationBanner.status === "ready"
                   ? " is-ready"

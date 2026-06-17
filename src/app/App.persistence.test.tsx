@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   appHookTestState,
@@ -8,6 +8,7 @@ import {
   anotherCollection,
   createAppElement,
   createApiMock,
+  createImportHookState,
   importedCollection,
   renderApp,
   sameNameDifferentCollection,
@@ -29,6 +30,10 @@ vi.mock("../lib/tauri/dialog", () => ({
   selectCollectionFile: vi.fn(),
   selectReportSavePath: vi.fn(),
 }));
+
+function openWorkflowStep(step: "Source" | "Configure" | "Run") {
+  fireEvent.click(screen.getByRole("tab", { name: new RegExp(step) }));
+}
 
 describe("App persistence", () => {
   beforeEach(() => {
@@ -213,6 +218,86 @@ describe("App persistence", () => {
     fireEvent.click(screen.getByRole("tab", { name: /Source/ }));
 
     expect((screen.getByLabelText("Search requests") as HTMLInputElement).value).toBe("users");
+  });
+
+  it("keeps request weights separately for collections with overlapping request ids", async () => {
+    const api = createApiMock();
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
+    const { rerender } = renderApp(api);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
+    fireEvent.change(screen.getByLabelText("Traffic mode"), {
+      target: { value: "weighted" },
+    });
+    openWorkflowStep("Source");
+
+    fireEvent.change(screen.getByLabelText("Weight for POST login"), {
+      target: { value: "0" },
+    });
+    fireEvent.change(screen.getByLabelText("Weight for GET account"), {
+      target: { value: "4" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    appHookTestState.importHookState = createImportHookState(importedCollection);
+    rerender(createAppElement(api));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    openWorkflowStep("Source");
+    expect((screen.getByLabelText("Weight for GET users") as HTMLInputElement).value).toBe(
+      "1",
+    );
+
+    fireEvent.change(screen.getByLabelText("Weight for GET users"), {
+      target: { value: "7" },
+    });
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
+    rerender(createAppElement(api));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    openWorkflowStep("Source");
+    expect((screen.getByLabelText("Weight for POST login") as HTMLInputElement).value).toBe(
+      "0",
+    );
+    expect((screen.getByLabelText("Weight for GET account") as HTMLInputElement).value).toBe(
+      "4",
+    );
+
+    appHookTestState.importHookState = createImportHookState(importedCollection);
+    rerender(createAppElement(api));
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    openWorkflowStep("Source");
+    expect((screen.getByLabelText("Weight for GET users") as HTMLInputElement).value).toBe(
+      "7",
+    );
   });
 
   it("ignores ambiguous legacy single-record collection filters", () => {

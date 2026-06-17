@@ -171,3 +171,200 @@ export const DEFAULT_LIVE_METRICS: LiveMetrics = {
   maxResponseTime: 0,
   requestsPerSecond: 0,
 };
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeNumber(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
+}
+
+function normalizeString(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
+
+function normalizeNullableString(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function normalizeTestStatus(value: unknown, fallback: TestStatus): TestStatus {
+  return value === "idle" ||
+    value === "running" ||
+    value === "completed" ||
+    value === "failed" ||
+    value === "stopped"
+    ? value
+    : fallback;
+}
+
+function normalizeCompletionStatus(value: unknown): TestStatus {
+  return value === "completed" || value === "failed" || value === "stopped"
+    ? value
+    : "failed";
+}
+
+function normalizeTestResultStatus(
+  value: unknown,
+  fallback: TestResultStatus,
+): TestResultStatus {
+  return value === "passed" || value === "warning" || value === "failed"
+    ? value
+    : fallback;
+}
+
+function normalizeTestResultSource(value: unknown): TestResultSource | null {
+  return value === "summary" || value === "liveMetricsFallback" ? value : null;
+}
+
+function normalizeTestMetrics(value: unknown): TestMetrics {
+  const metrics = isRecord(value) ? value : {};
+
+  return {
+    totalRequests: normalizeNumber(metrics.totalRequests, 0),
+    failedRequests: normalizeNumber(metrics.failedRequests, 0),
+    avgResponseTime: normalizeNumber(metrics.avgResponseTime, 0),
+    p50ResponseTime: normalizeNumber(metrics.p50ResponseTime, 0),
+    p95ResponseTime: normalizeNumber(metrics.p95ResponseTime, 0),
+    maxResponseTime: normalizeNumber(metrics.maxResponseTime, 0),
+    requestsPerSecond: normalizeNumber(metrics.requestsPerSecond, 0),
+  };
+}
+
+function normalizeThresholdResult(value: unknown): ThresholdResult | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  return {
+    name: normalizeString(value.name, "threshold"),
+    passed: value.passed === true,
+    actual: normalizeNumber(value.actual, 0),
+    threshold: normalizeNumber(value.threshold, 0),
+  };
+}
+
+export function normalizeLiveMetrics(value: unknown): LiveMetrics {
+  const metrics = isRecord(value) ? value : {};
+
+  return {
+    activeVus: normalizeNumber(metrics.activeVus, DEFAULT_LIVE_METRICS.activeVus),
+    totalRequests: normalizeNumber(metrics.totalRequests, DEFAULT_LIVE_METRICS.totalRequests),
+    failedRequests: normalizeNumber(metrics.failedRequests, DEFAULT_LIVE_METRICS.failedRequests),
+    errorRate: normalizeNumber(metrics.errorRate, DEFAULT_LIVE_METRICS.errorRate),
+    avgResponseTime: normalizeNumber(metrics.avgResponseTime, DEFAULT_LIVE_METRICS.avgResponseTime),
+    p50ResponseTime: normalizeNumber(metrics.p50ResponseTime, DEFAULT_LIVE_METRICS.p50ResponseTime),
+    p95ResponseTime: normalizeNumber(metrics.p95ResponseTime, DEFAULT_LIVE_METRICS.p95ResponseTime),
+    maxResponseTime: normalizeNumber(metrics.maxResponseTime, DEFAULT_LIVE_METRICS.maxResponseTime),
+    requestsPerSecond: normalizeNumber(
+      metrics.requestsPerSecond,
+      DEFAULT_LIVE_METRICS.requestsPerSecond,
+    ),
+  };
+}
+
+export function normalizeTestResult(value: unknown): TestResult | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const thresholds = Array.isArray(value.thresholds)
+    ? value.thresholds.flatMap((threshold) => {
+        const normalized = normalizeThresholdResult(threshold);
+        return normalized ? [normalized] : [];
+      })
+    : [];
+
+  return {
+    status: normalizeTestResultStatus(value.status, "failed"),
+    metrics: normalizeTestMetrics(value.metrics),
+    thresholds,
+  };
+}
+
+export function normalizeRunMetricsEvent(value: unknown): RunMetricsEvent | null {
+  if (!isRecord(value) || typeof value.runId !== "string") {
+    return null;
+  }
+
+  return {
+    runId: value.runId,
+    metrics: normalizeLiveMetrics(value.metrics),
+  };
+}
+
+export function normalizeRunErrorEvent(value: unknown): RunErrorEvent | null {
+  if (!isRecord(value) || typeof value.runId !== "string") {
+    return null;
+  }
+
+  return {
+    runId: value.runId,
+    message: normalizeString(value.message, "The k6 runner reported an unknown error."),
+  };
+}
+
+export function normalizeStartTestResponse(
+  value: unknown,
+  fallbackRunId: string,
+): StartTestResponse {
+  if (!isRecord(value) || typeof value.runId !== "string") {
+    return { runId: fallbackRunId };
+  }
+
+  return { runId: value.runId };
+}
+
+export function normalizeTestCompletion(value: unknown): TestCompletion | null {
+  if (!isRecord(value) || typeof value.runId !== "string") {
+    return null;
+  }
+
+  return {
+    runId: value.runId,
+    runState: normalizeCompletionStatus(value.runState),
+    finishReason: normalizeString(value.finishReason, "unknown"),
+    metrics: normalizeLiveMetrics(value.metrics),
+    result: normalizeTestResult(value.result) ?? {
+      status: "failed",
+      metrics: normalizeTestMetrics(null),
+      thresholds: [],
+    },
+    resultSource: normalizeTestResultSource(value.resultSource) ?? "summary",
+    summaryIssue: normalizeNullableString(value.summaryIssue),
+    errorMessage: normalizeNullableString(value.errorMessage),
+  };
+}
+
+export function normalizeGetTestStatusResponse(
+  value: unknown,
+): GetTestStatusResponse {
+  if (!isRecord(value)) {
+    return {
+      runId: null,
+      status: "idle",
+      isRunning: false,
+      metrics: null,
+      result: null,
+      finishReason: null,
+      errorMessage: null,
+      resultSource: null,
+      summaryIssue: null,
+    };
+  }
+
+  const runId = typeof value.runId === "string" ? value.runId : null;
+  const isRunning = value.isRunning === true && runId !== null;
+
+  return {
+    runId,
+    status: normalizeTestStatus(value.status, isRunning ? "running" : "idle"),
+    isRunning,
+    metrics: value.metrics === null ? null : normalizeLiveMetrics(value.metrics),
+    result: value.result === null ? null : normalizeTestResult(value.result),
+    finishReason: normalizeNullableString(value.finishReason),
+    errorMessage: normalizeNullableString(value.errorMessage),
+    resultSource: normalizeTestResultSource(value.resultSource),
+    summaryIssue: normalizeNullableString(value.summaryIssue),
+  };
+}

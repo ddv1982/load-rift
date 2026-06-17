@@ -79,6 +79,24 @@ function firstNonEmptyValue(values, fallback = "") {{
   return fallback;
 }}
 
+function normalizeBearerTokenInput(value) {{
+  let normalized = firstNonEmptyValue([value]);
+  if (!normalized) {{
+    return "";
+  }}
+
+  if (normalized.toLowerCase().startsWith("authorization:")) {{
+    normalized = normalized.slice("authorization:".length).trim();
+  }}
+
+  const bearerMatch = normalized.match(/^bearer\s+(.+)$/i);
+  if (bearerMatch) {{
+    normalized = (bearerMatch[1] || "").trim();
+  }}
+
+  return normalized;
+}}
+
 function mergeOptions(baseOptions, advancedOptions) {{
   if (!advancedOptions || typeof advancedOptions !== "object" || Array.isArray(advancedOptions)) {{
     return baseOptions;
@@ -223,7 +241,7 @@ function buildContext() {{
     }}
   }}
   const authToken = firstNonEmptyValue([
-    __ENV.AUTH_TOKEN,
+    normalizeBearerTokenInput(__ENV.AUTH_TOKEN),
     context.authToken,
     context.auth_token,
   ]);

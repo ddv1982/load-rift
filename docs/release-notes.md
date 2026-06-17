@@ -9,14 +9,14 @@ release like `v0.2.2`, prefer adding `docs/releases/v0.2.2.md` before pushing
 the tag so the CI-built Linux packages publish with the correct notes and
 bundled third-party notice.
 
-## Suggested Release Notes for v0.2.2
+## Suggested Release Notes Shape
 
 ```md
 ## Summary
 
-- Rebuilt Linux release packaging on Ubuntu 22.04 to improve `.deb` compatibility on target systems.
-- Kept the Linux release pipeline aligned with the verified CI runner image.
-- Updated the app metadata to version `0.2.2`.
+- Summarize the user-visible change or packaging update.
+- Mention any release pipeline, signing, or installer changes that affect users.
+- Confirm the app metadata and release tag are aligned.
 
 ## Downloads
 
@@ -33,9 +33,11 @@ Additional bundled licensing notices are included in the package.
 
 ## Verification
 
-- [ ] `npm run build`
+- [ ] `npm run verify`
 - [ ] `npm run tauri build`
 - [ ] Packaged artifacts include bundled license documents
+- [ ] `THIRD_PARTY_LICENSES.md` matches the current k6 version and app dependency inventory
+- [ ] Browser/Tauri smoke evidence captured when the release changes user-visible workflows
 ```
 
 Required third-party notice for bundled builds:
@@ -47,5 +49,6 @@ Source archive: https://github.com/grafana/k6/archive/refs/tags/v2.0.0.tar.gz
 Additional bundled licensing notices are included in the package.
 ```
 
-Keep the `k6` version and source links in sync with `scripts/install-k6.sh` and
-`THIRD_PARTY_LICENSES.md` whenever the bundled version changes.
+Keep the `k6` version, source links, and app dependency inventory in sync with
+`scripts/install-k6.sh`, `package-lock.json`, `src-tauri/Cargo.lock`, and
+`THIRD_PARTY_LICENSES.md` whenever bundled software changes.

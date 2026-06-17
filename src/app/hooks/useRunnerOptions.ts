@@ -1,11 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DEFAULT_K6_OPTIONS,
   type CollectionInfo,
   type K6Options,
 } from "../../lib/loadrift/types";
 import { getAdvancedOptionsFeedback } from "../advancedOptions";
-import { loadRunnerPreferences, saveRunnerPreferences } from "../persistence";
+import {
+  createCollectionStorageKey,
+  loadCollectionRequestWeights,
+  loadRunnerPreferences,
+  saveCollectionRequestWeights,
+  saveRunnerPreferences,
+} from "../persistence";
 import {
   getVariableValue,
   isHostVariableKey,
@@ -69,6 +75,11 @@ function validateVusInput(value: string): string | null {
 }
 
 export function useRunnerOptions(collection: CollectionInfo | null) {
+  const collectionKey = useMemo(
+    () => (collection ? createCollectionStorageKey(collection) : null),
+    [collection],
+  );
+  const pendingRequestWeightCollectionKey = useRef<string | null>(null);
   const [runnerOptions, setRunnerOptions] = useState<K6Options>(() =>
     loadRunnerPreferences(DEFAULT_K6_OPTIONS),
   );
@@ -82,6 +93,12 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
   );
 
   useEffect(() => {
+    const persistedRequestWeights = collectionKey
+      ? (loadCollectionRequestWeights(collectionKey) ?? {})
+      : {};
+
+    pendingRequestWeightCollectionKey.current = collectionKey;
+
     setRunnerOptions((previous) => ({
       ...previous,
       selectedRequestIds: syncSelectedRequestIds(
@@ -90,18 +107,31 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
       ),
       requestWeights: syncRequestWeights(
         collection?.requests ?? [],
-        previous.requestWeights,
+        persistedRequestWeights,
       ),
       variableOverrides: syncVariableOverrides(
         collection?.runtimeVariables ?? [],
         previous.variableOverrides,
       ),
     }));
-  }, [collection]);
+  }, [collection, collectionKey]);
 
   useEffect(() => {
     saveRunnerPreferences(runnerOptions);
   }, [runnerOptions]);
+
+  useEffect(() => {
+    if (!collectionKey) {
+      return;
+    }
+
+    if (pendingRequestWeightCollectionKey.current === collectionKey) {
+      pendingRequestWeightCollectionKey.current = null;
+      return;
+    }
+
+    saveCollectionRequestWeights(collectionKey, runnerOptions.requestWeights);
+  }, [collectionKey, runnerOptions.requestWeights]);
 
   const emptyRuntimeVariables = useMemo(
     () =>

@@ -1,15 +1,16 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { LoadRiftApi } from "../../lib/loadrift/api";
-import type {
-  GetTestStatusResponse,
-  K6Options,
-  LiveMetrics,
-  RunErrorEvent,
-  RunMetricsEvent,
-  StartTestResponse,
-  TestCompletion,
-  TestResult,
+import {
+  DEFAULT_LIVE_METRICS,
+  type GetTestStatusResponse,
+  type K6Options,
+  type LiveMetrics,
+  type RunErrorEvent,
+  type RunMetricsEvent,
+  type StartTestResponse,
+  type TestCompletion,
+  type TestResult,
 } from "../../lib/loadrift/types";
 import {
   createLoadRiftApiWrapper as createWrapper,
@@ -398,6 +399,186 @@ describe("useTestHarness", () => {
     });
 
     expect(result.current.state.metrics).toEqual(metrics);
+  });
+
+  it("normalizes malformed status payloads from the API boundary", async () => {
+    const { api } = createApiMock({
+      getTestStatus: vi.fn(async () => ({
+        runId: 42,
+        status: "surprising",
+        isRunning: true,
+        metrics: {
+          activeVus: Number.NaN,
+          totalRequests: 12,
+          failedRequests: "nope",
+          errorRate: 0.25,
+        },
+        result: {
+          status: "unexpected",
+          metrics: {
+            totalRequests: 12,
+            failedRequests: 3,
+          },
+          thresholds: [
+            {
+              name: "http_req_failed",
+              passed: true,
+              actual: "bad",
+              threshold: 1,
+            },
+            null,
+          ],
+        },
+        finishReason: 17,
+        errorMessage: null,
+        resultSource: "not-a-source",
+        summaryIssue: false,
+      }) as unknown as Promise<GetTestStatusResponse>),
+    });
+    const { result } = renderHook(() => useTestHarness(), {
+      wrapper: createWrapper(api),
+    });
+
+    await act(async () => {
+      await result.current.refreshStatus();
+    });
+
+    expect(result.current.state.runId).toBeNull();
+    expect(result.current.state.status).toBe("idle");
+    expect(result.current.state.isRunning).toBe(false);
+    expect(result.current.state.metrics).toEqual({
+      ...metrics,
+      activeVus: 0,
+      totalRequests: 12,
+      failedRequests: 0,
+      avgResponseTime: 0,
+      p50ResponseTime: 0,
+      p95ResponseTime: 0,
+      maxResponseTime: 0,
+      requestsPerSecond: 0,
+      errorRate: 0.25,
+    });
+    expect(result.current.state.result).toEqual({
+      status: "failed",
+      metrics: {
+        totalRequests: 12,
+        failedRequests: 3,
+        avgResponseTime: 0,
+        p50ResponseTime: 0,
+        p95ResponseTime: 0,
+        maxResponseTime: 0,
+        requestsPerSecond: 0,
+      },
+      thresholds: [
+        {
+          name: "http_req_failed",
+          passed: true,
+          actual: 0,
+          threshold: 1,
+        },
+      ],
+    });
+    expect(result.current.state.finishReason).toBeNull();
+    expect(result.current.state.resultSource).toBeNull();
+    expect(result.current.state.summaryIssue).toBeNull();
+  });
+
+  it("ignores malformed run events and defaults malformed current-run metrics", async () => {
+    const { api, listeners } = createApiMock();
+    const { result } = renderHook(() => useTestHarness(), {
+      wrapper: createWrapper(api),
+    });
+
+    await waitFor(() => {
+      expect(listeners.metrics).toBeTypeOf("function");
+      expect(listeners.complete).toBeTypeOf("function");
+      expect(listeners.error).toBeTypeOf("function");
+    });
+
+    await act(async () => {
+      await result.current.startTest(startOptions);
+    });
+    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+
+    act(() => {
+      listeners.metrics?.({ metrics } as unknown as RunMetricsEvent);
+      listeners.error?.({ message: "missing run id" } as unknown as RunErrorEvent);
+      listeners.complete?.({ runState: "completed" } as unknown as TestCompletion);
+    });
+
+    expect(result.current.state.status).toBe("running");
+    expect(result.current.state.metrics).toEqual(DEFAULT_LIVE_METRICS);
+    expect(result.current.state.error).toBeNull();
+    expect(result.current.state.result).toBeNull();
+
+    act(() => {
+      listeners.metrics?.({
+        runId,
+        metrics: {
+          activeVus: 5,
+          totalRequests: "many",
+          failedRequests: 2,
+          errorRate: Number.POSITIVE_INFINITY,
+        },
+      } as unknown as RunMetricsEvent);
+    });
+
+    expect(result.current.state.metrics).toEqual({
+      activeVus: 5,
+      totalRequests: 0,
+      failedRequests: 2,
+      errorRate: 0,
+      avgResponseTime: 0,
+      p50ResponseTime: 0,
+      p95ResponseTime: 0,
+      maxResponseTime: 0,
+      requestsPerSecond: 0,
+    });
+  });
+
+  it("falls back to the generated run id when startTest returns a malformed response", async () => {
+    const { api } = createApiMock({
+      startTest: vi.fn(async () => ({}) as unknown as Promise<StartTestResponse>),
+    });
+    const { result } = renderHook(() => useTestHarness(), {
+      wrapper: createWrapper(api),
+    });
+
+    await act(async () => {
+      await result.current.startTest(startOptions);
+    });
+
+    const generatedRunId = vi.mocked(api.startTest).mock.calls[0]![0].runId;
+    expect(result.current.state.runId).toBe(generatedRunId);
+    expect(result.current.state.status).toBe("running");
+    expect(result.current.state.isRunning).toBe(true);
+  });
+
+  it("normalizes non-terminal completion states to failed", async () => {
+    const { api, listeners } = createApiMock();
+    const { result } = renderHook(() => useTestHarness(), {
+      wrapper: createWrapper(api),
+    });
+
+    await waitFor(() => {
+      expect(listeners.complete).toBeTypeOf("function");
+    });
+
+    await act(async () => {
+      await result.current.startTest(startOptions);
+    });
+    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+
+    act(() => {
+      listeners.complete?.({
+        ...completionPayload(runId),
+        runState: "running" as TestCompletion["runState"],
+      });
+    });
+
+    expect(result.current.state.status).toBe("failed");
+    expect(result.current.state.isRunning).toBe(false);
+    expect(result.current.state.runId).toBe(runId);
   });
 
   it("surfaces start failures with a normalized error message", async () => {

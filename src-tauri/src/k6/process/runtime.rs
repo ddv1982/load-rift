@@ -438,7 +438,7 @@ pub fn start_k6_process(
     if let Some(value) = options
         .auth_token
         .as_deref()
-        .filter(|value| !value.trim().is_empty())
+        .and_then(crate::importing::normalize_auth_token_input)
     {
         command.env("AUTH_TOKEN", value);
     }

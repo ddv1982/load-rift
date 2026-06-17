@@ -131,10 +131,34 @@ build workflow.
 - `npm run dev`: starts the Vite frontend only
 - `npm run lint`: runs ESLint
 - `npm run typecheck`: runs TypeScript checks
+- `npm run verify`: runs typecheck, lint, frontend tests, frontend build, Rust tests, and Rust check
 - `npm run build`: builds the frontend into `dist/`
 - `npm run install:k6`: downloads the project-local k6 binary into `src-tauri/bin/`
 - `npm run tauri dev`: runs the desktop app in dev mode
 - `npm run tauri build`: builds the desktop app and writes bundles to `src-tauri/target/release/bundle/`
+
+## Validation
+
+Use the narrowest command that covers the change while developing:
+- Frontend state/UI changes: `npm test`, plus `npm run typecheck` when types or contracts changed
+- Rust backend, import, k6, or report changes: `cargo test --manifest-path src-tauri/Cargo.toml`
+- Packaging/config/docs that affect release shape: `npm run build`, `cargo check --manifest-path src-tauri/Cargo.toml`, and workflow/static review
+
+Before publishing or handing off a broad change, run:
+
+```bash
+npm run verify
+```
+
+`npm run verify` intentionally mirrors the local broad gate and includes the
+frontend build plus Rust test/check commands. Install the bundled k6 binary first
+with `npm run install:k6` when you need local parity with CI's mandatory bundled
+k6 regression tests.
+
+Coverage reports and browser/Tauri-driver end-to-end checks are not yet first-class
+commands in this repository. Treat browser screenshots, import-to-export desktop
+smoke tests, and coverage reports as release evidence when they are run manually,
+and add dedicated commands before making them required gates.
 
 ## Current Behavior
 
@@ -164,6 +188,11 @@ The app currently provides a slim migration shell with:
 - User-visible fallback diagnostics redact local artifact paths by default. Full artifact paths are kept for logs and for explicit debug preservation mode.
 - Set `LOADRIFT_PRESERVE_K6_ARTIFACTS=true` only when debugging k6 temp-file issues. This preserves the per-run temp directory instead of deleting it automatically and allows user-visible diagnostics to include local artifact paths; preserved artifacts can contain request URLs, headers, bodies, and tokens, so delete the directory manually when finished.
 - CI requires bundled-k6 regression coverage with `LOADRIFT_REQUIRE_BUNDLED_K6_TESTS=true`. Local test runs still skip bundled-k6 tests when the platform binary is absent unless that variable is set; run `npm run install:k6` first when you want the mandatory behavior locally.
+- Tauri capabilities are explicitly limited to `src-tauri/capabilities/default.json`.
+  The main window only receives default core access and open/save dialog
+  permissions; custom Rust commands still validate imported collections,
+  runner options, filesystem paths, and k6 process state on the backend side of
+  the IPC boundary.
 
 ## Licensing
 
@@ -173,7 +202,8 @@ The app currently provides a slim migration shell with:
 - Packaged Linux and macOS builds bundle `k6` `v2.0.0`, which is licensed
   separately under AGPL-3.0-only.
 - See `THIRD_PARTY_LICENSES.md` for the exact bundled `k6` version and
-  corresponding source references.
+  corresponding source references, plus the current top-level npm and Cargo
+  application dependency license inventory.
 - See `licenses/AGPL-3.0.txt` for the AGPL-3.0-only license text shipped with this
   repository.
 - Tauri bundle resources also ship these licensing documents inside the app,

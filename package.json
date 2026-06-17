@@ -1,6 +1,6 @@
 {
   "name": "loadrift",
-  "version": "0.2.18",
+  "version": "0.2.19",
   "license": "MIT",
   "private": true,
   "repository": {
@@ -16,6 +16,7 @@
     "install:k6": "bash scripts/install-k6.sh",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run build && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri"
   },
   "dependencies": {
