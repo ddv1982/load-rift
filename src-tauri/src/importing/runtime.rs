@@ -151,8 +151,7 @@ fn resolve_request(
     if let Some(base_url) = context.base_url.as_deref() {
         if !has_http_scheme(base_url) {
             return Err(format!(
-                "Base URL must start with http:// or https://, got {:?}.",
-                base_url
+                "Base URL must start with http:// or https://, got {base_url:?}."
             ));
         }
     }
@@ -278,8 +277,7 @@ pub(crate) fn build_runtime_context(
     if let Some(value) = configured_base_url {
         if !has_http_scheme(&value) {
             return Err(format!(
-                "Base URL must start with http:// or https://, got {:?}.",
-                value
+                "Base URL must start with http:// or https://, got {value:?}."
             ));
         }
     }

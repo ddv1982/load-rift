@@ -62,6 +62,9 @@ jobs:
       - name: Install Node dependencies
         run: npm ci
 
+      - name: Install Rust audit tooling
+        run: cargo install cargo-audit --version 0.22.2 --locked
+
       - name: Install bundled k6 binary
         run: npm run install:k6
 
@@ -76,6 +79,15 @@ jobs:
 
       - name: Frontend build
         run: npm run build
+
+      - name: Rust fmt
+        run: npm run rust:fmt
+
+      - name: Rust clippy
+        run: npm run rust:clippy
+
+      - name: Rust audit
+        run: npm run rust:audit
 
       - name: Rust tests
         working-directory: src-tauri

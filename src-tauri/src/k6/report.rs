@@ -214,8 +214,13 @@ pub fn export_report_file(state: &SharedAppState, save_path: &str) -> Result<Pat
     Ok(target_path)
 }
 
-fn normalize_export_path(save_path: &str) -> Result<PathBuf, String> {
-    let path = PathBuf::from(save_path);
+pub(super) fn normalize_export_path(save_path: &str) -> Result<PathBuf, String> {
+    let trimmed = save_path.trim();
+    if trimmed.is_empty() {
+        return Err("Choose an HTML report file before exporting.".to_string());
+    }
+
+    let path = PathBuf::from(trimmed);
     let path = if path.is_absolute() {
         path
     } else {
@@ -224,16 +229,40 @@ fn normalize_export_path(save_path: &str) -> Result<PathBuf, String> {
             .join(path)
     };
 
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| {
-            format!(
-                "Failed to create the export directory {}: {error}",
-                parent.display()
-            )
-        })?;
+    if !path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("html") || extension.eq_ignore_ascii_case("htm")
+        })
+    {
+        return Err("Choose an export path ending in .html or .htm.".to_string());
     }
 
-    Ok(path)
+    if path.exists() && !path.is_file() {
+        return Err("Choose an HTML report file path, not a directory.".to_string());
+    }
+
+    let parent = path
+        .parent()
+        .filter(|parent| !parent.as_os_str().is_empty())
+        .map(PathBuf::from)
+        .ok_or_else(|| "Choose an HTML report file path, not a directory.".to_string())?;
+    let canonical_parent = fs::canonicalize(&parent).map_err(|error| {
+        format!(
+            "Failed to resolve the export directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    if !canonical_parent.is_dir() {
+        return Err("Choose an existing directory for the report export.".to_string());
+    }
+
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| "Choose an HTML report file path, not a directory.".to_string())?;
+
+    Ok(canonical_parent.join(file_name))
 }
 
 pub(crate) fn extract_end_of_test_summary(output: &str) -> &str {
@@ -417,7 +446,7 @@ fn render_structured_metrics(metrics: Option<&SummaryMetricsMap>) -> String {
 
     METRIC_CATEGORY_ORDER
         .into_iter()
-        .filter_map(|category| render_metric_section(category, &metrics))
+        .filter_map(|category| render_metric_section(category, metrics))
         .collect::<Vec<_>>()
         .join("")
 }

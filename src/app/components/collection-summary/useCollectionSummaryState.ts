@@ -12,6 +12,9 @@ import {
   type CollectionRow,
 } from "./model";
 
+const INITIAL_VISIBLE_ROW_LIMIT = 250;
+const VISIBLE_ROW_INCREMENT = 250;
+
 interface UseCollectionSummaryStateOptions {
   collection: CollectionInfo | null;
   selectedRequestIds: string[];
@@ -30,6 +33,8 @@ interface UseCollectionSummaryStateResult {
   folderRows: Extract<CollectionRow, { kind: "folder" }>[];
   collapsedFolderSet: Set<string>;
   visibleRows: CollectionRow[];
+  renderedRows: CollectionRow[];
+  hiddenVisibleRowCount: number;
   allRequestIds: string[];
   visibleRequestIds: string[];
   selectedCount: number;
@@ -38,6 +43,7 @@ interface UseCollectionSummaryStateResult {
   filteredSelectedCount: number;
   allFoldersCollapsed: boolean;
   clearFilters: () => void;
+  showMoreVisibleRows: () => void;
   updateSelection: (requestIds: string[], nextChecked: boolean) => void;
   toggleFolder: (folderId: string) => void;
   toggleAllFolders: () => void;
@@ -51,6 +57,7 @@ export function useCollectionSummaryState({
   const [searchQuery, setSearchQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<string[]>([]);
+  const [visibleRowLimit, setVisibleRowLimit] = useState(INITIAL_VISIBLE_ROW_LIMIT);
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const collectionKey = useMemo(
     () => (collection ? createCollectionStorageKey(collection) : null),
@@ -95,6 +102,11 @@ export function useCollectionSummaryState({
       visibleRequestIds,
     };
   }, [collapsedFolderIds, rows]);
+  const renderedRows = useMemo(
+    () => visibleRows.slice(0, visibleRowLimit),
+    [visibleRowLimit, visibleRows],
+  );
+  const hiddenVisibleRowCount = Math.max(0, visibleRows.length - renderedRows.length);
 
   useEffect(() => {
     if (!collectionKey) {
@@ -131,6 +143,10 @@ export function useCollectionSummaryState({
     setCollapsedFolderIds((previous) => previous.filter((folderId) => folderIds.has(folderId)));
   }, [folderRows]);
 
+  useEffect(() => {
+    setVisibleRowLimit(INITIAL_VISIBLE_ROW_LIMIT);
+  }, [collectionKey, deferredSearchQuery, methodFilter]);
+
   const selectedCount = selectedRequestIds.length;
   const allSelected = collection ? selectedCount === collection.requestCount : false;
   const visibleSelectedCount = visibleRequestIds.filter((requestId) =>
@@ -145,6 +161,10 @@ export function useCollectionSummaryState({
   function clearFilters() {
     setSearchQuery("");
     setMethodFilter("all");
+  }
+
+  function showMoreVisibleRows() {
+    setVisibleRowLimit((previous) => previous + VISIBLE_ROW_INCREMENT);
   }
 
   function updateSelection(requestIds: string[], nextChecked: boolean) {
@@ -192,6 +212,8 @@ export function useCollectionSummaryState({
     folderRows,
     collapsedFolderSet,
     visibleRows,
+    renderedRows,
+    hiddenVisibleRowCount,
     allRequestIds,
     visibleRequestIds,
     selectedCount,
@@ -200,6 +222,7 @@ export function useCollectionSummaryState({
     filteredSelectedCount,
     allFoldersCollapsed,
     clearFilters,
+    showMoreVisibleRows,
     updateSelection,
     toggleFolder,
     toggleAllFolders,

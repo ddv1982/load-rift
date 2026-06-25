@@ -212,9 +212,9 @@ fn apply_headers(
 
     for (key, value) in headers {
         let name = HeaderName::try_from(key.as_str())
-            .map_err(|error| format!("Invalid header name {:?}: {error}", key))?;
+            .map_err(|error| format!("Invalid header name {key:?}: {error}"))?;
         let header_value = HeaderValue::try_from(value.as_str())
-            .map_err(|error| format!("Invalid header value for {:?}: {error}", key))?;
+            .map_err(|error| format!("Invalid header value for {key:?}: {error}"))?;
         header_map.insert(name, header_value);
     }
 

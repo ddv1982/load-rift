@@ -129,9 +129,14 @@ build workflow.
 ## Useful Scripts
 
 - `npm run dev`: starts the Vite frontend only
+- `npm run format`: formats frontend source, root config, and CI workflow files with Prettier
 - `npm run lint`: runs ESLint
 - `npm run typecheck`: runs TypeScript checks
-- `npm run verify`: runs typecheck, lint, frontend tests, frontend build, Rust tests, and Rust check
+- `npm run test:coverage`: runs Vitest with V8 coverage, including uncovered files under `src/`
+- `npm run rust:fmt`: checks Rust formatting with `cargo fmt --check`
+- `npm run rust:clippy`: runs Clippy for all targets and features with warnings denied
+- `npm run rust:audit`: audits Cargo dependencies with `cargo-audit`
+- `npm run verify`: runs typecheck, lint, frontend tests, frontend build, Rust fmt, Clippy, audit, tests, and check
 - `npm run build`: builds the frontend into `dist/`
 - `npm run install:k6`: downloads the project-local k6 binary into `src-tauri/bin/`
 - `npm run tauri dev`: runs the desktop app in dev mode
@@ -141,8 +146,16 @@ build workflow.
 
 Use the narrowest command that covers the change while developing:
 - Frontend state/UI changes: `npm test`, plus `npm run typecheck` when types or contracts changed
-- Rust backend, import, k6, or report changes: `cargo test --manifest-path src-tauri/Cargo.toml`
+- Frontend coverage review: `npm run test:coverage`
+- Rust backend, import, k6, or report changes: `cargo test --manifest-path src-tauri/Cargo.toml`, plus `npm run rust:clippy` for shared process or command changes
 - Packaging/config/docs that affect release shape: `npm run build`, `cargo check --manifest-path src-tauri/Cargo.toml`, and workflow/static review
+
+Install the Rust audit tool before running the dependency audit locally:
+
+```bash
+cargo install cargo-audit --version 0.22.2 --locked
+npm run rust:audit
+```
 
 Before publishing or handing off a broad change, run:
 
@@ -151,14 +164,14 @@ npm run verify
 ```
 
 `npm run verify` intentionally mirrors the local broad gate and includes the
-frontend build plus Rust test/check commands. Install the bundled k6 binary first
-with `npm run install:k6` when you need local parity with CI's mandatory bundled
-k6 regression tests.
+frontend build plus Rust format, Clippy, audit, test, and check commands. Install
+the bundled k6 binary first with `npm run install:k6` when you need local parity
+with CI's mandatory bundled k6 regression tests.
 
-Coverage reports and browser/Tauri-driver end-to-end checks are not yet first-class
-commands in this repository. Treat browser screenshots, import-to-export desktop
-smoke tests, and coverage reports as release evidence when they are run manually,
-and add dedicated commands before making them required gates.
+Coverage reports are available through `npm run test:coverage`. Browser/Tauri-driver
+end-to-end checks are not yet first-class commands in this repository. Treat browser
+screenshots and import-to-export desktop smoke tests as release evidence when they
+are run manually, and add dedicated commands before making them required gates.
 
 ## Current Behavior
 

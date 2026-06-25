@@ -1,4 +1,5 @@
 import type { K6Options, RequestInfo, RuntimeVariable } from "../lib/loadrift/types";
+import { truncateLogTail } from "../lib/loadrift/outputLog";
 
 const HOST_VARIABLE_KEYS = new Set([
   "baseUrl",
@@ -59,7 +60,7 @@ export function truncateLog(log: string): string {
     return "No k6 runner output yet. Start a test to stream local process logs here.";
   }
 
-  return log;
+  return truncateLogTail(log);
 }
 
 export function normalizeRunnerOptionsForExecution(options: K6Options): K6Options {

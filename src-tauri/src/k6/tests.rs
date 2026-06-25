@@ -1407,6 +1407,46 @@ fn extract_end_of_test_summary_falls_back_to_trimmed_output() {
 }
 
 #[test]
+fn normalize_export_path_accepts_existing_directory_and_html_extension() {
+    let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+    let path = temp_dir.path().join("LoadRift.HTML");
+
+    let normalized = report::normalize_export_path(path.to_str().unwrap())
+        .expect("html export path should be accepted");
+    let canonical_parent = fs::canonicalize(temp_dir.path()).unwrap();
+
+    assert_eq!(
+        normalized.file_name().and_then(|name| name.to_str()),
+        Some("LoadRift.HTML")
+    );
+    assert_eq!(normalized.parent(), Some(canonical_parent.as_path()));
+}
+
+#[test]
+fn normalize_export_path_rejects_non_html_extension() {
+    let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+    let path = temp_dir.path().join("report.txt");
+
+    let error = report::normalize_export_path(path.to_str().unwrap())
+        .expect_err("non-html export paths should fail");
+
+    assert!(error.contains(".html or .htm"));
+}
+
+#[test]
+fn normalize_export_path_rejects_missing_parent_without_creating_it() {
+    let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+    let missing_dir = temp_dir.path().join("missing");
+    let path = missing_dir.join("report.html");
+
+    let error = report::normalize_export_path(path.to_str().unwrap())
+        .expect_err("missing parent directory should fail");
+
+    assert!(error.contains("Failed to resolve the export directory"));
+    assert!(!missing_dir.exists());
+}
+
+#[test]
 fn render_report_preserves_full_console_summary_sections() {
     let result = summary_report_result();
 

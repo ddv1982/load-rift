@@ -1,3 +1,4 @@
+use std::fs;
 use std::sync::{Arc, Mutex};
 
 use super::service;
@@ -97,6 +98,34 @@ fn import_collection_from_path_checks_busy_before_reading_file() {
 
     assert!(error.contains("Stop the active k6 test before importing a different collection."));
     assert!(!error.contains("Failed to read"));
+}
+
+#[test]
+fn import_collection_from_path_rejects_non_json_file() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+    let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+    let path = temp_dir.path().join("collection.txt");
+    fs::write(&path, sample_collection()).expect("fixture should be written");
+
+    let error = super::import_collection_from_path(&state, path.to_str().unwrap())
+        .expect_err("non-json imports should fail");
+
+    assert!(error.contains(".json extension"));
+}
+
+#[test]
+fn import_collection_from_path_rejects_large_files_before_reading() {
+    let state = Arc::new(Mutex::new(AppState::default()));
+    let temp_dir = tempfile::tempdir().expect("temp dir should be created");
+    let path = temp_dir.path().join("collection.json");
+    let file = fs::File::create(&path).expect("fixture should be created");
+    file.set_len(super::MAX_COLLECTION_FILE_BYTES + 1)
+        .expect("fixture should be resized");
+
+    let error = super::import_collection_from_path(&state, path.to_str().unwrap())
+        .expect_err("oversized imports should fail");
+
+    assert!(error.contains("too large"));
 }
 
 #[test]

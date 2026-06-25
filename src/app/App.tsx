@@ -1,13 +1,13 @@
-import { useEffect, useId, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { AppHero } from "./components/AppHero";
 import { CollectionImportSection } from "./components/CollectionImportSection";
 import { TestHarnessSection } from "./components/TestHarnessSection";
+import { WorkflowStepper } from "./components/WorkflowStepper";
 import {
   buildReportFileName,
-  formatCount,
   normalizeRunnerOptionsForExecution,
   truncateLog,
 } from "./utils";
-import appIconUrl from "../assets/app-icon.svg";
 import { useCollectionImport } from "../features/import/useCollectionImport";
 import { useSmokeTest } from "../features/test/useSmokeTest";
 import { useTestHarness } from "../features/test/useTestHarness";
@@ -22,6 +22,7 @@ import { getTauriErrorMessage } from "../lib/tauri/errors";
 import { useCurlImport } from "./hooks/useCurlImport";
 import { useRunnerOptions } from "./hooks/useRunnerOptions";
 import { useWorkspaceLayout } from "./hooks/useWorkspaceLayout";
+import type { WorkflowStep } from "./workflow";
 
 function buildSmokeInputKey(
   collection: CollectionInfo | null,
@@ -54,26 +55,6 @@ function buildSmokeInputKey(
     ),
     selectedRequestIds: [...runnerOptions.selectedRequestIds].sort(),
   });
-}
-
-function AppIcon() {
-  return <img className="app-icon" src={appIconUrl} alt="" aria-hidden="true" />;
-}
-
-type WorkflowStep = "source" | "configure" | "run";
-
-const workflowSteps: WorkflowStep[] = ["source", "configure", "run"];
-
-function getWorkflowStepLabel(step: WorkflowStep) {
-  if (step === "source") {
-    return "Source";
-  }
-
-  if (step === "configure") {
-    return "Configure";
-  }
-
-  return "Run";
 }
 
 export function App() {
@@ -199,8 +180,6 @@ export function App() {
     ...testState,
     output: truncateLog(testState.output),
   };
-  const activeWorkflowIndex = workflowSteps.indexOf(activeWorkflowStep);
-
   const harnessStatus = {
     collection,
     testState: displayedTestState,
@@ -277,35 +256,6 @@ export function App() {
       return "configure";
     });
   }, [collection]);
-
-  function focusWorkflowTab(index: number) {
-    workflowTabRefs.current[index]?.focus();
-  }
-
-  function handleWorkflowTabKeyDown(event: KeyboardEvent<HTMLButtonElement>, index: number) {
-    let nextIndex: number;
-
-    if (event.key === "ArrowRight") {
-      nextIndex = (index + 1) % workflowSteps.length;
-    } else if (event.key === "ArrowLeft") {
-      nextIndex = (index - 1 + workflowSteps.length) % workflowSteps.length;
-    } else if (event.key === "Home") {
-      nextIndex = 0;
-    } else if (event.key === "End") {
-      nextIndex = workflowSteps.length - 1;
-    } else {
-      return;
-    }
-
-    event.preventDefault();
-    const nextStep = workflowSteps[nextIndex];
-    if (!nextStep) {
-      return;
-    }
-
-    setActiveWorkflowStep(nextStep);
-    focusWorkflowTab(nextIndex);
-  }
 
   async function handleFileImport() {
     setIsPickingFile(true);
@@ -390,83 +340,19 @@ export function App() {
 
   return (
     <div className="app-shell">
-      <header className="app-hero">
-        <div className="app-hero-copy">
-          <p className="eyebrow">Load Testing Workspace</p>
-          <div className="app-title-row">
-            <span className={`status-pill is-${displayedTestStatus}`}>
-              {displayedTestStatus.replace("_", " ")}
-            </span>
-          </div>
-          <div className="app-brand-row">
-            <AppIcon />
-            <h1>Load Rift</h1>
-          </div>
-          <p className="app-subtitle">
-            {collection
-              ? `${collection.name} is ready. Configure, run, and review without dashboard clutter.`
-              : "Import a Postman collection, set runtime inputs, and run local k6 checks."}
-          </p>
-        </div>
-
-        <dl className="overview-grid">
-          <div className="overview-card">
-            <dt>Collection</dt>
-            <dd>{collection?.name ?? "No collection loaded"}</dd>
-          </div>
-          <div className="overview-card">
-            <dt>Requests</dt>
-            <dd>{collection ? formatCount("request", collection.requestCount) : "0 requests"}</dd>
-          </div>
-          <div className="overview-card">
-            <dt>Variables</dt>
-            <dd>
-              {collection
-                ? formatCount("variable", collection.runtimeVariables.length)
-                : "0 variables"}
-            </dd>
-          </div>
-          <div className="overview-card">
-            <dt>Runner</dt>
-            <dd>{displayedVerdict}</dd>
-          </div>
-        </dl>
-      </header>
+      <AppHero
+        collection={collection}
+        displayedTestStatus={displayedTestStatus}
+        displayedVerdict={displayedVerdict}
+      />
 
       <main ref={workspaceShellRef} className="workspace-shell">
-        <nav className="workflow-stepper" aria-label="Load test workflow">
-          <div className="workflow-step-tabs" role="tablist" aria-label="Workflow steps">
-            {workflowSteps.map((step, index) => {
-              const isActive = activeWorkflowStep === step;
-              const tabId = `${workflowTabsId}-${step}-tab`;
-              const panelId = `${workflowTabsId}-${step}-panel`;
-
-              return (
-                <button
-                  key={step}
-                  ref={(element) => {
-                    workflowTabRefs.current[index] = element;
-                  }}
-                  type="button"
-                  role="tab"
-                  id={tabId}
-                  aria-selected={isActive}
-                  aria-controls={panelId}
-                  tabIndex={isActive ? 0 : -1}
-                  className={isActive ? "is-active" : ""}
-                  onClick={() => setActiveWorkflowStep(step)}
-                  onKeyDown={(event) => handleWorkflowTabKeyDown(event, index)}
-                >
-                  <span className="workflow-step-index">{index + 1}</span>
-                  <span>{getWorkflowStepLabel(step)}</span>
-                </button>
-              );
-            })}
-          </div>
-          <p className="workflow-step-status">
-            Step {activeWorkflowIndex + 1} of {workflowSteps.length}
-          </p>
-        </nav>
+        <WorkflowStepper
+          activeWorkflowStep={activeWorkflowStep}
+          workflowTabsId={workflowTabsId}
+          tabRefs={workflowTabRefs}
+          onStepChange={setActiveWorkflowStep}
+        />
 
         <div
           ref={sourcePanelRef}

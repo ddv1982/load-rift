@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLoadRiftApi } from "../../lib/loadrift/context";
+import { appendLogOutput } from "../../lib/loadrift/outputLog";
 import {
   DEFAULT_LIVE_METRICS,
   normalizeGetTestStatusResponse,
@@ -82,7 +83,7 @@ export function useTestHarness() {
 
         setState((previous) => ({
           ...previous,
-          output: `${previous.output}${data}`,
+          output: appendLogOutput(previous.output, data),
         }));
       });
 

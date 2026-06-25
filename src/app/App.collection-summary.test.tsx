@@ -102,6 +102,35 @@ describe("App collection summary", () => {
     expect(screen.getByText("Nested folder request")).toBeInTheDocument();
   });
 
+  it("limits initial rendering for large request lists and reveals more on demand", () => {
+    appHookTestState.importHookState = createImportHookState({
+      name: "Large Fixture Collection",
+      requestCount: 300,
+      folderCount: 0,
+      requests: Array.from({ length: 300 }, (_, index) => ({
+        id: `request-${index}`,
+        name: `Request ${index}`,
+        method: "GET",
+        url: `{{environment}}/items/${index}`,
+        folderPath: [],
+      })),
+      runtimeVariables: [{ key: "environment" }],
+    });
+
+    renderApp(createApiMock());
+    openWorkflowStep("Source");
+
+    expect(screen.getByText("Request 0")).toBeInTheDocument();
+    expect(screen.getByText("Request 249")).toBeInTheDocument();
+    expect(screen.queryByText("Request 299")).not.toBeInTheDocument();
+    expect(screen.getByText("50 additional rows hidden")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show more" }));
+
+    expect(screen.getByText("Request 299")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+  });
+
   it("clears active request filters and restores hidden rows", async () => {
     appHookTestState.importHookState = createImportHookState(anotherCollection);
 

@@ -896,14 +896,12 @@ fn run_generated_script_fixture(
     file_prefix: &str,
     auth_token: Option<&str>,
 ) -> Option<(String, Vec<String>)> {
-    let Some((output, summary_json, requests)) = run_generated_script_fixture_with_summary(
+    let (output, summary_json, requests) = run_generated_script_fixture_with_summary(
         script,
         file_prefix,
         auth_token,
         "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nOK",
-    ) else {
-        return None;
-    };
+    )?;
 
     assert!(
         output.status.success(),

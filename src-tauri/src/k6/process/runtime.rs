@@ -533,13 +533,15 @@ pub fn start_k6_process(
         run_id.clone(),
         metrics_shutdown.clone(),
     );
-    spawn_waiter(
+    spawn_waiter(WaiterContext {
         child,
         stop_requested,
         artifacts,
-        stdout_forwarder,
-        stderr_forwarder,
-        metrics_forwarder,
+        forwarders: WaitForwarders {
+            stdout: stdout_forwarder,
+            stderr: stderr_forwarder,
+            metrics: metrics_forwarder,
+        },
         metrics_shutdown,
         k6_binary,
         pre_spawn_diagnostics,
@@ -548,8 +550,8 @@ pub fn start_k6_process(
         app,
         state,
         run_id,
-        options.vus,
-    );
+        configured_vus: options.vus,
+    });
 
     Ok(())
 }
@@ -590,9 +592,7 @@ fn spawn_output_forwarder(
     run_id: String,
     stderr_tail: Option<Arc<Mutex<BoundedLineBuffer>>>,
 ) -> Option<JoinHandle<()>> {
-    let Some(stream) = stream else {
-        return None;
-    };
+    let stream = stream?;
 
     Some(thread::spawn(move || {
         let reader = BufReader::new(stream);
@@ -613,7 +613,7 @@ fn spawn_output_forwarder(
                     .as_ref()
                     .is_some_and(|active| active.run_id == run_id)
                 {
-                    app_state.latest_output.push_str(&payload);
+                    app_state.append_latest_output(&payload);
                     true
                 } else {
                     false
@@ -638,6 +638,62 @@ fn spawn_output_forwarder(
 enum ChildSettlement {
     Settled { status: ExitStatus, killed: bool },
     Unsettled { message: String },
+}
+
+struct WaitForwarders {
+    stdout: Option<JoinHandle<()>>,
+    stderr: Option<JoinHandle<()>>,
+    metrics: JoinHandle<()>,
+}
+
+struct WaiterContext {
+    child: Arc<Mutex<Child>>,
+    stop_requested: Arc<AtomicBool>,
+    artifacts: RunTempArtifacts,
+    forwarders: WaitForwarders,
+    metrics_shutdown: Arc<AtomicBool>,
+    k6_binary: K6BinaryResolution,
+    pre_spawn_diagnostics: RunArtifactDiagnostics,
+    retention_policy: ArtifactRetentionPolicy,
+    stderr_tail: Arc<Mutex<BoundedLineBuffer>>,
+    app: AppHandle,
+    state: SharedAppState,
+    run_id: String,
+    configured_vus: u32,
+}
+
+#[derive(Clone, Copy)]
+struct RunExit {
+    exited_successfully: bool,
+    exit_code: Option<i32>,
+}
+
+#[derive(Clone, Copy)]
+struct CompletionContext<'a> {
+    app: &'a AppHandle,
+    state: &'a SharedAppState,
+    run_id: &'a str,
+    run_exit: RunExit,
+    include_artifact_paths: bool,
+    stderr_tail: &'a str,
+}
+
+struct CompletionPayload {
+    metrics: LiveMetrics,
+    result: crate::models::TestResult,
+    summary_json: Option<String>,
+    result_source: TestResultSource,
+    summary_issue: Option<String>,
+}
+
+struct FallbackCompletionContext<'a> {
+    completion: CompletionContext<'a>,
+    summary_json: Option<String>,
+    summary_issue: &'a str,
+    k6_binary: &'a K6BinaryResolution,
+    pre_spawn_diagnostics: &'a RunArtifactDiagnostics,
+    fallback_diagnostics: &'a RunArtifactDiagnostics,
+    retention_policy: ArtifactRetentionPolicy,
 }
 
 fn terminate_and_reap_child(child: &mut Child) -> ChildSettlement {
@@ -714,24 +770,23 @@ fn cleanup_after_post_spawn_start_failure(
     )
 }
 
-fn spawn_waiter(
-    child: std::sync::Arc<std::sync::Mutex<Child>>,
-    stop_requested: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    artifacts: RunTempArtifacts,
-    stdout_forwarder: Option<JoinHandle<()>>,
-    stderr_forwarder: Option<JoinHandle<()>>,
-    metrics_forwarder: JoinHandle<()>,
-    metrics_shutdown: Arc<AtomicBool>,
-    k6_binary: K6BinaryResolution,
-    pre_spawn_diagnostics: RunArtifactDiagnostics,
-    retention_policy: ArtifactRetentionPolicy,
-    stderr_tail: Arc<Mutex<BoundedLineBuffer>>,
-    app: AppHandle,
-    state: SharedAppState,
-    run_id: String,
-    configured_vus: u32,
-) {
+fn spawn_waiter(context: WaiterContext) {
     thread::spawn(move || {
+        let WaiterContext {
+            child,
+            stop_requested,
+            artifacts,
+            forwarders,
+            metrics_shutdown,
+            k6_binary,
+            pre_spawn_diagnostics,
+            retention_policy,
+            stderr_tail,
+            app,
+            state,
+            run_id,
+            configured_vus,
+        } = context;
         let summary_path = artifacts.summary_path.clone();
         let exit_status = loop {
             let maybe_status = {
@@ -772,8 +827,8 @@ fn spawn_waiter(
 
         let stop_requested = stop_requested.load(Ordering::SeqCst);
         metrics_shutdown.store(true, Ordering::SeqCst);
-        let _ = metrics_forwarder.join();
-        wait_for_output_forwarders([stdout_forwarder, stderr_forwarder]);
+        let _ = forwarders.metrics.join();
+        wait_for_output_forwarders([forwarders.stdout, forwarders.stderr]);
         let stderr_tail = stderr_tail_snapshot(&stderr_tail);
 
         if stop_requested {
@@ -784,56 +839,59 @@ fn spawn_waiter(
             return;
         }
 
+        let run_exit = RunExit {
+            exited_successfully: exit_status.success(),
+            exit_code: exit_status.code(),
+        };
+        let completion_context = CompletionContext {
+            app: &app,
+            state: &state,
+            run_id: &run_id,
+            run_exit,
+            include_artifact_paths: retention_policy.preserve_debug(),
+            stderr_tail: &stderr_tail,
+        };
+
         match fs::read_to_string(&summary_path) {
             Ok(summary_json) => match parse_summary(&summary_json, configured_vus) {
                 Ok((result, metrics)) => {
                     emit_completion(
-                        &app,
-                        &state,
-                        &run_id,
-                        exit_status.success(),
-                        exit_status.code(),
-                        metrics,
-                        result,
-                        Some(summary_json.clone()),
-                        TestResultSource::Summary,
-                        None,
-                        retention_policy.preserve_debug(),
-                        &stderr_tail,
+                        completion_context,
+                        CompletionPayload {
+                            metrics,
+                            result,
+                            summary_json: Some(summary_json),
+                            result_source: TestResultSource::Summary,
+                            summary_issue: None,
+                        },
                     );
                 }
                 Err(error) => {
-                    emit_live_metrics_fallback_completion(
-                        &app,
-                        &state,
-                        &run_id,
-                        exit_status.success(),
-                        exit_status.code(),
-                        Some(summary_json.clone()),
-                        &error,
-                        &k6_binary,
-                        &pre_spawn_diagnostics,
-                        &artifacts.diagnostics(),
+                    let fallback_diagnostics = artifacts.diagnostics();
+                    emit_live_metrics_fallback_completion(FallbackCompletionContext {
+                        completion: completion_context,
+                        summary_json: Some(summary_json),
+                        summary_issue: &error,
+                        k6_binary: &k6_binary,
+                        pre_spawn_diagnostics: &pre_spawn_diagnostics,
+                        fallback_diagnostics: &fallback_diagnostics,
                         retention_policy,
-                        &stderr_tail,
-                    );
+                    });
                 }
             },
             Err(error) => {
-                emit_live_metrics_fallback_completion(
-                    &app,
-                    &state,
-                    &run_id,
-                    exit_status.success(),
-                    exit_status.code(),
-                    None,
-                    &summary_file_issue(&summary_path, &error, retention_policy.preserve_debug()),
-                    &k6_binary,
-                    &pre_spawn_diagnostics,
-                    &artifacts.diagnostics(),
+                let summary_issue =
+                    summary_file_issue(&summary_path, &error, retention_policy.preserve_debug());
+                let fallback_diagnostics = artifacts.diagnostics();
+                emit_live_metrics_fallback_completion(FallbackCompletionContext {
+                    completion: completion_context,
+                    summary_json: None,
+                    summary_issue: &summary_issue,
+                    k6_binary: &k6_binary,
+                    pre_spawn_diagnostics: &pre_spawn_diagnostics,
+                    fallback_diagnostics: &fallback_diagnostics,
                     retention_policy,
-                    &stderr_tail,
-                );
+                });
             }
         }
 
@@ -841,27 +899,27 @@ fn spawn_waiter(
     });
 }
 
-fn emit_completion(
-    app: &AppHandle,
-    state: &SharedAppState,
-    run_id: &str,
-    exited_successfully: bool,
-    exit_code: Option<i32>,
-    metrics: LiveMetrics,
-    mut result: crate::models::TestResult,
-    summary_json: Option<String>,
-    result_source: TestResultSource,
-    summary_issue: Option<String>,
-    include_artifact_paths: bool,
-    stderr_tail: &str,
-) -> bool {
-    let completion = completion_status(exited_successfully, exit_code, &result);
+fn emit_completion(context: CompletionContext<'_>, payload: CompletionPayload) -> bool {
+    let CompletionPayload {
+        metrics,
+        mut result,
+        summary_json,
+        result_source,
+        summary_issue,
+    } = payload;
+    let completion = completion_status(
+        context.run_exit.exited_successfully,
+        context.run_exit.exit_code,
+        &result,
+    );
     if completion.threshold_failure_exit {
         result.status = crate::models::TestResultStatus::Failed;
     }
-    let error_message = if !exited_successfully && !completion.threshold_failure_exit {
-        let message = primary_error_from_stderr(stderr_tail, exit_code);
-        Some(if include_artifact_paths {
+    let error_message = if !context.run_exit.exited_successfully
+        && !completion.threshold_failure_exit
+    {
+        let message = primary_error_from_stderr(context.stderr_tail, context.run_exit.exit_code);
+        Some(if context.include_artifact_paths {
             message
         } else {
             redact_loadrift_temp_paths(&message)
@@ -870,8 +928,8 @@ fn emit_completion(
         None
     };
     let stored = store_completion(
-        state,
-        run_id,
+        context.state,
+        context.run_id,
         CompletionRecord {
             metrics: metrics.clone(),
             result: result.clone(),
@@ -888,11 +946,11 @@ fn emit_completion(
         return false;
     }
 
-    let _ = emit_k6_metrics(app, run_id, metrics.clone());
+    let _ = emit_k6_metrics(context.app, context.run_id, metrics.clone());
     let _ = emit_k6_complete(
-        app,
+        context.app,
         TestCompletion {
-            run_id: run_id.to_string(),
+            run_id: context.run_id.to_string(),
             run_state: completion.run_state.clone(),
             finish_reason: completion.finish_reason.clone(),
             metrics,
@@ -905,87 +963,89 @@ fn emit_completion(
 
     if completion.threshold_failure_exit {
         let _ = emit_k6_output(
-            app,
+            context.app,
             "k6 finished with failed thresholds. Review the latest result for the final metrics.\n",
         );
     } else if let Some(error_message) = error_message {
-        let _ = emit_k6_error(app, run_id, &error_message);
+        let _ = emit_k6_error(context.app, context.run_id, &error_message);
     }
 
     true
 }
 
-fn emit_live_metrics_fallback_completion(
-    app: &AppHandle,
-    state: &SharedAppState,
-    run_id: &str,
-    exited_successfully: bool,
-    exit_code: Option<i32>,
-    summary_json: Option<String>,
-    summary_issue: &str,
-    k6_binary: &K6BinaryResolution,
-    pre_spawn_diagnostics: &RunArtifactDiagnostics,
-    fallback_diagnostics: &RunArtifactDiagnostics,
-    retention_policy: ArtifactRetentionPolicy,
-    stderr_tail: &str,
-) {
-    let metrics = state
+fn emit_live_metrics_fallback_completion(context: FallbackCompletionContext<'_>) {
+    let metrics = context
+        .completion
+        .state
         .lock()
         .ok()
         .and_then(|app_state| app_state.latest_metrics.clone())
         .unwrap_or_default();
-    let result = result_from_live_metrics(&metrics, exit_code);
+    let result = result_from_live_metrics(&metrics, context.completion.run_exit.exit_code);
 
     let stored = emit_completion(
-        app,
-        state,
-        run_id,
-        exited_successfully,
-        exit_code,
-        metrics,
-        result,
-        summary_json,
-        TestResultSource::LiveMetricsFallback,
-        Some(summary_issue.to_string()),
-        retention_policy.preserve_debug(),
-        stderr_tail,
+        context.completion,
+        CompletionPayload {
+            metrics,
+            result,
+            summary_json: context.summary_json,
+            result_source: TestResultSource::LiveMetricsFallback,
+            summary_issue: Some(context.summary_issue.to_string()),
+        },
     );
 
     if !stored {
         return;
     }
 
-    let include_paths = retention_policy.preserve_debug();
+    let include_paths = context.retention_policy.preserve_debug();
     let message = format!(
-        "Load Rift used live metrics because the structured k6 summary could not be processed: {summary_issue}\n"
+        "Load Rift used live metrics because the structured k6 summary could not be processed: {}\n",
+        context.summary_issue
     );
-    append_run_output_and_emit(state, app, run_id, &message);
+    append_run_output_and_emit(
+        context.completion.state,
+        context.completion.app,
+        context.completion.run_id,
+        &message,
+    );
 
     log::warn!(
         "Load Rift k6 fallback diagnostics: binary={} source={} exitCode={} beforeSpawn=[{}] fallback=[{}]",
-        k6_binary.path.display(),
-        k6_binary.source,
-        exit_code
+        context.k6_binary.path.display(),
+        context.k6_binary.source,
+        context
+            .completion
+            .run_exit
+            .exit_code
             .map(|code| code.to_string())
             .unwrap_or_else(|| "unknown".to_string()),
-        format_artifact_diagnostics(pre_spawn_diagnostics),
-        format_artifact_diagnostics(fallback_diagnostics)
+        format_artifact_diagnostics(context.pre_spawn_diagnostics),
+        format_artifact_diagnostics(context.fallback_diagnostics)
     );
     let diagnostics = format!(
         "Load Rift k6 diagnostics: binary={} source={} exitCode={} beforeSpawn=[{}] fallback=[{}]\n",
         if include_paths {
-            k6_binary.path.display().to_string()
+            context.k6_binary.path.display().to_string()
         } else {
             "<redacted>".to_string()
         },
-        k6_binary.source,
-        exit_code
+        context.k6_binary.source,
+        context
+            .completion
+            .run_exit
+            .exit_code
             .map(|code| code.to_string())
             .unwrap_or_else(|| "unknown".to_string()),
-        format_artifact_diagnostics_for_user(pre_spawn_diagnostics, include_paths),
-        format_artifact_diagnostics_for_user(fallback_diagnostics, include_paths)
+        format_artifact_diagnostics_for_user(context.pre_spawn_diagnostics, include_paths),
+        format_artifact_diagnostics_for_user(context.fallback_diagnostics, include_paths)
     );
-    append_run_output_and_emit(state, app, run_id, &diagnostics);
+    append_run_output_and_emit(
+        context.completion.state,
+        context.completion.app,
+        context.completion.run_id,
+        &diagnostics,
+    );
 }
 
 fn finish_artifact_cleanup(
@@ -1032,7 +1092,7 @@ fn append_run_output_and_emit(
             .as_ref()
             .is_some_and(|active| active.run_id == run_id);
         if latest_run_matches && (active_matches || app_state.active_test.is_none()) {
-            app_state.latest_output.push_str(message);
+            app_state.append_latest_output(message);
             true
         } else {
             false

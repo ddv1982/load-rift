@@ -52,6 +52,8 @@ export function CollectionSummaryCard({
     folderRows,
     collapsedFolderSet,
     visibleRows,
+    renderedRows,
+    hiddenVisibleRowCount,
     allRequestIds,
     visibleRequestIds,
     selectedCount,
@@ -60,6 +62,7 @@ export function CollectionSummaryCard({
     filteredSelectedCount,
     allFoldersCollapsed,
     clearFilters,
+    showMoreVisibleRows,
     updateSelection,
     toggleFolder,
     toggleAllFolders,
@@ -219,104 +222,118 @@ export function CollectionSummaryCard({
         </div>
 
         {visibleRows.length ? (
-          <ul className="request-list request-tree-list">
-            {visibleRows.map((row) => {
-              if (row.kind === "folder") {
-                const selectedDescendants = row.requestIds.filter((requestId) =>
-                  selectedRequestSet.has(requestId)
-                ).length;
-                const fullySelected =
-                  row.requestIds.length > 0 &&
-                  selectedDescendants === row.requestIds.length;
-                const isCollapsed = collapsedFolderSet.has(row.id);
+          <>
+            <ul className="request-list request-tree-list">
+              {renderedRows.map((row) => {
+                if (row.kind === "folder") {
+                  const selectedDescendants = row.requestIds.filter((requestId) =>
+                    selectedRequestSet.has(requestId)
+                  ).length;
+                  const fullySelected =
+                    row.requestIds.length > 0 &&
+                    selectedDescendants === row.requestIds.length;
+                  const isCollapsed = collapsedFolderSet.has(row.id);
+
+                  return (
+                    <li
+                      key={row.id}
+                      className={`request-tree-row request-tree-folder${showWeights ? " is-weighted" : ""}`}
+                    >
+                      <SelectionCheckbox
+                        checked={fullySelected}
+                        indeterminate={
+                          selectedDescendants > 0 && selectedDescendants < row.requestIds.length
+                        }
+                        onChange={(event) =>
+                          updateSelection(row.requestIds, event.target.checked)
+                        }
+                        aria-label={`Run folder ${row.name}`}
+                      />
+                      <div
+                        className="request-tree-item request-tree-item-folder"
+                        style={{ paddingInlineStart: `${row.depth * 1.1}rem` }}
+                      >
+                        <button
+                          type="button"
+                          className="folder-toggle"
+                          onClick={() => toggleFolder(row.id)}
+                          aria-label={`${isCollapsed ? "Expand" : "Collapse"} folder ${row.name}`}
+                          aria-expanded={!isCollapsed}
+                        >
+                          <span className={`folder-toggle-icon${isCollapsed ? "" : " is-open"}`}>
+                            ▸
+                          </span>
+                          <strong className="request-folder-name">{row.name}</strong>
+                        </button>
+                        <span className="request-folder-meta">
+                          {formatCount("request", row.requestIds.length)}
+                        </span>
+                      </div>
+                      <em className="request-url">{row.pathLabel}</em>
+                      {showWeights ? <span className="request-weight-placeholder">—</span> : null}
+                    </li>
+                  );
+                }
+
+                const requestWeight = getRequestWeight(row.request.id, requestWeights);
 
                 return (
                   <li
-                    key={row.id}
-                    className={`request-tree-row request-tree-folder${showWeights ? " is-weighted" : ""}`}
+                    key={row.request.id}
+                    className={`request-tree-row request-tree-request${showWeights ? " is-weighted" : ""}`}
                   >
                     <SelectionCheckbox
-                      checked={fullySelected}
-                      indeterminate={
-                        selectedDescendants > 0 && selectedDescendants < row.requestIds.length
-                      }
+                      checked={selectedRequestSet.has(row.request.id)}
                       onChange={(event) =>
-                        updateSelection(row.requestIds, event.target.checked)
+                        updateSelection([row.request.id], event.target.checked)
                       }
-                      aria-label={`Run folder ${row.name}`}
+                      aria-label={`Run request ${row.request.name}`}
                     />
                     <div
-                      className="request-tree-item request-tree-item-folder"
+                      className="request-tree-item"
                       style={{ paddingInlineStart: `${row.depth * 1.1}rem` }}
                     >
-                      <button
-                        type="button"
-                        className="folder-toggle"
-                        onClick={() => toggleFolder(row.id)}
-                        aria-label={`${isCollapsed ? "Expand" : "Collapse"} folder ${row.name}`}
-                        aria-expanded={!isCollapsed}
-                      >
-                        <span className={`folder-toggle-icon${isCollapsed ? "" : " is-open"}`}>
-                          ▸
-                        </span>
-                        <strong className="request-folder-name">{row.name}</strong>
-                      </button>
-                      <span className="request-folder-meta">
-                        {formatCount("request", row.requestIds.length)}
-                      </span>
+                      <strong className="request-method">{row.request.method}</strong>
+                      <span className="request-name">{row.request.name}</span>
                     </div>
-                    <em className="request-url">{row.pathLabel}</em>
-                    {showWeights ? <span className="request-weight-placeholder">—</span> : null}
+                    <em className="request-url">
+                      {row.request.url || "No URL extracted"}
+                    </em>
+                    {showWeights ? (
+                      <label className="request-weight-field">
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={requestWeight}
+                          disabled={!selectedRequestSet.has(row.request.id)}
+                          onChange={(event) =>
+                            onRequestWeightChange(
+                              row.request.id,
+                              event.target.value === "" ? 1 : Number(event.target.value),
+                            )
+                          }
+                          aria-label={`Weight for ${row.request.name}`}
+                        />
+                      </label>
+                    ) : null}
                   </li>
                 );
-              }
-
-              const requestWeight = getRequestWeight(row.request.id, requestWeights);
-
-              return (
-                <li
-                  key={row.request.id}
-                  className={`request-tree-row request-tree-request${showWeights ? " is-weighted" : ""}`}
+              })}
+            </ul>
+            {hiddenVisibleRowCount > 0 ? (
+              <div className="request-list-pagination">
+                <span>{formatCount("additional row", hiddenVisibleRowCount)} hidden</span>
+                <button
+                  type="button"
+                  className="ghost summary-action-button"
+                  onClick={showMoreVisibleRows}
                 >
-                  <SelectionCheckbox
-                    checked={selectedRequestSet.has(row.request.id)}
-                    onChange={(event) =>
-                      updateSelection([row.request.id], event.target.checked)
-                    }
-                    aria-label={`Run request ${row.request.name}`}
-                  />
-                  <div
-                    className="request-tree-item"
-                    style={{ paddingInlineStart: `${row.depth * 1.1}rem` }}
-                  >
-                    <strong className="request-method">{row.request.method}</strong>
-                    <span className="request-name">{row.request.name}</span>
-                  </div>
-                  <em className="request-url">
-                    {row.request.url || "No URL extracted"}
-                  </em>
-                  {showWeights ? (
-                    <label className="request-weight-field">
-                      <input
-                        type="number"
-                        min={0}
-                        step={1}
-                        value={requestWeight}
-                        disabled={!selectedRequestSet.has(row.request.id)}
-                        onChange={(event) =>
-                          onRequestWeightChange(
-                            row.request.id,
-                            event.target.value === "" ? 1 : Number(event.target.value),
-                          )
-                        }
-                        aria-label={`Weight for ${row.request.name}`}
-                      />
-                    </label>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
+                  Show more
+                </button>
+              </div>
+            ) : null}
+          </>
         ) : (
           <div className="summary-empty-state summary-filter-state">
             <p>No requests match the current filters.</p>

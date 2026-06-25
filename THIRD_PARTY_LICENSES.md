@@ -40,7 +40,7 @@ licensed:
 
 | Ecosystem | Package | Version | License |
 | --- | --- | --- | --- |
-| npm | `@tauri-apps/api` | 2.11.0 | Apache-2.0 OR MIT |
+| npm | `@tauri-apps/api` | 2.11.1 | Apache-2.0 OR MIT |
 | npm | `@tauri-apps/plugin-dialog` | 2.7.1 | MIT OR Apache-2.0 |
 | npm | `react` | 19.2.7 | MIT |
 | npm | `react-dom` | 19.2.7 | MIT |

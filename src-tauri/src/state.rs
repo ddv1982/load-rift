@@ -5,6 +5,10 @@ use std::sync::{Arc, Mutex};
 use crate::importing::RuntimeCollection;
 use crate::models::{LiveMetrics, TestResult, TestResultSource, TestStatus};
 
+const MAX_LATEST_OUTPUT_BYTES: usize = 256 * 1024;
+const OUTPUT_TRUNCATION_NOTICE: &str =
+    "[Load Rift truncated earlier k6 output to keep the app responsive.]\n";
+
 #[derive(Clone)]
 pub struct RunningTest {
     pub run_id: String,
@@ -44,6 +48,11 @@ impl AppState {
         self.latest_summary_issue = None;
         self.latest_output.clear();
     }
+
+    pub fn append_latest_output(&mut self, output: &str) {
+        self.latest_output.push_str(output);
+        truncate_to_latest_output_tail(&mut self.latest_output);
+    }
 }
 
 impl Default for AppState {
@@ -68,3 +77,45 @@ impl Default for AppState {
 }
 
 pub type SharedAppState = Arc<Mutex<AppState>>;
+
+fn truncate_to_latest_output_tail(output: &mut String) {
+    if output.len() <= MAX_LATEST_OUTPUT_BYTES {
+        return;
+    }
+
+    let retain_budget = MAX_LATEST_OUTPUT_BYTES.saturating_sub(OUTPUT_TRUNCATION_NOTICE.len());
+    let mut retain_start = output.len().saturating_sub(retain_budget);
+    while retain_start < output.len() && !output.is_char_boundary(retain_start) {
+        retain_start += 1;
+    }
+
+    output.replace_range(..retain_start, OUTPUT_TRUNCATION_NOTICE);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{AppState, MAX_LATEST_OUTPUT_BYTES, OUTPUT_TRUNCATION_NOTICE};
+
+    #[test]
+    fn append_latest_output_keeps_recent_tail_when_large() {
+        let mut state = AppState::default();
+        state.append_latest_output(&"a".repeat(MAX_LATEST_OUTPUT_BYTES));
+        state.append_latest_output("tail");
+
+        assert!(state.latest_output.len() <= MAX_LATEST_OUTPUT_BYTES);
+        assert!(state.latest_output.starts_with(OUTPUT_TRUNCATION_NOTICE));
+        assert!(state.latest_output.ends_with("tail"));
+    }
+
+    #[test]
+    fn append_latest_output_preserves_utf8_boundaries() {
+        let mut state = AppState::default();
+        state.append_latest_output(&"🙂".repeat(MAX_LATEST_OUTPUT_BYTES / 4));
+        state.append_latest_output("done");
+
+        assert!(state
+            .latest_output
+            .is_char_boundary(state.latest_output.len()));
+        assert!(state.latest_output.ends_with("done"));
+    }
+}
