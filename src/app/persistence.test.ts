@@ -129,6 +129,24 @@ describe("runner preferences persistence", () => {
     });
   });
 
+  it("does not persist runtime request headers or body overrides", () => {
+    saveRunnerPreferences({
+      ...DEFAULT_K6_OPTIONS,
+      requestHeaders: {
+        Customerid: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        Authorization: "Basic abc123",
+      },
+      requestBodyOverride: {
+        requestId: "request-a",
+        body: '{"module":"Inbreeding"}',
+      },
+    });
+
+    const loadedPreferences = loadRunnerPreferences(DEFAULT_K6_OPTIONS);
+    expect(loadedPreferences.requestHeaders).toEqual({});
+    expect(loadedPreferences.requestBodyOverride).toBeUndefined();
+  });
+
   it("scopes request weights by collection key", () => {
     const firstCollectionKey = createCollectionStorageKey(orderedCollection);
     const secondCollectionKey = createCollectionStorageKey({

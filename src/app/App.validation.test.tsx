@@ -27,6 +27,13 @@ const CHANGED_BASE_URL_CURL_SNIPPET =
   "curl --location 'https://api.changed.example.com/entities/alpha'";
 const TOKEN_ONLY_CURL_SNIPPET =
   "curl --header 'Authorization: Bearer token-only'";
+const POSTMAN_REQUEST_DETAILS_CURL_SNIPPET = `curl --location 'https://acc.crvherdoptimizer.com/breeding-catalog/catalog/api/module/build' \\
+--header 'Customerid: f47ac10b-58cc-4372-a567-0e02b2c3d479' \\
+--header 'Modulename: Inbreeding' \\
+--header 'Applicationname: herdoptimizer' \\
+--header 'Content-Type: application/json' \\
+--header 'Authorization: Bearer e.' \\
+--data '{"module":"Inbreeding"}'`;
 const SOAP_RESPONSE_URL = "https://api.example.com/soap/login";
 const SOAP_RESPONSE_PREVIEW = "<Envelope>ok</Envelope>";
 const EMPTY_SMOKE_TEST_MESSAGE =
@@ -73,7 +80,9 @@ function applyCurlSnippet(snippet: string) {
       value: snippet,
     },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Extract URL & Token" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Apply Request Details" }),
+  );
 }
 
 async function advanceValidationTimer() {
@@ -332,7 +341,7 @@ describe("App validation lifecycle", () => {
     ).toBe("integration-token");
     expect(
       screen.getByText(
-        /Extracted base URL https:\/\/api\.example\.com and bearer token/,
+        /Applied base URL https:\/\/api\.example\.com and bearer token/,
       ),
     ).toHaveTextContent("cleared to avoid keeping tokens on screen");
     expect(
@@ -343,6 +352,70 @@ describe("App validation lifecycle", () => {
     expect(
       (screen.getByLabelText("Environment") as HTMLInputElement).value,
     ).toBe("https://api.example.com");
+  });
+
+  it("applies cURL headers and a single-request body override to validation, smoke, and start options", async () => {
+    const api = createApiMock();
+
+    renderApp(api);
+
+    await advanceValidationTimer();
+    vi.mocked(api.validateTestConfiguration).mockClear();
+
+    applyCurlSnippet(POSTMAN_REQUEST_DETAILS_CURL_SNIPPET);
+
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
+      "https://acc.crvherdoptimizer.com",
+    );
+    expect(
+      (screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value,
+    ).toBe("e.");
+    expect(screen.getByDisplayValue("Customerid")).toBeInTheDocument();
+    expect(
+      screen.getByDisplayValue("f47ac10b-58cc-4372-a567-0e02b2c3d479"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Applied base URL https:\/\/acc\.crvherdoptimizer\.com, bearer token, 4 request headers, and request body override/,
+      ),
+    ).toBeInTheDocument();
+
+    await advanceValidationTimer();
+
+    const expectedOptions: Partial<K6Options> = {
+      baseUrl: "https://acc.crvherdoptimizer.com",
+      authToken: "e.",
+      requestHeaders: {
+        Customerid: "f47ac10b-58cc-4372-a567-0e02b2c3d479",
+        Modulename: "Inbreeding",
+        Applicationname: "herdoptimizer",
+        "Content-Type": "application/json",
+      },
+      requestBodyOverride: {
+        requestId: "request-0",
+        body: '{"module":"Inbreeding"}',
+      },
+    };
+
+    const validationCalls = vi.mocked(api.validateTestConfiguration).mock
+      .calls as Array<[{ options: K6Options }]>;
+    const validationOptions =
+      validationCalls[validationCalls.length - 1]?.[0].options;
+    expect(validationOptions).toMatchObject(expectedOptions);
+
+    fireEvent.click(getRunAction("Smoke Test"));
+    const smokeCalls = vi.mocked(api.smokeTestRequests).mock.calls as Array<
+      [{ options: K6Options }]
+    >;
+    const smokeOptions = smokeCalls[smokeCalls.length - 1]?.[0].options;
+    expect(smokeOptions).toMatchObject(expectedOptions);
+
+    await flushMicrotasks();
+
+    fireEvent.click(getRunAction("Start Test"));
+    expect(appHookTestState.testHookState.startTest).toHaveBeenCalledWith(
+      expect.objectContaining(expectedOptions),
+    );
   });
 
   it("allows manual base URL edits for host-style variables without persisting mirrored overrides", async () => {

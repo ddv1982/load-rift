@@ -65,6 +65,8 @@ export function TestHarnessConfigurePanel({
     onTrafficModeChange,
     onAuthTokenChange,
     onBaseUrlChange,
+    onRequestHeadersChange,
+    onRequestBodyOverrideChange,
     onCurlInputChange,
     onApplyCurlCommand,
     onRuntimeVariableChange,
@@ -235,6 +237,8 @@ export function TestHarnessConfigurePanel({
                 onTrafficModeChange={onTrafficModeChange}
                 onAuthTokenChange={onAuthTokenChange}
                 onBaseUrlChange={onBaseUrlChange}
+                onRequestHeadersChange={onRequestHeadersChange}
+                onRequestBodyOverrideChange={onRequestBodyOverrideChange}
                 onCurlInputChange={onCurlInputChange}
                 onApplyCurlCommand={onApplyCurlCommand}
               />

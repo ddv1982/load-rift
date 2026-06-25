@@ -147,3 +147,34 @@ fn generated_script_supports_weighted_request_scheduling_and_tags() {
         "expected generated script to avoid probabilistic random weighted selection"
     );
 }
+
+#[test]
+fn generated_script_supports_runtime_headers_and_body_override() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    assert!(
+        imported.script.contains("LOADRIFT_REQUEST_HEADERS_JSON"),
+        "expected generated script to parse runtime request headers"
+    );
+    assert!(
+        imported
+            .script
+            .contains("LOADRIFT_REQUEST_BODY_OVERRIDE_JSON"),
+        "expected generated script to parse a request-scoped body override"
+    );
+    assert!(
+        imported.script.contains("insertHeaderCaseInsensitive"),
+        "expected generated script to merge runtime headers case-insensitively"
+    );
+    assert!(
+        imported.script.contains("function resolveRequestBody"),
+        "expected generated script to resolve a request-scoped body override"
+    );
+    assert!(
+        imported
+            .script
+            .contains("requestHeaders, requestBodyOverride"),
+        "expected generated script to pass runtime request details into execution"
+    );
+}

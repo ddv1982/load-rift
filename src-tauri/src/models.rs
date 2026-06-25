@@ -36,6 +36,10 @@ pub struct K6Options {
     pub auth_token: Option<String>,
     pub base_url: Option<String>,
     #[serde(default)]
+    pub request_headers: BTreeMap<String, String>,
+    #[serde(default)]
+    pub request_body_override: Option<RequestBodyOverride>,
+    #[serde(default)]
     pub variable_overrides: BTreeMap<String, String>,
     pub advanced_options_json: Option<String>,
     #[serde(default)]
@@ -44,6 +48,13 @@ pub struct K6Options {
     pub traffic_mode: TrafficMode,
     #[serde(default)]
     pub request_weights: BTreeMap<String, u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RequestBodyOverride {
+    pub request_id: String,
+    pub body: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

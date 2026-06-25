@@ -18,6 +18,8 @@ pub(crate) fn test_k6_options(base_url: Option<&str>) -> K6Options {
         },
         auth_token: None,
         base_url: base_url.map(ToOwned::to_owned),
+        request_headers: Default::default(),
+        request_body_override: None,
         variable_overrides: Default::default(),
         advanced_options_json: None,
         selected_request_ids: (0..64).map(|index| format!("request-{index}")).collect(),

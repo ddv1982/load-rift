@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::models::{K6Options, TrafficMode};
+use crate::models::{K6Options, RequestBodyOverride, TrafficMode};
 
 use super::{ResolvedRuntimeRequest, RuntimeCollection, RuntimeRequest};
 
@@ -90,7 +90,9 @@ fn resolve_request(
     request: &RuntimeRequest,
     context: &RuntimeContext,
 ) -> Result<ResolvedRuntimeRequest, String> {
-    if let Some(missing) = first_unresolved_field(&request.headers, context) {
+    let effective_headers =
+        merge_headers_case_insensitive(&request.headers, &context.request_headers);
+    if let Some(missing) = first_unresolved_field(&effective_headers, context) {
         return Err(format!(
             "Request {:?} still contains unresolved variables in headers: {}",
             request.name,
@@ -98,12 +100,25 @@ fn resolve_request(
         ));
     }
 
-    let resolved_body = if let Some(body) = request.body.as_deref() {
+    let body_override = context
+        .request_body_override
+        .as_ref()
+        .filter(|override_body| override_body.request_id == request.id);
+    let body_template = body_override
+        .map(|override_body| override_body.body.as_str())
+        .or(request.body.as_deref());
+    let encode_body_variable_values = if body_override.is_none() {
+        request.encode_body_variable_values
+    } else {
+        false
+    };
+
+    let resolved_body = if let Some(body) = body_template {
         let (resolved_body, missing) = resolve_template_with_options(
             body,
             &context.values,
             TemplateResolveOptions {
-                encode_variable_values: request.encode_body_variable_values,
+                encode_variable_values: encode_body_variable_values,
                 encode_variable_occurrences: None,
             },
         );
@@ -175,7 +190,7 @@ fn resolve_request(
         name: request.name.clone(),
         method: request.method.clone(),
         url: effective_url,
-        headers: resolve_headers(&request.headers, context),
+        headers: resolve_headers(&effective_headers, context),
         body: resolved_body,
     })
 }
@@ -221,6 +236,35 @@ fn resolve_headers(
     resolved
 }
 
+fn merge_headers_case_insensitive(
+    headers: &BTreeMap<String, String>,
+    overrides: &BTreeMap<String, String>,
+) -> BTreeMap<String, String> {
+    let mut merged = headers.clone();
+
+    for (key, value) in overrides {
+        insert_header_case_insensitive(&mut merged, key.clone(), value.clone());
+    }
+
+    merged
+}
+
+fn insert_header_case_insensitive(
+    headers: &mut BTreeMap<String, String>,
+    key: String,
+    value: String,
+) {
+    if let Some(existing_key) = headers
+        .keys()
+        .find(|existing_key| existing_key.eq_ignore_ascii_case(&key))
+        .cloned()
+    {
+        headers.remove(&existing_key);
+    }
+
+    headers.insert(key, value);
+}
+
 pub(crate) fn build_runtime_context(
     collection: &RuntimeCollection,
     options: &K6Options,
@@ -257,6 +301,8 @@ pub(crate) fn build_runtime_context(
         .base_url
         .as_deref()
         .and_then(normalize_runtime_value);
+    let request_headers = normalize_request_headers(&options.request_headers);
+    let request_body_override = normalize_request_body_override(&options.request_body_override);
     let base_url = configured_base_url.clone();
     let auth_token = first_non_empty([
         options.auth_token.as_deref(),
@@ -286,6 +332,34 @@ pub(crate) fn build_runtime_context(
         values,
         base_url,
         auth_token,
+        request_headers,
+        request_body_override,
+    })
+}
+
+fn normalize_request_headers(headers: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    let mut normalized = BTreeMap::new();
+
+    for (key, value) in headers {
+        let Some(key) = normalize_runtime_value(key) else {
+            continue;
+        };
+
+        normalized.insert(key, value.trim().to_string());
+    }
+
+    normalized
+}
+
+fn normalize_request_body_override(
+    request_body_override: &Option<RequestBodyOverride>,
+) -> Option<RequestBodyOverride> {
+    let request_body_override = request_body_override.as_ref()?;
+    let request_id = normalize_runtime_value(&request_body_override.request_id)?;
+
+    Some(RequestBodyOverride {
+        request_id,
+        body: request_body_override.body.clone(),
     })
 }
 
@@ -439,4 +513,6 @@ pub(crate) struct RuntimeContext {
     pub(crate) values: BTreeMap<String, String>,
     pub(crate) base_url: Option<String>,
     pub(crate) auth_token: Option<String>,
+    pub(crate) request_headers: BTreeMap<String, String>,
+    pub(crate) request_body_override: Option<RequestBodyOverride>,
 }

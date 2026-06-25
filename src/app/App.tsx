@@ -47,6 +47,10 @@ function buildSmokeInputKey(
       : null,
     baseUrl: runnerOptions.baseUrl?.trim() ?? "",
     authToken: runnerOptions.authToken?.trim() ?? "",
+    requestHeaders: Object.entries(runnerOptions.requestHeaders ?? {}).sort(
+      ([leftKey], [rightKey]) => leftKey.localeCompare(rightKey),
+    ),
+    requestBodyOverride: runnerOptions.requestBodyOverride ?? null,
     variableOverrides: Object.entries(runnerOptions.variableOverrides).sort(
       ([leftKey], [rightKey]) => leftKey.localeCompare(rightKey),
     ),
@@ -105,7 +109,7 @@ export function App() {
     curlImportState,
     applyCurlCommand,
     handleCurlInputChange,
-  } = useCurlImport(setRunnerOptions);
+  } = useCurlImport(setRunnerOptions, runnerOptions);
   const { workspaceShellRef, eventLogRef, resultSummaryRef } =
     useWorkspaceLayout({
       output: testState.output,
@@ -235,6 +239,10 @@ export function App() {
     onBaseUrlChange: (value: string) => {
       updateRunnerOption("baseUrl", value);
     },
+    onRequestHeadersChange: (value: Record<string, string>) =>
+      updateRunnerOption("requestHeaders", value),
+    onRequestBodyOverrideChange: (value: K6Options["requestBodyOverride"]) =>
+      updateRunnerOption("requestBodyOverride", value),
     onCurlInputChange: handleCurlInputChange,
     onApplyCurlCommand: applyCurlCommand,
     onRuntimeVariableChange: updateRuntimeVariable,

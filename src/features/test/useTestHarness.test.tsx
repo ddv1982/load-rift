@@ -37,6 +37,7 @@ const startOptions: K6Options = {
   trafficMode: "sequential",
   rampUpTime: "1s",
   thresholds: {},
+  requestHeaders: {},
   variableOverrides: {},
   advancedOptionsJson: "",
   selectedRequestIds: ["request-0"],

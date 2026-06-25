@@ -103,24 +103,40 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     const persistedRequestWeights = collectionKey
       ? (loadCollectionRequestWeights(collectionKey) ?? {})
       : {};
+    const requestIds = new Set(
+      collection?.requests.map((request) => request.id),
+    );
 
     pendingRequestWeightCollectionKey.current = collectionKey;
 
-    setRunnerOptions((previous) => ({
-      ...previous,
-      selectedRequestIds: syncSelectedRequestIds(
-        collection?.requests ?? [],
-        previous.selectedRequestIds,
-      ),
-      requestWeights: syncRequestWeights(
-        collection?.requests ?? [],
-        persistedRequestWeights,
-      ),
-      variableOverrides: syncVariableOverrides(
-        collection?.runtimeVariables ?? [],
-        previous.variableOverrides,
-      ),
-    }));
+    setRunnerOptions((previous) => {
+      const nextOptions: K6Options = {
+        ...previous,
+        selectedRequestIds: syncSelectedRequestIds(
+          collection?.requests ?? [],
+          previous.selectedRequestIds,
+        ),
+        requestWeights: syncRequestWeights(
+          collection?.requests ?? [],
+          persistedRequestWeights,
+        ),
+        variableOverrides: syncVariableOverrides(
+          collection?.runtimeVariables ?? [],
+          previous.variableOverrides,
+        ),
+      };
+
+      if (
+        previous.requestBodyOverride &&
+        requestIds.has(previous.requestBodyOverride.requestId)
+      ) {
+        nextOptions.requestBodyOverride = previous.requestBodyOverride;
+      } else {
+        delete nextOptions.requestBodyOverride;
+      }
+
+      return nextOptions;
+    });
   }, [collection, collectionKey]);
 
   useEffect(() => {

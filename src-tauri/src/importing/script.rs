@@ -59,6 +59,46 @@ function parseRequestWeights() {{
   return value;
 }}
 
+function parseRequestHeaders() {{
+  const value = parseJsonEnv("LOADRIFT_REQUEST_HEADERS_JSON", {{}});
+  if (!value || typeof value !== "object" || Array.isArray(value)) {{
+    throw new Error("LOADRIFT_REQUEST_HEADERS_JSON must be a JSON object.");
+  }}
+
+  const headers = {{}};
+  for (const [key, headerValue] of Object.entries(value)) {{
+    const headerName = String(key).trim();
+    if (!headerName) {{
+      continue;
+    }}
+
+    headers[headerName] = String(headerValue).trim();
+  }}
+
+  return headers;
+}}
+
+function parseRequestBodyOverride() {{
+  const value = parseJsonEnv("LOADRIFT_REQUEST_BODY_OVERRIDE_JSON", null);
+  if (value === null) {{
+    return null;
+  }}
+
+  if (!value || typeof value !== "object" || Array.isArray(value)) {{
+    throw new Error("LOADRIFT_REQUEST_BODY_OVERRIDE_JSON must be an object or null.");
+  }}
+
+  const requestId = firstNonEmptyValue([value.requestId]);
+  if (!requestId) {{
+    return null;
+  }}
+
+  return {{
+    requestId,
+    body: value.body === undefined || value.body === null ? "" : String(value.body),
+  }};
+}}
+
 function resolveTrafficMode() {{
   const value = (__ENV.LOADRIFT_TRAFFIC_MODE || "sequential").toLowerCase();
   return value === "weighted" ? "weighted" : "sequential";
@@ -253,11 +293,26 @@ function buildContext() {{
   }};
 }}
 
-function resolveHeaders(headers, context) {{
+function insertHeaderCaseInsensitive(headers, key, value) {{
+  const existingKey = Object.keys(headers).find(
+    (candidate) => candidate.toLowerCase() === key.toLowerCase(),
+  );
+  if (existingKey) {{
+    delete headers[existingKey];
+  }}
+
+  headers[key] = value;
+}}
+
+function resolveHeaders(headers, context, requestHeaders) {{
   const resolved = {{}};
 
   for (const [key, value] of Object.entries(headers || {{}})) {{
     resolved[key] = resolveTemplate(value, context);
+  }}
+
+  for (const [key, value] of Object.entries(requestHeaders || {{}})) {{
+    insertHeaderCaseInsensitive(resolved, key, resolveTemplate(value, context));
   }}
 
   const hasAuthorization = Object.keys(resolved).some(
@@ -348,14 +403,24 @@ function findRequestById(requestId) {{
   return request;
 }}
 
-function executeRequest(request, context, trafficMode) {{
+function resolveRequestBody(request, context, requestBodyOverride) {{
+  const hasOverride =
+    requestBodyOverride && requestBodyOverride.requestId === request.id;
+  const body = hasOverride ? requestBodyOverride.body : request.body;
+  if (body === null || body === undefined) {{
+    return undefined;
+  }}
+
+  return resolveTemplate(body, context, {{
+    encodeVariableValues:
+      !hasOverride && request.encodeBodyVariableValues === true,
+  }});
+}}
+
+function executeRequest(request, context, trafficMode, requestHeaders, requestBodyOverride) {{
   const url = resolveUrl(request, context);
-  const headers = resolveHeaders(request.headers, context);
-  const payload = request.body
-    ? resolveTemplate(request.body, context, {{
-        encodeVariableValues: request.encodeBodyVariableValues === true,
-      }})
-    : undefined;
+  const headers = resolveHeaders(request.headers, context, requestHeaders);
+  const payload = resolveRequestBody(request, context, requestBodyOverride);
   const response = http.request(request.method, url, payload, {{
     headers,
     tags: {{
@@ -376,6 +441,8 @@ function executeRequest(request, context, trafficMode) {{
 export default function () {{
   const context = buildContext();
   const requestWeights = parseRequestWeights();
+  const requestHeaders = parseRequestHeaders();
+  const requestBodyOverride = parseRequestBodyOverride();
   const trafficMode = resolveTrafficMode();
   const selectedRequests = getSelectedRequests();
   const runnableRequests = selectRunnableRequests(selectedRequests, trafficMode, requestWeights);
@@ -390,10 +457,16 @@ export default function () {{
 
   if (trafficMode === "weighted") {{
     const weightedSchedule = buildWeightedSchedule(runnableRequests, requestWeights);
-    executeRequest(findRequestById(pickWeightedRequestId(weightedSchedule)), context, trafficMode);
+    executeRequest(
+      findRequestById(pickWeightedRequestId(weightedSchedule)),
+      context,
+      trafficMode,
+      requestHeaders,
+      requestBodyOverride,
+    );
   }} else {{
     for (const request of runnableRequests) {{
-      executeRequest(request, context, trafficMode);
+      executeRequest(request, context, trafficMode, requestHeaders, requestBodyOverride);
     }}
   }}
 

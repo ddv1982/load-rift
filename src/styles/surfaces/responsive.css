@@ -204,11 +204,13 @@
   }
 
   .settings-grid,
-  .manual-entry-grid {
+  .manual-entry-grid,
+  .request-header-row {
     grid-template-columns: 1fr;
   }
 
-  .auth-setup-heading {
+  .auth-setup-heading,
+  .request-headers-heading {
     flex-direction: column;
   }
 

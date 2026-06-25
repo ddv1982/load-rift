@@ -71,7 +71,11 @@ export function normalizeRunnerOptionsForExecution(
   options: K6Options,
 ): K6Options {
   const trimmedBaseUrl = options.baseUrl?.trim() ?? "";
-  const nextOptions = { ...options };
+  const requestHeaders = normalizeRequestHeaders(options.requestHeaders ?? {});
+  const nextOptions = {
+    ...options,
+    requestHeaders,
+  };
 
   if (trimmedBaseUrl) {
     nextOptions.baseUrl = trimmedBaseUrl;
@@ -79,7 +83,37 @@ export function normalizeRunnerOptionsForExecution(
     delete nextOptions.baseUrl;
   }
 
+  const requestBodyOverride = options.requestBodyOverride;
+  if (
+    requestBodyOverride?.requestId.trim() &&
+    typeof requestBodyOverride.body === "string"
+  ) {
+    nextOptions.requestBodyOverride = {
+      requestId: requestBodyOverride.requestId.trim(),
+      body: requestBodyOverride.body,
+    };
+  } else {
+    delete nextOptions.requestBodyOverride;
+  }
+
   return nextOptions;
+}
+
+function normalizeRequestHeaders(
+  headers: Record<string, string>,
+): Record<string, string> {
+  const normalized: Record<string, string> = {};
+
+  for (const [key, value] of Object.entries(headers)) {
+    const trimmedKey = key.trim();
+    if (!trimmedKey) {
+      continue;
+    }
+
+    normalized[trimmedKey] = value.trim();
+  }
+
+  return normalized;
 }
 
 export function formatVariableLabel(key: string): string {

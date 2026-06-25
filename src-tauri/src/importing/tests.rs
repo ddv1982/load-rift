@@ -23,6 +23,7 @@ use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{import_collection, runtime, validate_test_run};
+use crate::models::RequestBodyOverride;
 use crate::test_support::test_k6_options;
 
 fn imported_test_k6_options(
@@ -683,6 +684,102 @@ fn configured_base_url_also_satisfies_environment_placeholders_in_headers() {
 
     validate_test_run(&imported.runtime_collection, &options)
         .expect("configured base url should satisfy environment placeholders consistently");
+}
+
+#[test]
+fn runtime_request_headers_override_collection_headers_case_insensitively() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Header overrides" },
+          "item": [
+            {
+              "name": "Example",
+              "request": {
+                "method": "GET",
+                "header": [
+                  { "key": "customerid", "value": "{{customerId}}" },
+                  { "key": "X-Static", "value": "collection" }
+                ],
+                "url": { "raw": "https://api.example.com/users" }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("fixture should import");
+
+    let mut options = imported_test_k6_options(&imported, None);
+    options.request_headers.insert(
+        "Customerid".to_string(),
+        "f47ac10b-58cc-4372-a567-0e02b2c3d479".to_string(),
+    );
+    options
+        .request_headers
+        .insert("x-static".to_string(), "runtime".to_string());
+    options
+        .request_headers
+        .insert("Applicationname".to_string(), "herdoptimizer".to_string());
+
+    let requests = super::resolve_test_requests(&imported.runtime_collection, &options)
+        .expect("runtime headers should override unresolved collection defaults");
+    let headers = &requests[0].headers;
+
+    assert_eq!(
+        headers.get("Customerid").map(String::as_str),
+        Some("f47ac10b-58cc-4372-a567-0e02b2c3d479")
+    );
+    assert_eq!(headers.get("x-static").map(String::as_str), Some("runtime"));
+    assert_eq!(
+        headers.get("Applicationname").map(String::as_str),
+        Some("herdoptimizer")
+    );
+    assert!(!headers.contains_key("customerid"));
+    assert!(!headers.contains_key("X-Static"));
+}
+
+#[test]
+fn request_body_override_applies_only_to_matching_request_id() {
+    let imported = import_collection(
+        r#"{
+          "info": { "name": "Body override" },
+          "variable": [{ "key": "module", "value": "Inbreeding" }],
+          "item": [
+            {
+              "name": "Build module",
+              "request": {
+                "method": "POST",
+                "body": { "mode": "raw", "raw": "{\"module\":\"collection\"}" },
+                "url": { "raw": "https://api.example.com/build" }
+              }
+            },
+            {
+              "name": "Keep original",
+              "request": {
+                "method": "POST",
+                "body": { "mode": "raw", "raw": "{\"module\":\"other\"}" },
+                "url": { "raw": "https://api.example.com/other" }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect("fixture should import");
+
+    let mut options = imported_test_k6_options(&imported, None);
+    let first_request_id = imported.runtime_collection.requests[0].id.clone();
+    options.request_body_override = Some(RequestBodyOverride {
+        request_id: first_request_id,
+        body: "{\"module\":\"{{module}}\",\"source\":\"curl\"}".to_string(),
+    });
+
+    let requests = super::resolve_test_requests(&imported.runtime_collection, &options)
+        .expect("request body override should resolve");
+
+    assert_eq!(
+        requests[0].body.as_deref(),
+        Some("{\"module\":\"Inbreeding\",\"source\":\"curl\"}")
+    );
+    assert_eq!(requests[1].body.as_deref(), Some("{\"module\":\"other\"}"));
 }
 
 #[test]

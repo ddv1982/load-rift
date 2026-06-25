@@ -26,6 +26,10 @@ interface RunnerSettingsCardProps {
   onTrafficModeChange: (value: K6Options["trafficMode"]) => void;
   onAuthTokenChange: (value: string) => void;
   onBaseUrlChange: (value: string) => void;
+  onRequestHeadersChange: (value: Record<string, string>) => void;
+  onRequestBodyOverrideChange: (
+    value: K6Options["requestBodyOverride"],
+  ) => void;
   onCurlInputChange: (value: string) => void;
   onApplyCurlCommand: () => void;
 }
@@ -46,6 +50,8 @@ export function RunnerSettingsCard({
   onTrafficModeChange,
   onAuthTokenChange,
   onBaseUrlChange,
+  onRequestHeadersChange,
+  onRequestBodyOverrideChange,
   onCurlInputChange,
   onApplyCurlCommand,
 }: RunnerSettingsCardProps) {
@@ -53,6 +59,49 @@ export function RunnerSettingsCard({
   const p95ThresholdErrorId = useId();
   const errorRateThresholdErrorId = useId();
   const curlImportStatusId = useId();
+  const requestHeaders = runnerOptions.requestHeaders ?? {};
+  const requestHeaderEntries = Object.entries(requestHeaders);
+  const requestBodyOverride = runnerOptions.requestBodyOverride;
+
+  function handleAddRequestHeader() {
+    onRequestHeadersChange({
+      ...requestHeaders,
+      [nextHeaderKey(requestHeaders)]: "",
+    });
+  }
+
+  function handleRequestHeaderKeyChange(previousKey: string, nextKey: string) {
+    const nextHeaders: Record<string, string> = {};
+    const nextKeyAlreadyExists = Object.keys(requestHeaders).some(
+      (key) =>
+        key !== previousKey && key.toLowerCase() === nextKey.toLowerCase(),
+    );
+
+    for (const [key, value] of Object.entries(requestHeaders)) {
+      if (key === previousKey) {
+        nextHeaders[nextKey] = value;
+      } else if (
+        !(nextKeyAlreadyExists && key.toLowerCase() === nextKey.toLowerCase())
+      ) {
+        nextHeaders[key] = value;
+      }
+    }
+
+    onRequestHeadersChange(nextHeaders);
+  }
+
+  function handleRequestHeaderValueChange(key: string, value: string) {
+    onRequestHeadersChange({
+      ...requestHeaders,
+      [key]: value,
+    });
+  }
+
+  function handleRemoveRequestHeader(keyToRemove: string) {
+    const nextHeaders = { ...requestHeaders };
+    delete nextHeaders[keyToRemove];
+    onRequestHeadersChange(nextHeaders);
+  }
 
   return (
     <div className="settings-card">
@@ -210,7 +259,7 @@ export function RunnerSettingsCard({
             <textarea
               value={curlInput}
               onChange={(event) => onCurlInputChange(event.target.value)}
-              placeholder="curl --location 'https://api.example.com/users' --header 'Authorization: Bearer ...'"
+              placeholder="curl --location 'https://api.example.com/users' --header 'Customerid: ...' --data '{...}'"
               rows={4}
               aria-describedby={curlImportStatusId}
             />
@@ -223,7 +272,7 @@ export function RunnerSettingsCard({
               onClick={onApplyCurlCommand}
               disabled={!curlInput.trim()}
             >
-              Extract URL & Token
+              Apply Request Details
             </button>
             <p
               id={curlImportStatusId}
@@ -237,7 +286,7 @@ export function RunnerSettingsCard({
               aria-live="polite"
             >
               {curlImportState.message ??
-                "Optional: extract Base URL and bearer token from Postman cURL."}
+                "Optional: apply Base URL, bearer token, headers, and a single-request body from Postman cURL."}
             </p>
           </div>
 
@@ -274,8 +323,126 @@ export function RunnerSettingsCard({
               </label>
             </div>
           </div>
+
+          <div className="request-headers-block">
+            <div className="request-headers-heading">
+              <div>
+                <p className="manual-entry-label">Request headers</p>
+                <p className="inline-note">
+                  Runtime headers override matching collection headers.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="ghost"
+                onClick={handleAddRequestHeader}
+              >
+                Add Header
+              </button>
+            </div>
+
+            {requestHeaderEntries.length > 0 ? (
+              <div className="request-headers-table">
+                {requestHeaderEntries.map(([key, value], index) => (
+                  <div className="request-header-row" key={`${key}-${index}`}>
+                    <label className="field">
+                      <span>Header name</span>
+                      <input
+                        type="text"
+                        value={key}
+                        aria-label={`Request header ${index + 1} name`}
+                        onChange={(event) =>
+                          handleRequestHeaderKeyChange(key, event.target.value)
+                        }
+                        placeholder="Customerid"
+                      />
+                    </label>
+
+                    <label className="field">
+                      <span>Header value</span>
+                      <input
+                        type={isSensitiveHeaderKey(key) ? "password" : "text"}
+                        value={value}
+                        aria-label={`Request header ${index + 1} value`}
+                        onChange={(event) =>
+                          handleRequestHeaderValueChange(
+                            key,
+                            event.target.value,
+                          )
+                        }
+                        placeholder="Header value"
+                      />
+                    </label>
+
+                    <button
+                      type="button"
+                      className="ghost request-header-remove"
+                      onClick={() => handleRemoveRequestHeader(key)}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="inline-note">No runtime headers configured.</p>
+            )}
+          </div>
+
+          {requestBodyOverride ? (
+            <div className="request-body-override-block">
+              <div className="request-headers-heading">
+                <div>
+                  <p className="manual-entry-label">Request body override</p>
+                  <p className="inline-note">
+                    Applies only to request {requestBodyOverride.requestId}.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => onRequestBodyOverrideChange(undefined)}
+                >
+                  Clear Body
+                </button>
+              </div>
+              <label className="field field-wide">
+                <span>Body</span>
+                <textarea
+                  value={requestBodyOverride.body}
+                  onChange={(event) =>
+                    onRequestBodyOverrideChange({
+                      ...requestBodyOverride,
+                      body: event.target.value,
+                    })
+                  }
+                  rows={5}
+                />
+              </label>
+            </div>
+          ) : null}
         </section>
       </div>
     </div>
   );
+}
+
+function nextHeaderKey(headers: Record<string, string>): string {
+  const baseKey = "X-Header";
+  if (!(baseKey in headers)) {
+    return baseKey;
+  }
+
+  for (let index = 2; index < 100; index += 1) {
+    const candidate = `${baseKey}-${index}`;
+    if (!(candidate in headers)) {
+      return candidate;
+    }
+  }
+
+  return `${baseKey}-${Date.now()}`;
+}
+
+function isSensitiveHeaderKey(key: string): boolean {
+  return /(authorization|token|secret|api[-_]?key|cookie|password)/i.test(key);
 }

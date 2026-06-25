@@ -22,11 +22,18 @@ export interface K6Options {
   thresholds: ThresholdConfig;
   authToken?: string;
   baseUrl?: string;
+  requestHeaders: Record<string, string>;
+  requestBodyOverride?: RequestBodyOverride;
   variableOverrides: Record<string, string>;
   advancedOptionsJson?: string;
   selectedRequestIds: string[];
   trafficMode: TrafficMode;
   requestWeights: Record<string, number>;
+}
+
+export interface RequestBodyOverride {
+  requestId: string;
+  body: string;
 }
 
 export interface RuntimeVariable {
@@ -158,6 +165,7 @@ export const DEFAULT_K6_OPTIONS: K6Options = {
     p95ResponseTime: 2000,
     errorRate: 5,
   },
+  requestHeaders: {},
   variableOverrides: {},
   advancedOptionsJson: "",
   selectedRequestIds: [],

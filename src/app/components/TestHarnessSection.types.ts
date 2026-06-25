@@ -62,6 +62,10 @@ export interface TestHarnessActionsProps {
   onTrafficModeChange: (value: K6Options["trafficMode"]) => void;
   onAuthTokenChange: (value: string) => void;
   onBaseUrlChange: (value: string) => void;
+  onRequestHeadersChange: (value: Record<string, string>) => void;
+  onRequestBodyOverrideChange: (
+    value: K6Options["requestBodyOverride"],
+  ) => void;
   onCurlInputChange: (value: string) => void;
   onApplyCurlCommand: () => void;
   onRuntimeVariableChange: (key: string, value: string) => void;

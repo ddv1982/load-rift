@@ -70,6 +70,10 @@ fn launch_k6_process(context: RunLaunchContext) -> Result<(), String> {
     let advanced_options = analyze_advanced_options_json(options.advanced_options_json.as_deref())?;
     let variable_overrides_json = serde_json::to_string(&options.variable_overrides)
         .map_err(|error| format!("Failed to serialize runtime variable overrides: {error}"))?;
+    let request_headers_json = serde_json::to_string(&options.request_headers)
+        .map_err(|error| format!("Failed to serialize runtime request headers: {error}"))?;
+    let request_body_override_json = serde_json::to_string(&options.request_body_override)
+        .map_err(|error| format!("Failed to serialize request body override: {error}"))?;
     let selected_request_ids_json = serde_json::to_string(&options.selected_request_ids)
         .map_err(|error| format!("Failed to serialize selected request ids: {error}"))?;
     let request_weights_json = serde_json::to_string(&options.request_weights)
@@ -116,6 +120,11 @@ fn launch_k6_process(context: RunLaunchContext) -> Result<(), String> {
             options.ramp_up_time.as_deref().unwrap_or("30s"),
         )
         .env("LOADRIFT_VARIABLE_OVERRIDES_JSON", variable_overrides_json)
+        .env("LOADRIFT_REQUEST_HEADERS_JSON", request_headers_json)
+        .env(
+            "LOADRIFT_REQUEST_BODY_OVERRIDE_JSON",
+            request_body_override_json,
+        )
         .env(
             "LOADRIFT_SELECTED_REQUEST_IDS_JSON",
             selected_request_ids_json,
