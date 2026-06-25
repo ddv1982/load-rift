@@ -27,6 +27,10 @@ const CHANGED_BASE_URL_CURL_SNIPPET =
   "curl --location 'https://api.changed.example.com/entities/alpha'";
 const TOKEN_ONLY_CURL_SNIPPET =
   "curl --header 'Authorization: Bearer token-only'";
+const FIRST_HEADER_CURL_SNIPPET =
+  "curl --location 'https://api.example.com/entities/alpha' --header 'X-Trace: first'";
+const SECOND_HEADER_CURL_SNIPPET =
+  "curl --location 'https://api.example.com/entities/alpha' --header 'X-Run: second'";
 const POSTMAN_REQUEST_DETAILS_CURL_SNIPPET = `curl --location 'https://acc.crvherdoptimizer.com/breeding-catalog/catalog/api/module/build' \\
 --header 'Customerid: f47ac10b-58cc-4372-a567-0e02b2c3d479' \\
 --header 'Modulename: Inbreeding' \\
@@ -880,7 +884,7 @@ describe("App validation lifecycle", () => {
     expect(screen.queryByText(SOAP_RESPONSE_PREVIEW)).not.toBeInTheDocument();
   });
 
-  it("preserves existing fields when a later cURL command omits them", () => {
+  it("replaces existing request details when a later cURL command omits them", () => {
     renderApp(createApiMock());
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
@@ -892,11 +896,51 @@ describe("App validation lifecycle", () => {
     applyCurlSnippet(TOKEN_ONLY_CURL_SNIPPET);
 
     expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
-      "https://api.example.com",
+      "",
     );
     expect(
       (screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value,
     ).toBe("token-only");
+  });
+
+  it("replaces cURL-applied request headers instead of merging stale headers", () => {
+    renderApp(createApiMock());
+
+    applyCurlSnippet(FIRST_HEADER_CURL_SNIPPET);
+
+    expect(screen.getByDisplayValue("X-Trace")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("first")).toBeInTheDocument();
+
+    applyCurlSnippet(SECOND_HEADER_CURL_SNIPPET);
+
+    expect(screen.queryByDisplayValue("X-Trace")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("first")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("X-Run")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("second")).toBeInTheDocument();
+  });
+
+  it("clears a cURL-applied request body override when the next cURL has no body", async () => {
+    const api = createApiMock();
+    renderApp(api);
+
+    applyCurlSnippet(POSTMAN_REQUEST_DETAILS_CURL_SNIPPET);
+
+    expect(screen.getByText("Request body override")).toBeInTheDocument();
+
+    applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
+
+    expect(
+      screen.queryByText("Request body override"),
+    ).not.toBeInTheDocument();
+
+    await advanceValidationTimer();
+
+    const validationCalls = vi.mocked(api.validateTestConfiguration).mock
+      .calls as Array<[{ options: K6Options }]>;
+    const validationOptions =
+      validationCalls[validationCalls.length - 1]?.[0].options;
+    expect(validationOptions).not.toHaveProperty("requestBodyOverride");
+    expect(validationOptions?.requestHeaders).toEqual({});
   });
 
   it("keeps empty result export and reset actions disabled until they are actionable", () => {
@@ -915,6 +959,32 @@ describe("App validation lifecycle", () => {
         "Run a test before exporting the retained k6 report.",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("disables collection replacement controls while a load test is active", () => {
+    appHookTestState.testHookState.state = {
+      ...appHookTestState.testHookState.state,
+      status: "running",
+      isRunning: true,
+    };
+
+    renderApp(createApiMock());
+
+    openWorkflowStep("Source");
+    const chooseButton = screen.getByRole("button", {
+      name: "Choose Postman Collection",
+    });
+    const resetButton = screen.getByRole("button", { name: "Reset" });
+    expect(chooseButton).toBeDisabled();
+    expect(resetButton).toBeDisabled();
+
+    fireEvent.click(chooseButton);
+    fireEvent.click(resetButton);
+
+    expect(
+      appHookTestState.importHookState.selectAndImport,
+    ).not.toHaveBeenCalled();
+    expect(appHookTestState.importHookState.reset).not.toHaveBeenCalled();
   });
 
   it("prompts for a report destination from the latest result card before exporting", async () => {

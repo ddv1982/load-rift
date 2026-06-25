@@ -9,6 +9,7 @@ interface CollectionImportSectionProps {
   error: string | null;
   isLoading: boolean;
   isPickingFile: boolean;
+  isSourceChangeDisabled: boolean;
   onFileImport: () => void;
   onReset: () => void;
   onSelectionChange: (selectedRequestIds: string[]) => void;
@@ -23,6 +24,7 @@ export function CollectionImportSection({
   error,
   isLoading,
   isPickingFile,
+  isSourceChangeDisabled,
   onFileImport,
   onReset,
   onSelectionChange,
@@ -59,7 +61,7 @@ export function CollectionImportSection({
             type="button"
             className="primary"
             onClick={onFileImport}
-            disabled={isLoading || isPickingFile}
+            disabled={isSourceChangeDisabled || isLoading || isPickingFile}
           >
             {isPickingFile ? "Selecting..." : "Choose Postman Collection"}
           </button>
@@ -67,7 +69,7 @@ export function CollectionImportSection({
             type="button"
             className="ghost"
             onClick={onReset}
-            disabled={isLoading || !collection}
+            disabled={isSourceChangeDisabled || isLoading || !collection}
           >
             Reset
           </button>

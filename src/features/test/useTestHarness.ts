@@ -81,6 +81,14 @@ export function useTestHarness() {
           return;
         }
 
+        if (
+          !activeRunIdRef.current &&
+          pendingStartIdRef.current === null &&
+          !terminalErrorRunIdRef.current
+        ) {
+          return;
+        }
+
         setState((previous) => ({
           ...previous,
           output: appendLogOutput(previous.output, data),
@@ -329,10 +337,19 @@ export function useTestHarness() {
     }
   }, [api]);
 
+  const clearTestState = useCallback(() => {
+    startSequenceRef.current += 1;
+    activeRunIdRef.current = null;
+    terminalErrorRunIdRef.current = null;
+    pendingStartIdRef.current = null;
+    setState(INITIAL_STATE);
+  }, []);
+
   return {
     state,
     refreshStatus,
     startTest,
     stopTest,
+    clearTestState,
   };
 }

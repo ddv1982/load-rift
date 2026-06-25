@@ -13,6 +13,7 @@ interface SourcePanelProps {
   error: string | null;
   isLoading: boolean;
   isPickingFile: boolean;
+  isSourceChangeDisabled: boolean;
   onFileImport: () => void;
   onReset: () => void;
   onSelectionChange: (requestIds: string[]) => void;
@@ -30,6 +31,7 @@ export function SourcePanel({
   error,
   isLoading,
   isPickingFile,
+  isSourceChangeDisabled,
   onFileImport,
   onReset,
   onSelectionChange,
@@ -51,6 +53,7 @@ export function SourcePanel({
         error={error}
         isLoading={isLoading}
         isPickingFile={isPickingFile}
+        isSourceChangeDisabled={isSourceChangeDisabled}
         onFileImport={onFileImport}
         onReset={onReset}
         onSelectionChange={onSelectionChange}

@@ -103,6 +103,124 @@ describe("App persistence", () => {
     );
   });
 
+  it("clears request-scoped runner values and stale run state when the collection changes", async () => {
+    const api = createApiMock();
+    appHookTestState.testHookState.state = {
+      ...appHookTestState.testHookState.state,
+      status: "completed",
+      result: {
+        status: "passed",
+        metrics: {
+          totalRequests: 10,
+          failedRequests: 0,
+          avgResponseTime: 100,
+          p50ResponseTime: 90,
+          p95ResponseTime: 140,
+          maxResponseTime: 180,
+          requestsPerSecond: 5,
+        },
+        thresholds: [],
+      },
+      output: "previous run output",
+    };
+    appHookTestState.smokeHookState.state = {
+      ...appHookTestState.smokeHookState.state,
+      result: {
+        responses: [],
+      },
+    };
+    const { rerender } = renderApp(api);
+
+    openWorkflowStep("Configure");
+    fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
+    fireEvent.change(screen.getByLabelText("Base URL"), {
+      target: { value: "https://api.previous.example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Bearer token / JWT"), {
+      target: { value: "previous-token" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Add Header" }));
+    fireEvent.change(screen.getByLabelText("Request header 1 name"), {
+      target: { value: "X-Previous" },
+    });
+    fireEvent.change(screen.getByLabelText("Request header 1 value"), {
+      target: { value: "previous" },
+    });
+
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
+    rerender(createAppElement(api));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    openWorkflowStep("Configure");
+    expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
+      "",
+    );
+    expect(
+      (screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value,
+    ).toBe("");
+    expect(screen.queryByDisplayValue("X-Previous")).not.toBeInTheDocument();
+    expect(screen.queryByDisplayValue("previous")).not.toBeInTheDocument();
+    expect(
+      appHookTestState.testHookState.clearTestState,
+    ).toHaveBeenCalledTimes(1);
+    expect(
+      appHookTestState.smokeHookState.clearSmokeTest,
+    ).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps selected requests and weights on same-collection rerenders", async () => {
+    const api = createApiMock();
+    appHookTestState.importHookState = createImportHookState(anotherCollection);
+    const { rerender } = renderApp(api);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(250);
+      await Promise.resolve();
+    });
+
+    fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
+    fireEvent.change(screen.getByLabelText("Traffic mode"), {
+      target: { value: "weighted" },
+    });
+    openWorkflowStep("Source");
+    fireEvent.click(screen.getByRole("button", { name: "Clear all" }));
+    fireEvent.click(screen.getByLabelText("Run request GET account"));
+    fireEvent.change(screen.getByLabelText("Weight for GET account"), {
+      target: { value: "4" },
+    });
+
+    appHookTestState.importHookState = createImportHookState({
+      ...anotherCollection,
+      requests: anotherCollection.requests.map((request) => ({ ...request })),
+      runtimeVariables: anotherCollection.runtimeVariables.map((variable) => ({
+        ...variable,
+      })),
+    });
+    rerender(createAppElement(api));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    openWorkflowStep("Source");
+    expect(
+      screen.getByLabelText("Run request POST login") as HTMLInputElement,
+    ).not.toBeChecked();
+    expect(
+      screen.getByLabelText("Run request GET account") as HTMLInputElement,
+    ).toBeChecked();
+    expect(
+      (screen.getByLabelText("Weight for GET account") as HTMLInputElement)
+        .value,
+    ).toBe("4");
+    expect(
+      appHookTestState.testHookState.clearTestState,
+    ).not.toHaveBeenCalled();
+  });
+
   it("normalizes invalid persisted VU preferences before rendering controls", () => {
     window.localStorage.setItem(
       "loadrift.ui.runner-preferences",

@@ -19,6 +19,7 @@ import { getTauriErrorMessage } from "../lib/tauri/errors";
 import { useCurlImport } from "./hooks/useCurlImport";
 import { useRunnerOptions } from "./hooks/useRunnerOptions";
 import { useWorkspaceLayout } from "./hooks/useWorkspaceLayout";
+import { createCollectionStorageKey } from "./persistence";
 import type { WorkflowStep } from "./workflow";
 
 function buildSmokeInputKey(
@@ -62,6 +63,9 @@ export function App() {
   const workflowTabsId = useId();
   const sourcePanelRef = useRef<HTMLDivElement | null>(null);
   const workflowTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const previousCollectionContextKey = useRef<string | null | undefined>(
+    undefined,
+  );
   const [activeWorkflowStep, setActiveWorkflowStep] =
     useState<WorkflowStep>("source");
   const [lastSmokeInputKey, setLastSmokeInputKey] = useState<string | null>(
@@ -79,6 +83,7 @@ export function App() {
     refreshStatus,
     startTest,
     stopTest,
+    clearTestState,
   } = useTestHarness();
   const {
     state: smokeTestState,
@@ -109,6 +114,7 @@ export function App() {
     curlImportState,
     applyCurlCommand,
     handleCurlInputChange,
+    clearCurlImport,
   } = useCurlImport(setRunnerOptions, runnerOptions);
   const { workspaceShellRef, eventLogRef, resultSummaryRef } =
     useWorkspaceLayout({
@@ -130,11 +136,14 @@ export function App() {
     isEnabled: runnerOptionsAreValid,
   });
 
-  const isHarnessBusy =
-    testState.isBusy ||
-    testState.isRunning ||
-    testState.isStarting ||
-    smokeTestState.isRunning;
+  const collectionContextKey = useMemo(
+    () => (collection ? createCollectionStorageKey(collection) : null),
+    [collection],
+  );
+  const isLoadTestActive =
+    testState.isBusy || testState.isRunning || testState.isStarting;
+  const isHarnessBusy = isLoadTestActive || smokeTestState.isRunning;
+  const isSourceChangeDisabled = isHarnessBusy;
 
   const canStartTest = useMemo(
     () =>
@@ -255,6 +264,30 @@ export function App() {
   }, [collection]);
 
   useEffect(() => {
+    const previousKey = previousCollectionContextKey.current;
+    previousCollectionContextKey.current = collectionContextKey;
+
+    if (previousKey === undefined || previousKey === collectionContextKey) {
+      return;
+    }
+
+    setLastSmokeInputKey(null);
+    setExportNotice(null);
+    clearCurlImport();
+    clearSmokeTest();
+
+    if (!isLoadTestActive) {
+      clearTestState();
+    }
+  }, [
+    clearCurlImport,
+    clearSmokeTest,
+    clearTestState,
+    collectionContextKey,
+    isLoadTestActive,
+  ]);
+
+  useEffect(() => {
     if (!collection) {
       setActiveWorkflowStep("source");
       return;
@@ -274,6 +307,10 @@ export function App() {
   }, [collection]);
 
   async function handleFileImport() {
+    if (isSourceChangeDisabled) {
+      return;
+    }
+
     setIsPickingFile(true);
 
     try {
@@ -281,6 +318,14 @@ export function App() {
     } finally {
       setIsPickingFile(false);
     }
+  }
+
+  function handleResetCollection() {
+    if (isSourceChangeDisabled) {
+      return;
+    }
+
+    reset();
   }
 
   async function handleRefreshStatus() {
@@ -373,8 +418,9 @@ export function App() {
           error={importState.error}
           isLoading={importState.isLoading}
           isPickingFile={isPickingFile}
+          isSourceChangeDisabled={isSourceChangeDisabled}
           onFileImport={() => void handleFileImport()}
-          onReset={reset}
+          onReset={handleResetCollection}
           onSelectionChange={updateSelectedRequestIds}
           onRequestWeightChange={updateRequestWeight}
         />

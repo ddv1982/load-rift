@@ -84,6 +84,7 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     () => (collection ? createCollectionStorageKey(collection) : null),
     [collection],
   );
+  const previousCollectionKey = useRef<string | null | undefined>(undefined);
   const pendingRequestWeightCollectionKey = useRef<string | null>(null);
   const [runnerOptions, setRunnerOptions] = useState<K6Options>(() =>
     loadRunnerPreferences(DEFAULT_K6_OPTIONS),
@@ -100,21 +101,24 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
   );
 
   useEffect(() => {
+    if (previousCollectionKey.current === collectionKey) {
+      return;
+    }
+
+    previousCollectionKey.current = collectionKey;
     const persistedRequestWeights = collectionKey
       ? (loadCollectionRequestWeights(collectionKey) ?? {})
       : {};
-    const requestIds = new Set(
-      collection?.requests.map((request) => request.id),
-    );
 
     pendingRequestWeightCollectionKey.current = collectionKey;
 
     setRunnerOptions((previous) => {
       const nextOptions: K6Options = {
         ...previous,
+        requestHeaders: {},
         selectedRequestIds: syncSelectedRequestIds(
           collection?.requests ?? [],
-          previous.selectedRequestIds,
+          [],
         ),
         requestWeights: syncRequestWeights(
           collection?.requests ?? [],
@@ -122,18 +126,13 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
         ),
         variableOverrides: syncVariableOverrides(
           collection?.runtimeVariables ?? [],
-          previous.variableOverrides,
+          {},
         ),
       };
 
-      if (
-        previous.requestBodyOverride &&
-        requestIds.has(previous.requestBodyOverride.requestId)
-      ) {
-        nextOptions.requestBodyOverride = previous.requestBodyOverride;
-      } else {
-        delete nextOptions.requestBodyOverride;
-      }
+      delete nextOptions.authToken;
+      delete nextOptions.baseUrl;
+      delete nextOptions.requestBodyOverride;
 
       return nextOptions;
     });

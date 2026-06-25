@@ -216,6 +216,74 @@ describe("useTestHarness", () => {
     expect(result.current.state.runId).toBe(nextRunId);
   });
 
+  it("clears retained state and ignores stale run events after clearing", async () => {
+    const { api, listeners } = createApiMock();
+    const { result } = renderHook(() => useTestHarness(), {
+      wrapper: createWrapper(api),
+    });
+
+    await waitFor(() => {
+      expect(listeners.output).toBeTypeOf("function");
+      expect(listeners.metrics).toBeTypeOf("function");
+      expect(listeners.complete).toBeTypeOf("function");
+      expect(listeners.error).toBeTypeOf("function");
+    });
+
+    await act(async () => {
+      await result.current.startTest(startOptions);
+    });
+    const runId =
+      vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+
+    act(() => {
+      listeners.output?.("previous output\n");
+      listeners.metrics?.({ runId, metrics });
+      listeners.complete?.(completionPayload(runId));
+    });
+
+    expect(result.current.state.output).toBe("previous output\n");
+    expect(result.current.state.result).toEqual(resultPayload);
+
+    act(() => {
+      result.current.clearTestState();
+    });
+
+    expect(result.current.state).toMatchObject({
+      status: "idle",
+      metrics: DEFAULT_LIVE_METRICS,
+      result: null,
+      finishReason: null,
+      resultSource: null,
+      summaryIssue: null,
+      error: null,
+      runId: null,
+      output: "",
+      isStarting: false,
+      isBusy: false,
+      isRunning: false,
+    });
+
+    act(() => {
+      listeners.output?.("late output\n");
+      listeners.metrics?.({ runId, metrics });
+      listeners.complete?.({
+        ...completionPayload(runId),
+        finishReason: "late-complete",
+      });
+      listeners.error?.({ runId, message: "late error" });
+    });
+
+    expect(result.current.state).toMatchObject({
+      status: "idle",
+      metrics: DEFAULT_LIVE_METRICS,
+      result: null,
+      finishReason: null,
+      error: null,
+      runId: null,
+      output: "",
+    });
+  });
+
   it("preserves a completion event that arrives before startTest resolves", async () => {
     const startRequest = deferred<StartTestResponse>();
     let capturedRunId = "";

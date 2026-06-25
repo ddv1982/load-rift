@@ -186,6 +186,7 @@ export function createTestHookState() {
     refreshStatus: vi.fn(),
     startTest: vi.fn(),
     stopTest: vi.fn(),
+    clearTestState: vi.fn(),
   };
 }
 

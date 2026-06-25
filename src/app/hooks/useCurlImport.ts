@@ -1,4 +1,9 @@
-import { useState, type Dispatch, type SetStateAction } from "react";
+import {
+  useCallback,
+  useState,
+  type Dispatch,
+  type SetStateAction,
+} from "react";
 import { parseCurlCommand } from "../../lib/curl";
 import type { K6Options } from "../../lib/loadrift/types";
 import type { CurlImportState } from "../types";
@@ -36,21 +41,21 @@ export function useCurlImport(
     }
 
     setRunnerOptions((previous) => {
-      const nextOptions: K6Options = { ...previous };
+      const nextOptions: K6Options = {
+        ...previous,
+        requestHeaders: parsedHeaders,
+      };
 
       if (parsed.authToken) {
         nextOptions.authToken = parsed.authToken;
+      } else {
+        delete nextOptions.authToken;
       }
 
       if (parsed.baseUrl) {
         nextOptions.baseUrl = parsed.baseUrl;
-      }
-
-      if (headerCount > 0) {
-        nextOptions.requestHeaders = mergeHeadersCaseInsensitive(
-          previous.requestHeaders ?? {},
-          parsedHeaders,
-        );
+      } else {
+        delete nextOptions.baseUrl;
       }
 
       if (parsed.body && bodyTargetRequestId) {
@@ -58,6 +63,8 @@ export function useCurlImport(
           requestId: bodyTargetRequestId,
           body: parsed.body.value,
         };
+      } else {
+        delete nextOptions.requestBodyOverride;
       }
 
       return nextOptions;
@@ -97,11 +104,17 @@ export function useCurlImport(
     setCurlImportState(INITIAL_CURL_IMPORT_STATE);
   }
 
+  const clearCurlImport = useCallback(() => {
+    setCurlInput("");
+    setCurlImportState(INITIAL_CURL_IMPORT_STATE);
+  }, []);
+
   return {
     curlInput,
     curlImportState,
     applyCurlCommand,
     handleCurlInputChange,
+    clearCurlImport,
   };
 }
 
@@ -120,26 +133,6 @@ function headersForRuntime(
   }
 
   return runtimeHeaders;
-}
-
-function mergeHeadersCaseInsensitive(
-  currentHeaders: Record<string, string>,
-  incomingHeaders: Record<string, string>,
-): Record<string, string> {
-  const merged = { ...currentHeaders };
-
-  for (const [incomingKey, incomingValue] of Object.entries(incomingHeaders)) {
-    const existingKey = Object.keys(merged).find(
-      (key) => key.toLowerCase() === incomingKey.toLowerCase(),
-    );
-    if (existingKey) {
-      delete merged[existingKey];
-    }
-
-    merged[incomingKey] = incomingValue;
-  }
-
-  return merged;
 }
 
 function formatAppliedList(values: string[]): string {
