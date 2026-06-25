@@ -32,13 +32,17 @@ function getRunReadinessMessage({
   | "runnerOptionsAreValid"
 >): { tone: ReadinessTone; message: string } {
   if (!collection) {
-    return { tone: "blocked", message: "Import a collection to unlock run actions." };
+    return {
+      tone: "blocked",
+      message: "Import a collection to unlock run actions.",
+    };
   }
 
   if (testState.isStarting) {
     return {
       tone: "busy",
-      message: "Starting the load test; actions pause until the runner responds.",
+      message:
+        "Starting the load test; actions pause until the runner responds.",
     };
   }
 
@@ -66,7 +70,8 @@ function getRunReadinessMessage({
   if (configValidation.status === "checking") {
     return {
       tone: "checking",
-      message: "Checking the current configuration before Start Test is enabled.",
+      message:
+        "Checking the current configuration before Start Test is enabled.",
     };
   }
 
@@ -84,7 +89,10 @@ function getRunReadinessMessage({
     };
   }
 
-  return { tone: "checking", message: "Check configuration to enable Start Test." };
+  return {
+    tone: "checking",
+    message: "Check configuration to enable Start Test.",
+  };
 }
 
 export function TestHarnessRunPanel({
@@ -125,7 +133,10 @@ export function TestHarnessRunPanel({
   return (
     <section
       className={`panel harness-panel workflow-panel run-review-panel${
-        canStartTest || testState.isRunning || testState.result || smokeTestState.result
+        canStartTest ||
+        testState.isRunning ||
+        testState.result ||
+        smokeTestState.result
           ? " is-current"
           : " is-locked"
       }`}
@@ -178,7 +189,9 @@ export function TestHarnessRunPanel({
             configValidation.status === "checking"
           }
         >
-          {configValidation.status === "checking" ? "Checking..." : "Check Config"}
+          {configValidation.status === "checking"
+            ? "Checking..."
+            : "Check Config"}
         </button>
         <button
           type="button"

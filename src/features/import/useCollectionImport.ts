@@ -19,7 +19,7 @@ export function useCollectionImport() {
   });
 
   const runImport = useCallback(
-    async (load: () => Promise<CollectionInfo>) => {
+    async (load: () => Promise<CollectionInfo | null>) => {
       const requestId = importRequestIdRef.current + 1;
       importRequestIdRef.current = requestId;
 
@@ -32,6 +32,15 @@ export function useCollectionImport() {
       try {
         const collection = await load();
         if (importRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        if (!collection) {
+          setState((previous) => ({
+            ...previous,
+            isLoading: false,
+            error: null,
+          }));
           return;
         }
 
@@ -58,12 +67,9 @@ export function useCollectionImport() {
     [],
   );
 
-  const importFromFile = useCallback(
-    async (filePath: string) => {
-      await runImport(() => api.importCollectionFromFile({ filePath }));
-    },
-    [api, runImport],
-  );
+  const selectAndImport = useCallback(async () => {
+    await runImport(() => api.selectAndImportCollection());
+  }, [api, runImport]);
 
   const reportError = useCallback((message: string) => {
     importRequestIdRef.current += 1;
@@ -85,7 +91,7 @@ export function useCollectionImport() {
 
   return {
     state,
-    importFromFile,
+    selectAndImport,
     reportError,
     reset,
   };

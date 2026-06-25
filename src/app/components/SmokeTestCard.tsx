@@ -49,7 +49,9 @@ export function SmokeTestCard({
                 <div className="smoke-test-item-header">
                   <div>
                     <strong>{response.requestName}</strong>
-                    <p>{response.method} {response.url}</p>
+                    <p>
+                      {response.method} {response.url}
+                    </p>
                   </div>
                   <div className="smoke-test-item-stats">
                     <span>{response.statusCode ?? "ERR"}</span>

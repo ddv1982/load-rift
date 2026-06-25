@@ -16,7 +16,6 @@ export function useCurlImport(
     INITIAL_CURL_IMPORT_STATE,
   );
 
-
   function applyCurlCommand() {
     const parsed = parseCurlCommand(curlInput);
     if (!parsed.url && !parsed.authToken) {

@@ -24,11 +24,6 @@ vi.mock("../features/test/useSmokeTest", () => ({
   useSmokeTest: () => appHookTestState.smokeHookState,
 }));
 
-vi.mock("../lib/tauri/dialog", () => ({
-  selectCollectionFile: vi.fn(),
-  selectReportSavePath: vi.fn(),
-}));
-
 describe("App accessibility", () => {
   beforeEach(() => {
     resetAppTestEnvironment();
@@ -49,7 +44,9 @@ describe("App accessibility", () => {
 
     fireEvent.keyDown(controlsTab, { key: "ArrowRight" });
     expect(variablesTab).toHaveAttribute("aria-selected", "true");
-    expect(screen.getByRole("tabpanel", { name: "Variables" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("tabpanel", { name: "Variables" }),
+    ).toBeInTheDocument();
     const controlsPanel = document.getElementById(
       controlsTab.getAttribute("aria-controls") ?? "",
     );
@@ -67,7 +64,9 @@ describe("App accessibility", () => {
     expect(configureTab).toHaveAttribute("aria-selected", "true");
     expect(runTab).toHaveAttribute("aria-selected", "false");
     for (const tab of [sourceTab, configureTab, runTab]) {
-      expect(document.getElementById(tab.getAttribute("aria-controls") ?? "")).not.toBeNull();
+      expect(
+        document.getElementById(tab.getAttribute("aria-controls") ?? ""),
+      ).not.toBeNull();
     }
 
     fireEvent.click(sourceTab);
@@ -111,11 +110,14 @@ describe("App accessibility", () => {
     const api = createApiMock();
     const { rerender } = renderApp(api);
 
-    const chooseButton = screen.getByRole("button", { name: "Choose Postman Collection" });
+    const chooseButton = screen.getByRole("button", {
+      name: "Choose Postman Collection",
+    });
     chooseButton.focus();
     expect(chooseButton).toHaveFocus();
 
-    appHookTestState.importHookState = createImportHookState(importedCollection);
+    appHookTestState.importHookState =
+      createImportHookState(importedCollection);
     rerender(createAppElement(api));
 
     const configureTab = screen.getByRole("tab", { name: /Configure/ });
@@ -129,7 +131,9 @@ describe("App accessibility", () => {
     const vusInput = screen.getByLabelText("Virtual users");
     fireEvent.change(vusInput, { target: { value: "0" } });
 
-    const error = screen.getByText("Virtual users must be a whole number of 1 or more.");
+    const error = screen.getByText(
+      "Virtual users must be a whole number of 1 or more.",
+    );
     expect(vusInput).toHaveAttribute("aria-describedby", error.id);
     expect(vusInput).toHaveAttribute("aria-invalid", "true");
   });
@@ -156,7 +160,9 @@ describe("App accessibility", () => {
 
     const validationStatus = screen.getByRole("status");
     expect(validationStatus).toHaveTextContent("Configuration Check");
-    expect(validationStatus).toHaveTextContent("Configuration looks ready to run.");
+    expect(validationStatus).toHaveTextContent(
+      "Configuration looks ready to run.",
+    );
     expect(validationStatus).toHaveAttribute("aria-live", "polite");
     expect(validationStatus).toHaveAttribute("aria-atomic", "true");
   });
@@ -180,7 +186,9 @@ describe("App accessibility", () => {
 
     const validationAlert = screen.getByRole("alert");
     expect(validationAlert).toHaveTextContent("Configuration Check");
-    expect(validationAlert).toHaveTextContent("Set a base URL before starting.");
+    expect(validationAlert).toHaveTextContent(
+      "Set a base URL before starting.",
+    );
     expect(validationAlert).toHaveAttribute("aria-live", "assertive");
     expect(validationAlert).toHaveAttribute("aria-atomic", "true");
   });

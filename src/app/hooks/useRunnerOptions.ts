@@ -29,14 +29,19 @@ function thresholdValueToInput(value: number | undefined): string {
   return value === undefined ? "" : String(value);
 }
 
-function createThresholdInputs(thresholds: K6Options["thresholds"]): ThresholdInputValues {
+function createThresholdInputs(
+  thresholds: K6Options["thresholds"],
+): ThresholdInputValues {
   return {
     p95ResponseTime: thresholdValueToInput(thresholds.p95ResponseTime),
     errorRate: thresholdValueToInput(thresholds.errorRate),
   };
 }
 
-function validateThresholdInput(key: ThresholdKey, value: string): string | null {
+function validateThresholdInput(
+  key: ThresholdKey,
+  value: string,
+): string | null {
   const trimmedValue = value.trim();
   if (!trimmedValue) {
     return null;
@@ -83,10 +88,12 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
   const [runnerOptions, setRunnerOptions] = useState<K6Options>(() =>
     loadRunnerPreferences(DEFAULT_K6_OPTIONS),
   );
-  const [thresholdInputs, setThresholdInputs] = useState<ThresholdInputValues>(() =>
-    createThresholdInputs(runnerOptions.thresholds),
+  const [thresholdInputs, setThresholdInputs] = useState<ThresholdInputValues>(
+    () => createThresholdInputs(runnerOptions.thresholds),
   );
-  const [thresholdErrors, setThresholdErrors] = useState<ThresholdInputErrors>({});
+  const [thresholdErrors, setThresholdErrors] = useState<ThresholdInputErrors>(
+    {},
+  );
   const [vusInput, setVusInput] = useState(() => String(runnerOptions.vus));
   const [vusError, setVusError] = useState<string | null>(() =>
     validateVusInput(String(runnerOptions.vus)),
@@ -140,7 +147,10 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
           return false;
         }
 
-        return !getVariableValue(variable, runnerOptions.variableOverrides).trim();
+        return !getVariableValue(
+          variable,
+          runnerOptions.variableOverrides,
+        ).trim();
       }),
     [collection, runnerOptions.baseUrl, runnerOptions.variableOverrides],
   );
@@ -222,7 +232,9 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
       ...previous,
       requestWeights: {
         ...previous.requestWeights,
-        [requestId]: Number.isFinite(weight) ? Math.max(0, Math.trunc(weight)) : 1,
+        [requestId]: Number.isFinite(weight)
+          ? Math.max(0, Math.trunc(weight))
+          : 1,
       },
     }));
   }
@@ -232,11 +244,15 @@ export function useRunnerOptions(collection: CollectionInfo | null) {
     [runnerOptions.advancedOptionsJson],
   );
   const advancedOptionsError =
-    advancedOptionsFeedback?.tone === "error" ? advancedOptionsFeedback.message : null;
+    advancedOptionsFeedback?.tone === "error"
+      ? advancedOptionsFeedback.message
+      : null;
   // Invalid advanced JSON blocks local readiness so field feedback, Check Config,
   // and Start Test stay semantically aligned.
   const runnerOptionsAreValid =
-    !vusError && Object.keys(thresholdErrors).length === 0 && !advancedOptionsError;
+    !vusError &&
+    Object.keys(thresholdErrors).length === 0 &&
+    !advancedOptionsError;
 
   return {
     runnerOptions,

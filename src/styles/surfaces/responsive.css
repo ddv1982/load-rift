@@ -1,0 +1,238 @@
+@media (max-width: 960px) {
+  .app-shell {
+    padding: 1rem;
+  }
+
+  .app-hero,
+  .harness-primary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .overview-grid,
+  .status-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .harness-heading-meta {
+    align-items: flex-start;
+    max-width: none;
+  }
+
+  .summary-toolbar {
+    grid-template-columns: minmax(0, 1fr) 10rem;
+  }
+
+  .summary-filter-actions {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+  }
+}
+
+@media (max-width: 640px) {
+  :root {
+    --monitor-panel-height: auto;
+    --secondary-panel-height: auto;
+  }
+
+  .app-shell {
+    padding: 0.75rem;
+  }
+
+  .app-hero,
+  .panel {
+    border-radius: 0.95rem;
+  }
+
+  .app-brand-row {
+    align-items: flex-start;
+  }
+
+  .app-icon {
+    width: 2.45rem;
+    height: 2.45rem;
+  }
+
+  .workflow-panel {
+    padding: 0.95rem;
+  }
+
+  .workflow-panel::before {
+    inset-block: 0.95rem;
+  }
+
+  .workflow-stepper {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.45rem;
+  }
+
+  .workflow-step-tabs {
+    width: 100%;
+  }
+
+  .workflow-step-tabs button {
+    gap: 0.38rem;
+    padding-inline: 0.55rem;
+  }
+
+  .workflow-step-status {
+    padding: 0 0.25rem;
+    text-align: center;
+  }
+
+  .primary,
+  .ghost,
+  .segmented-control button {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .action-row-compact,
+  .harness-action-row,
+  .summary-selection-actions {
+    width: 100%;
+  }
+
+  .progressive-panel summary {
+    display: flex;
+    gap: 0.8rem;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .progressive-panel summary::after {
+    float: none;
+    flex: 0 0 auto;
+  }
+
+  .field input,
+  .field select,
+  .field textarea {
+    font-size: 1rem;
+  }
+
+  .monitor-card-live,
+  .harness-secondary-card > .smoke-test-card,
+  .harness-secondary-card > .result-summary {
+    min-height: 0;
+    height: auto;
+    max-height: none;
+  }
+
+  .event-log-tall {
+    min-height: 14rem;
+  }
+
+  .overview-grid,
+  .status-strip {
+    grid-template-columns: 1fr;
+  }
+
+  .request-list-header,
+  .request-tree-row,
+  .request-tree-row.is-weighted,
+  .request-tree-header.is-weighted {
+    grid-template-columns: 1fr;
+    gap: 0.35rem;
+  }
+
+  .request-list-header {
+    display: none;
+  }
+
+  .request-weight-field,
+  .request-weight-placeholder {
+    justify-self: stretch;
+  }
+
+  .request-weight-field input {
+    width: 100%;
+  }
+
+  .summary-toolbar,
+  .summary-selection-bar,
+  .summary-meta {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-selection-bar,
+  .summary-meta {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .request-url {
+    white-space: normal;
+  }
+
+  .result-summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .section-heading,
+  .settings-heading,
+  .summary-header,
+  .action-row,
+  .monitor-header,
+  .import-callout,
+  .app-title-row,
+  .workflow-card-header,
+  .live-metrics-heading,
+  .result-summary-header,
+  .result-summary-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .export-action-group {
+    align-items: stretch;
+    max-width: none;
+  }
+
+  .harness-heading-meta {
+    align-items: stretch;
+    max-width: none;
+  }
+
+  .segmented-control {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .segmented-control button {
+    flex: 1 1 8rem;
+  }
+
+  .settings-grid,
+  .manual-entry-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-setup-heading {
+    flex-direction: column;
+  }
+
+  .field-wide {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+
+  .primary:hover,
+  .ghost:hover,
+  .workflow-step-tabs button:hover,
+  .segmented-control button:hover,
+  .folder-toggle-icon,
+  .folder-toggle-icon.is-open {
+    transform: none;
+  }
+}

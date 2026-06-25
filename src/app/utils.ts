@@ -1,4 +1,8 @@
-import type { K6Options, RequestInfo, RuntimeVariable } from "../lib/loadrift/types";
+import type {
+  K6Options,
+  RequestInfo,
+  RuntimeVariable,
+} from "../lib/loadrift/types";
 import { truncateLogTail } from "../lib/loadrift/outputLog";
 
 const HOST_VARIABLE_KEYS = new Set([
@@ -63,7 +67,9 @@ export function truncateLog(log: string): string {
   return truncateLogTail(log);
 }
 
-export function normalizeRunnerOptionsForExecution(options: K6Options): K6Options {
+export function normalizeRunnerOptionsForExecution(
+  options: K6Options,
+): K6Options {
   const trimmedBaseUrl = options.baseUrl?.trim() ?? "";
   const nextOptions = { ...options };
 
@@ -115,7 +121,7 @@ export function syncSelectedRequestIds(
 
   const requestIds = new Set(requests.map((request) => request.id));
   const nextSelectedRequestIds = previousSelectedRequestIds.filter((id) =>
-    requestIds.has(id)
+    requestIds.has(id),
   );
 
   return nextSelectedRequestIds.length > 0

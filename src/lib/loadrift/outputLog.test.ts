@@ -6,7 +6,9 @@ const TRUNCATION_NOTICE =
 
 describe("output log helpers", () => {
   it("keeps short logs unchanged", () => {
-    expect(truncateLogTail("line one\nline two\n")).toBe("line one\nline two\n");
+    expect(truncateLogTail("line one\nline two\n")).toBe(
+      "line one\nline two\n",
+    );
   });
 
   it("keeps the latest log tail when appending large output", () => {

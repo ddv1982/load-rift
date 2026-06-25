@@ -2,6 +2,7 @@ mod logic;
 mod smoke;
 
 use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::importing::resolve_test_requests;
 use crate::models::{
@@ -20,7 +21,13 @@ pub struct StartTestRequest {
 
 #[derive(Debug, serde::Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ExportReportRequest {
+pub struct SelectAndExportReportRequest {
+    pub default_path: String,
+}
+
+#[derive(Debug, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectAndExportReportResponse {
     pub save_path: String,
 }
 
@@ -104,12 +111,29 @@ pub async fn smoke_test_requests(
 }
 
 #[tauri::command]
-pub async fn export_report(
+pub async fn select_and_export_report(
+    app: AppHandle,
     state: State<'_, SharedAppState>,
-    request: ExportReportRequest,
-) -> Result<(), String> {
-    crate::k6::export_report_file(state.inner(), &request.save_path)?;
-    Ok(())
+    request: SelectAndExportReportRequest,
+) -> Result<Option<SelectAndExportReportResponse>, String> {
+    let selected = app
+        .dialog()
+        .file()
+        .set_title("Save Load Rift Report")
+        .set_file_name(request.default_path)
+        .add_filter("HTML", &["html", "htm"])
+        .blocking_save_file();
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let path = selected
+        .into_path()
+        .map_err(|_| "The selected report path is not available on this platform.".to_string())?;
+    let saved_path = crate::k6::export_report_file_to_path(state.inner(), &path)?;
+
+    Ok(Some(SelectAndExportReportResponse {
+        save_path: saved_path.display().to_string(),
+    }))
 }
 
 #[tauri::command]

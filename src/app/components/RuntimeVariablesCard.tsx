@@ -28,7 +28,7 @@ export function RuntimeVariablesCard({
       <SettingsCardHeader
         eyebrow="Runtime Variables"
         title="Collection Overrides"
-        hint='Detected from `{{...}}` placeholders in the imported collection. Host-style variables mirror the Base URL from runner settings when one is available.'
+        hint="Detected from `{{...}}` placeholders in the imported collection. Host-style variables mirror the Base URL from runner settings when one is available."
       />
 
       {collection?.runtimeVariables.length ? (
@@ -45,7 +45,10 @@ export function RuntimeVariablesCard({
                   value={
                     isHostVariable
                       ? effectiveBaseUrl
-                      : getVariableValue(variable, runnerOptions.variableOverrides)
+                      : getVariableValue(
+                          variable,
+                          runnerOptions.variableOverrides,
+                        )
                   }
                   onChange={(event) => {
                     if (isHostVariable) {
@@ -57,7 +60,7 @@ export function RuntimeVariablesCard({
                   placeholder={
                     isHostVariable
                       ? "Set Base URL in runner settings to fill this value."
-                      : variable.defaultValue ?? `Set ${variable.key}`
+                      : (variable.defaultValue ?? `Set ${variable.key}`)
                   }
                   readOnly={isHostVariable}
                 />

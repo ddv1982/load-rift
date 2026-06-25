@@ -84,14 +84,14 @@ function createApiMock(overrides: Partial<LoadRiftApi> = {}) {
   };
 
   const api: LoadRiftApi = {
-    importCollectionFromFile: vi.fn(),
+    selectAndImportCollection: vi.fn(async () => null),
     validateTestConfiguration: vi.fn(),
     smokeTestRequests: vi.fn(),
     startTest: vi.fn(async (input: { options: K6Options; runId?: string }) => ({
       runId: input.runId ?? "test-run",
     })),
     stopTest: vi.fn(),
-    exportReport: vi.fn(),
+    selectAndExportReport: vi.fn(async () => null),
     getTestStatus: vi.fn(),
     onK6Output: vi.fn(async (callback: (payload: string) => void) => {
       listeners.output = callback;
@@ -122,7 +122,6 @@ function createApiMock(overrides: Partial<LoadRiftApi> = {}) {
 
   return { api, listeners };
 }
-
 
 describe("useTestHarness", () => {
   it("hydrates state from refreshStatus", async () => {
@@ -179,7 +178,8 @@ describe("useTestHarness", () => {
     await act(async () => {
       await result.current.startTest(startOptions);
     });
-    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+    const runId =
+      vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
 
     act(() => {
       listeners.output?.("line one\n");
@@ -202,7 +202,8 @@ describe("useTestHarness", () => {
     await act(async () => {
       await result.current.startTest(startOptions);
     });
-    const nextRunId = vi.mocked(api.startTest).mock.calls[1]![0].runId ?? "missing-run";
+    const nextRunId =
+      vi.mocked(api.startTest).mock.calls[1]![0].runId ?? "missing-run";
 
     act(() => {
       listeners.error?.({ runId: nextRunId, message: "runner crashed" });
@@ -266,14 +267,16 @@ describe("useTestHarness", () => {
     await act(async () => {
       await result.current.startTest(startOptions);
     });
-    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+    const runId =
+      vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
 
     act(() => {
       listeners.complete?.({
         ...completionPayload(runId),
         runState: "failed",
         finishReason: "execution_error",
-        errorMessage: "The moduleSpecifier \"/tmp/loadrift/run/script.js\" couldn't be found on local disk.",
+        errorMessage:
+          'The moduleSpecifier "/tmp/loadrift/run/script.js" couldn\'t be found on local disk.',
       });
       listeners.error?.({
         runId,
@@ -284,14 +287,14 @@ describe("useTestHarness", () => {
     expect(result.current.state.status).toBe("failed");
     expect(result.current.state.finishReason).toBe("execution_error");
     expect(result.current.state.error).toBe(
-      "The moduleSpecifier \"/tmp/loadrift/run/script.js\" couldn't be found on local disk.",
+      'The moduleSpecifier "/tmp/loadrift/run/script.js" couldn\'t be found on local disk.',
     );
     expect(result.current.state.runId).toBe(runId);
   });
 
   it("preserves primary k6 error and fallback context from completion", async () => {
     const primaryError =
-      "The moduleSpecifier \"/tmp/loadrift/run/script.js\" couldn't be found on local disk.";
+      'The moduleSpecifier "/tmp/loadrift/run/script.js" couldn\'t be found on local disk.';
     const summaryIssue = "summary.json was not written before k6 exited";
     const { api, listeners } = createApiMock();
     const { result } = renderHook(() => useTestHarness(), {
@@ -305,7 +308,8 @@ describe("useTestHarness", () => {
     await act(async () => {
       await result.current.startTest(startOptions);
     });
-    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+    const runId =
+      vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
 
     act(() => {
       listeners.complete?.({
@@ -340,7 +344,8 @@ describe("useTestHarness", () => {
     await act(async () => {
       await result.current.startTest(startOptions);
     });
-    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+    const runId =
+      vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
 
     act(() => {
       listeners.complete?.({
@@ -374,7 +379,8 @@ describe("useTestHarness", () => {
     await act(async () => {
       await result.current.startTest(startOptions);
     });
-    const activeRunId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+    const activeRunId =
+      vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
 
     act(() => {
       listeners.metrics?.({ runId: "old-run", metrics });
@@ -403,37 +409,40 @@ describe("useTestHarness", () => {
 
   it("normalizes malformed status payloads from the API boundary", async () => {
     const { api } = createApiMock({
-      getTestStatus: vi.fn(async () => ({
-        runId: 42,
-        status: "surprising",
-        isRunning: true,
-        metrics: {
-          activeVus: Number.NaN,
-          totalRequests: 12,
-          failedRequests: "nope",
-          errorRate: 0.25,
-        },
-        result: {
-          status: "unexpected",
-          metrics: {
-            totalRequests: 12,
-            failedRequests: 3,
-          },
-          thresholds: [
-            {
-              name: "http_req_failed",
-              passed: true,
-              actual: "bad",
-              threshold: 1,
+      getTestStatus: vi.fn(
+        async () =>
+          ({
+            runId: 42,
+            status: "surprising",
+            isRunning: true,
+            metrics: {
+              activeVus: Number.NaN,
+              totalRequests: 12,
+              failedRequests: "nope",
+              errorRate: 0.25,
             },
-            null,
-          ],
-        },
-        finishReason: 17,
-        errorMessage: null,
-        resultSource: "not-a-source",
-        summaryIssue: false,
-      }) as unknown as Promise<GetTestStatusResponse>),
+            result: {
+              status: "unexpected",
+              metrics: {
+                totalRequests: 12,
+                failedRequests: 3,
+              },
+              thresholds: [
+                {
+                  name: "http_req_failed",
+                  passed: true,
+                  actual: "bad",
+                  threshold: 1,
+                },
+                null,
+              ],
+            },
+            finishReason: 17,
+            errorMessage: null,
+            resultSource: "not-a-source",
+            summaryIssue: false,
+          }) as unknown as Promise<GetTestStatusResponse>,
+      ),
     });
     const { result } = renderHook(() => useTestHarness(), {
       wrapper: createWrapper(api),
@@ -498,12 +507,17 @@ describe("useTestHarness", () => {
     await act(async () => {
       await result.current.startTest(startOptions);
     });
-    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+    const runId =
+      vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
 
     act(() => {
       listeners.metrics?.({ metrics } as unknown as RunMetricsEvent);
-      listeners.error?.({ message: "missing run id" } as unknown as RunErrorEvent);
-      listeners.complete?.({ runState: "completed" } as unknown as TestCompletion);
+      listeners.error?.({
+        message: "missing run id",
+      } as unknown as RunErrorEvent);
+      listeners.complete?.({
+        runState: "completed",
+      } as unknown as TestCompletion);
     });
 
     expect(result.current.state.status).toBe("running");
@@ -538,7 +552,9 @@ describe("useTestHarness", () => {
 
   it("falls back to the generated run id when startTest returns a malformed response", async () => {
     const { api } = createApiMock({
-      startTest: vi.fn(async () => ({}) as unknown as Promise<StartTestResponse>),
+      startTest: vi.fn(
+        async () => ({}) as unknown as Promise<StartTestResponse>,
+      ),
     });
     const { result } = renderHook(() => useTestHarness(), {
       wrapper: createWrapper(api),
@@ -567,7 +583,8 @@ describe("useTestHarness", () => {
     await act(async () => {
       await result.current.startTest(startOptions);
     });
-    const runId = vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
+    const runId =
+      vi.mocked(api.startTest).mock.calls[0]![0].runId ?? "missing-run";
 
     act(() => {
       listeners.complete?.({

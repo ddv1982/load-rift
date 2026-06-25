@@ -125,13 +125,19 @@ function normalizePersistedRequestWeights(
     return {};
   }
 
-  const normalizedEntries = Object.entries(requestWeights).flatMap(([requestId, weight]) => {
-    if (typeof weight !== "number" || !Number.isFinite(weight) || weight < 0) {
-      return [];
-    }
+  const normalizedEntries = Object.entries(requestWeights).flatMap(
+    ([requestId, weight]) => {
+      if (
+        typeof weight !== "number" ||
+        !Number.isFinite(weight) ||
+        weight < 0
+      ) {
+        return [];
+      }
 
-    return [[requestId, Math.max(0, Math.trunc(weight))] as const];
-  });
+      return [[requestId, Math.max(0, Math.trunc(weight))] as const];
+    },
+  );
 
   return Object.fromEntries(normalizedEntries);
 }
@@ -144,7 +150,7 @@ export function createCollectionStorageKey(collection: CollectionInfo): string {
         name: request.name,
         url: request.url,
         folderPath: request.folderPath,
-      })
+      }),
     )
     .sort();
   const runtimeVariableSignatures = collection.runtimeVariables
@@ -152,7 +158,7 @@ export function createCollectionStorageKey(collection: CollectionInfo): string {
       JSON.stringify({
         key: variable.key,
         defaultValue: variable.defaultValue ?? "",
-      })
+      }),
     )
     .sort();
   const signature = JSON.stringify({
@@ -202,7 +208,11 @@ function normalizeCollectionRequestWeightStore(
 
 export function loadHarnessTab(defaultTab: HarnessTab): HarnessTab {
   const stored = readStorage<string>(STORAGE_KEYS.activeHarnessTab);
-  if (stored === "controls" || stored === "variables" || stored === "advanced") {
+  if (
+    stored === "controls" ||
+    stored === "variables" ||
+    stored === "advanced"
+  ) {
     return stored;
   }
 
@@ -216,7 +226,9 @@ export function saveHarnessTab(tab: HarnessTab) {
 export function loadCollectionFilters(
   collectionKey: string,
 ): PersistedCollectionFilters | null {
-  const stored = normalizeCollectionFilterStore(readStorage(STORAGE_KEYS.collectionFilters));
+  const stored = normalizeCollectionFilterStore(
+    readStorage(STORAGE_KEYS.collectionFilters),
+  );
   if (!stored) {
     return null;
   }
@@ -225,7 +237,9 @@ export function loadCollectionFilters(
 }
 
 export function saveCollectionFilters(filters: PersistedCollectionFilters) {
-  const stored = normalizeCollectionFilterStore(readStorage(STORAGE_KEYS.collectionFilters));
+  const stored = normalizeCollectionFilterStore(
+    readStorage(STORAGE_KEYS.collectionFilters),
+  );
   writeStorage<PersistedCollectionFilterStore>(STORAGE_KEYS.collectionFilters, {
     version: 2,
     entries: {
@@ -292,14 +306,18 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
       : defaultOptions.rampUp;
 
   const thresholds: K6Options["thresholds"] = {};
-  const persistedP95 = normalizePersistedThreshold(stored.thresholds?.p95ResponseTime);
+  const persistedP95 = normalizePersistedThreshold(
+    stored.thresholds?.p95ResponseTime,
+  );
   if (persistedP95 !== undefined) {
     thresholds.p95ResponseTime = persistedP95;
   } else if (defaultOptions.thresholds.p95ResponseTime !== undefined) {
     thresholds.p95ResponseTime = defaultOptions.thresholds.p95ResponseTime;
   }
 
-  const persistedErrorRate = normalizePersistedThreshold(stored.thresholds?.errorRate);
+  const persistedErrorRate = normalizePersistedThreshold(
+    stored.thresholds?.errorRate,
+  );
   if (persistedErrorRate !== undefined) {
     thresholds.errorRate = persistedErrorRate;
   } else if (defaultOptions.thresholds.errorRate !== undefined) {
@@ -321,7 +339,9 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
     rampUp,
     thresholds,
     trafficMode,
-    requestWeights: normalizePersistedRequestWeights(defaultOptions.requestWeights),
+    requestWeights: normalizePersistedRequestWeights(
+      defaultOptions.requestWeights,
+    ),
   };
 
   const resolvedRampUpTime =
@@ -337,7 +357,9 @@ export function loadRunnerPreferences(defaultOptions: K6Options): K6Options {
 
 export function saveRunnerPreferences(options: K6Options) {
   const thresholds: PersistedRunnerPreferences["thresholds"] = {};
-  const p95ResponseTime = normalizePersistedThreshold(options.thresholds.p95ResponseTime);
+  const p95ResponseTime = normalizePersistedThreshold(
+    options.thresholds.p95ResponseTime,
+  );
   if (p95ResponseTime !== undefined) {
     thresholds.p95ResponseTime = p95ResponseTime;
   }

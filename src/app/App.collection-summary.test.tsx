@@ -4,6 +4,7 @@ import {
   appHookTestState,
   resetAppTestEnvironment,
 } from "./test-support/appTestState";
+import { createLargeCollectionInfo } from "../test/largeCollectionFixtures";
 import {
   anotherCollection,
   createApiMock,
@@ -23,11 +24,6 @@ vi.mock("../features/test/useTestHarness", () => ({
 
 vi.mock("../features/test/useSmokeTest", () => ({
   useSmokeTest: () => appHookTestState.smokeHookState,
-}));
-
-vi.mock("../lib/tauri/dialog", () => ({
-  selectCollectionFile: vi.fn(),
-  selectReportSavePath: vi.fn(),
 }));
 
 function openWorkflowStep(step: "Source" | "Configure" | "Run") {
@@ -52,11 +48,15 @@ describe("App collection summary", () => {
     expect(screen.getByText("POST login")).toBeInTheDocument();
     expect(screen.getByText("GET account")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Collapse folder Auth" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse folder Auth" }),
+    );
 
     expect(screen.queryByText("POST login")).not.toBeInTheDocument();
     expect(screen.queryByText("GET account")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Expand folder Auth" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Expand folder Auth" }),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Expand folder Auth" }));
 
@@ -74,11 +74,19 @@ describe("App collection summary", () => {
       .getAllByRole("listitem")
       .map((item) => item.textContent?.replace(/\s+/g, " ").trim() ?? "");
 
-    const rootOverviewIndex = rowTexts.findIndex((text) => text.includes("Root overview"));
+    const rootOverviewIndex = rowTexts.findIndex((text) =>
+      text.includes("Root overview"),
+    );
     const authFolderIndex = rowTexts.findIndex((text) => text.includes("Auth"));
-    const postLoginIndex = rowTexts.findIndex((text) => text.includes("POST login"));
-    const getAccountIndex = rowTexts.findIndex((text) => text.includes("GET account"));
-    const rootTeardownIndex = rowTexts.findIndex((text) => text.includes("Root teardown"));
+    const postLoginIndex = rowTexts.findIndex((text) =>
+      text.includes("POST login"),
+    );
+    const getAccountIndex = rowTexts.findIndex((text) =>
+      text.includes("GET account"),
+    );
+    const rootTeardownIndex = rowTexts.findIndex((text) =>
+      text.includes("Root teardown"),
+    );
 
     expect(rootOverviewIndex).toBeGreaterThanOrEqual(0);
     expect(authFolderIndex).toBeGreaterThan(rootOverviewIndex);
@@ -88,7 +96,9 @@ describe("App collection summary", () => {
   });
 
   it("keeps folders with separator characters isolated from nested folder paths", () => {
-    appHookTestState.importHookState = createImportHookState(separatorFolderCollection);
+    appHookTestState.importHookState = createImportHookState(
+      separatorFolderCollection,
+    );
 
     renderApp(createApiMock());
     openWorkflowStep("Source");
@@ -96,26 +106,18 @@ describe("App collection summary", () => {
     expect(screen.getByText("Slash folder request")).toBeInTheDocument();
     expect(screen.getByText("Nested folder request")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Collapse folder A / B" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Collapse folder A / B" }),
+    );
 
     expect(screen.queryByText("Slash folder request")).not.toBeInTheDocument();
     expect(screen.getByText("Nested folder request")).toBeInTheDocument();
   });
 
   it("limits initial rendering for large request lists and reveals more on demand", () => {
-    appHookTestState.importHookState = createImportHookState({
-      name: "Large Fixture Collection",
-      requestCount: 300,
-      folderCount: 0,
-      requests: Array.from({ length: 300 }, (_, index) => ({
-        id: `request-${index}`,
-        name: `Request ${index}`,
-        method: "GET",
-        url: `{{environment}}/items/${index}`,
-        folderPath: [],
-      })),
-      runtimeVariables: [{ key: "environment" }],
-    });
+    appHookTestState.importHookState = createImportHookState(
+      createLargeCollectionInfo({ requestCount: 300, includeFolders: false }),
+    );
 
     renderApp(createApiMock());
     openWorkflowStep("Source");
@@ -128,7 +130,9 @@ describe("App collection summary", () => {
     fireEvent.click(screen.getByRole("button", { name: "Show more" }));
 
     expect(screen.getByText("Request 299")).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Show more" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Show more" }),
+    ).not.toBeInTheDocument();
   });
 
   it("clears active request filters and restores hidden rows", async () => {
@@ -157,8 +161,12 @@ describe("App collection summary", () => {
       await vi.advanceTimersByTimeAsync(250);
     });
 
-    expect((screen.getByLabelText("Search requests") as HTMLInputElement).value).toBe("");
-    expect((screen.getByLabelText("Method") as HTMLSelectElement).value).toBe("all");
+    expect(
+      (screen.getByLabelText("Search requests") as HTMLInputElement).value,
+    ).toBe("");
+    expect((screen.getByLabelText("Method") as HTMLSelectElement).value).toBe(
+      "all",
+    );
     expect(screen.getByText("POST login")).toBeInTheDocument();
     expect(screen.getByText("GET account")).toBeInTheDocument();
   });
@@ -177,11 +185,17 @@ describe("App collection summary", () => {
       await vi.advanceTimersByTimeAsync(250);
     });
 
-    expect(screen.getByText("No requests match the current filters.")).toBeInTheDocument();
-    expect(screen.getByText("Clear filters to show all imported requests.")).toBeInTheDocument();
+    expect(
+      screen.getByText("No requests match the current filters."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Clear filters to show all imported requests."),
+    ).toBeInTheDocument();
 
     fireEvent.click(
-      screen.getByRole("button", { name: "Clear filters and show all requests" }),
+      screen.getByRole("button", {
+        name: "Clear filters and show all requests",
+      }),
     );
 
     await act(async () => {
@@ -247,7 +261,9 @@ describe("App collection summary", () => {
     });
 
     openWorkflowStep("Source");
-    expect(screen.getByText(/Weighted mix uses selected requests/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Weighted mix uses selected requests/),
+    ).toBeInTheDocument();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);

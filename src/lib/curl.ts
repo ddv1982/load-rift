@@ -4,7 +4,9 @@ export interface ParsedCurlCommand {
   authToken: string | null;
 }
 
-export function normalizeBearerTokenInput(value: string | null | undefined): string | null {
+export function normalizeBearerTokenInput(
+  value: string | null | undefined,
+): string | null {
   if (!value) {
     return null;
   }
@@ -55,7 +57,10 @@ export function parseCurlCommand(command: string): ParsedCurlCommand {
       continue;
     }
 
-    if ((token === "--url" || token === "--location" || token === "-L") && index + 1 < tokens.length) {
+    if (
+      (token === "--url" || token === "--location" || token === "-L") &&
+      index + 1 < tokens.length
+    ) {
       const candidate = tokens[index + 1];
       if (candidate && looksLikeUrl(candidate)) {
         url = candidate;

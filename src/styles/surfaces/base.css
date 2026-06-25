@@ -1,0 +1,93 @@
+:root {
+  color-scheme: dark;
+  --bg: #080c11;
+  --bg-elevated: rgba(18, 25, 33, 0.96);
+  --bg-soft: rgba(23, 32, 42, 0.98);
+  --bg-panel: rgba(13, 19, 26, 0.94);
+  --panel-border: rgba(158, 176, 194, 0.13);
+  --panel-border-strong: rgba(193, 205, 218, 0.24);
+  --panel-quiet: rgba(255, 255, 255, 0.026);
+  --text: #f4f0e8;
+  --muted: #a4b0bc;
+  --muted-strong: #c8d0d8;
+  --accent: #f0a84f;
+  --accent-strong: #ffd18a;
+  --accent-soft: rgba(240, 168, 79, 0.14);
+  --accent-cool: #6fd3e6;
+  --danger: #ff9a83;
+  --success: #8fe3ac;
+  --shadow: 0 24px 58px rgba(0, 0, 0, 0.32);
+  --monitor-panel-height: clamp(34rem, 72vh, 48rem);
+  /* Stable viewport for secondary result cards; tuned to preserve scrollable panels. */
+  --secondary-panel-height: clamp(18rem, 34vh, 21rem);
+  --font-ui:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  --font-display: "Aptos Display", "Segoe UI", var(--font-ui);
+  --font-mono: "SFMono-Regular", "Cascadia Code", "IBM Plex Mono", monospace;
+  font-family: var(--font-ui);
+  line-height: 1.5;
+  font-weight: 400;
+  color: var(--text);
+  background:
+    radial-gradient(
+      circle at 16% -10%,
+      rgba(240, 168, 79, 0.14),
+      transparent 27rem
+    ),
+    radial-gradient(
+      circle at 88% 5%,
+      rgba(111, 211, 230, 0.11),
+      transparent 25rem
+    ),
+    linear-gradient(180deg, #0a1016 0%, #070a0e 48%, #05070a 100%);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  min-width: 320px;
+  color: var(--text);
+  background: transparent;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+:where(button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--accent-cool);
+  outline-offset: 3px;
+}
+
+:where(
+  .primary,
+  .ghost,
+  .segmented-control button,
+  .workflow-step-tabs button,
+  .folder-toggle
+):focus-visible {
+  border-color: rgba(134, 196, 216, 0.72);
+  box-shadow:
+    0 0 0 3px rgba(134, 196, 216, 0.2),
+    0 0 0 6px rgba(5, 9, 13, 0.9);
+}

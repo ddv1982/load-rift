@@ -13,7 +13,11 @@ export function getAdvancedOptionsFeedback(
 
   try {
     const parsed = JSON.parse(trimmedValue) as unknown;
-    if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
+    if (
+      parsed === null ||
+      Array.isArray(parsed) ||
+      typeof parsed !== "object"
+    ) {
       return {
         tone: "error",
         message: "Advanced options must be a JSON object.",

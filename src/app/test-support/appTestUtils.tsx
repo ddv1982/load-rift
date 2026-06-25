@@ -3,7 +3,10 @@ import { vi } from "vitest";
 import { App } from "../App";
 import { LoadRiftApiProvider } from "../../lib/loadrift/context";
 import type { LoadRiftApi } from "../../lib/loadrift/api";
-import type { CollectionInfo, SmokeTestResponse } from "../../lib/loadrift/types";
+import type {
+  CollectionInfo,
+  SmokeTestResponse,
+} from "../../lib/loadrift/types";
 import type { TestHarnessState } from "../../features/test/useTestHarness";
 export {
   createLoadRiftApiMock as createApiMock,
@@ -137,14 +140,16 @@ export const sameNameDifferentCollection: CollectionInfo = {
   ],
 };
 
-export function createImportHookState(collection: CollectionInfo | null = importedCollection) {
+export function createImportHookState(
+  collection: CollectionInfo | null = importedCollection,
+) {
   return {
     state: {
       isLoading: false,
       error: null,
       collection,
     },
-    importFromFile: vi.fn(),
+    selectAndImport: vi.fn(),
     reportError: vi.fn(),
     reset: vi.fn(),
   };
@@ -152,29 +157,29 @@ export function createImportHookState(collection: CollectionInfo | null = import
 
 export function createTestHookState() {
   const state: TestHarnessState = {
-      status: "idle" as const,
-      metrics: {
-        activeVus: 0,
-        totalRequests: 0,
-        failedRequests: 0,
-        errorRate: 0,
-        avgResponseTime: 0,
-        p50ResponseTime: 0,
-        p95ResponseTime: 0,
-        maxResponseTime: 0,
-        requestsPerSecond: 0,
-      },
-      result: null,
-      finishReason: null,
-      resultSource: null,
-      summaryIssue: null,
-      error: null,
-      runId: null,
-      output: "",
-      isStarting: false,
-      isBusy: false,
-      isRunning: false,
-    };
+    status: "idle" as const,
+    metrics: {
+      activeVus: 0,
+      totalRequests: 0,
+      failedRequests: 0,
+      errorRate: 0,
+      avgResponseTime: 0,
+      p50ResponseTime: 0,
+      p95ResponseTime: 0,
+      maxResponseTime: 0,
+      requestsPerSecond: 0,
+    },
+    result: null,
+    finishReason: null,
+    resultSource: null,
+    summaryIssue: null,
+    error: null,
+    runId: null,
+    output: "",
+    isStarting: false,
+    isBusy: false,
+    isRunning: false,
+  };
 
   return {
     state,

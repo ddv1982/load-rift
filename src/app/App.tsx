@@ -1,7 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { AppHero } from "./components/AppHero";
-import { CollectionImportSection } from "./components/CollectionImportSection";
-import { TestHarnessSection } from "./components/TestHarnessSection";
+import { ConfigurePanel } from "./components/ConfigurePanel";
+import { RunPanel } from "./components/RunPanel";
+import { SourcePanel } from "./components/SourcePanel";
 import { WorkflowStepper } from "./components/WorkflowStepper";
 import {
   buildReportFileName,
@@ -14,10 +15,6 @@ import { useTestHarness } from "../features/test/useTestHarness";
 import { useConfigValidation } from "../features/test/useConfigValidation";
 import { useLoadRiftApi } from "../lib/loadrift/context";
 import type { CollectionInfo, K6Options } from "../lib/loadrift/types";
-import {
-  selectCollectionFile,
-  selectReportSavePath,
-} from "../lib/tauri/dialog";
 import { getTauriErrorMessage } from "../lib/tauri/errors";
 import { useCurlImport } from "./hooks/useCurlImport";
 import { useRunnerOptions } from "./hooks/useRunnerOptions";
@@ -61,20 +58,18 @@ export function App() {
   const workflowTabsId = useId();
   const sourcePanelRef = useRef<HTMLDivElement | null>(null);
   const workflowTabRefs = useRef<Array<HTMLButtonElement | null>>([]);
-  const [activeWorkflowStep, setActiveWorkflowStep] = useState<WorkflowStep>("source");
-  const [lastSmokeInputKey, setLastSmokeInputKey] = useState<string | null>(null);
+  const [activeWorkflowStep, setActiveWorkflowStep] =
+    useState<WorkflowStep>("source");
+  const [lastSmokeInputKey, setLastSmokeInputKey] = useState<string | null>(
+    null,
+  );
   const [collectionRevision, setCollectionRevision] = useState(0);
   const [exportNotice, setExportNotice] = useState<{
     tone: "error" | "success";
     message: string;
   } | null>(null);
   const api = useLoadRiftApi();
-  const {
-    state: importState,
-    importFromFile,
-    reportError: reportImportError,
-    reset,
-  } = useCollectionImport();
+  const { state: importState, selectAndImport, reset } = useCollectionImport();
   const {
     state: testState,
     refreshStatus,
@@ -111,14 +106,11 @@ export function App() {
     applyCurlCommand,
     handleCurlInputChange,
   } = useCurlImport(setRunnerOptions);
-  const {
-    workspaceShellRef,
-    eventLogRef,
-    resultSummaryRef,
-  } = useWorkspaceLayout({
-    output: testState.output,
-    result: testState.result,
-  });
+  const { workspaceShellRef, eventLogRef, resultSummaryRef } =
+    useWorkspaceLayout({
+      output: testState.output,
+      result: testState.result,
+    });
 
   const effectiveRunnerOptions = useMemo(
     () => normalizeRunnerOptionsForExecution(runnerOptions),
@@ -146,14 +138,27 @@ export function App() {
       configValidation.status === "ready" &&
       runnerOptionsAreValid &&
       !isHarnessBusy,
-    [configValidation.status, importState.collection, isHarnessBusy, runnerOptionsAreValid],
+    [
+      configValidation.status,
+      importState.collection,
+      isHarnessBusy,
+      runnerOptionsAreValid,
+    ],
   );
   const canSmokeTest = useMemo(
-    () => Boolean(importState.collection) && runnerOptionsAreValid && !isHarnessBusy,
+    () =>
+      Boolean(importState.collection) &&
+      runnerOptionsAreValid &&
+      !isHarnessBusy,
     [importState.collection, isHarnessBusy, runnerOptionsAreValid],
   );
   const smokeInputKey = useMemo(
-    () => buildSmokeInputKey(collection, effectiveRunnerOptions, collectionRevision),
+    () =>
+      buildSmokeInputKey(
+        collection,
+        effectiveRunnerOptions,
+        collectionRevision,
+      ),
     [collection, collectionRevision, effectiveRunnerOptions],
   );
   const displayedSmokeTestState = useMemo(() => {
@@ -172,7 +177,9 @@ export function App() {
     return smokeTestState;
   }, [lastSmokeInputKey, smokeInputKey, smokeTestState]);
 
-  const displayedTestStatus = testState.isStarting ? "starting" : testState.status;
+  const displayedTestStatus = testState.isStarting
+    ? "starting"
+    : testState.status;
   const displayedVerdict = testState.result
     ? testState.result.status.toUpperCase()
     : displayedTestStatus.toUpperCase();
@@ -223,7 +230,8 @@ export function App() {
     onThresholdChange: updateThreshold,
     onTrafficModeChange: (value: K6Options["trafficMode"]) =>
       updateRunnerOption("trafficMode", value),
-    onAuthTokenChange: (value: string) => updateRunnerOption("authToken", value),
+    onAuthTokenChange: (value: string) =>
+      updateRunnerOption("authToken", value),
     onBaseUrlChange: (value: string) => {
       updateRunnerOption("baseUrl", value);
     },
@@ -261,17 +269,7 @@ export function App() {
     setIsPickingFile(true);
 
     try {
-      const filePath = await selectCollectionFile();
-
-      if (!filePath) {
-        return;
-      }
-
-      await importFromFile(filePath);
-    } catch (error) {
-      reportImportError(
-        getTauriErrorMessage(error, "Failed to open the collection file picker."),
-      );
+      await selectAndImport();
     } finally {
       setIsPickingFile(false);
     }
@@ -318,22 +316,24 @@ export function App() {
   async function handleExportLatestReport() {
     try {
       setExportNotice(null);
-      const savePath = await selectReportSavePath(
-        buildReportFileName(effectiveRunnerOptions.baseUrl),
-      );
-      if (!savePath) {
+      const result = await api.selectAndExportReport({
+        defaultPath: buildReportFileName(effectiveRunnerOptions.baseUrl),
+      });
+      if (!result) {
         return;
       }
 
-      await api.exportReport({ savePath });
       setExportNotice({
         tone: "success",
-        message: `Report saved to ${savePath}.`,
+        message: `Report saved to ${result.savePath}.`,
       });
     } catch (error) {
       setExportNotice({
         tone: "error",
-        message: getTauriErrorMessage(error, "Failed to export the latest k6 report."),
+        message: getTauriErrorMessage(
+          error,
+          "Failed to export the latest k6 report.",
+        ),
       });
     }
   }
@@ -354,59 +354,38 @@ export function App() {
           onStepChange={setActiveWorkflowStep}
         />
 
-        <div
-          ref={sourcePanelRef}
-          role="tabpanel"
-          id={`${workflowTabsId}-source-panel`}
-          aria-labelledby={`${workflowTabsId}-source-tab`}
-          hidden={activeWorkflowStep !== "source"}
-        >
-          <CollectionImportSection
-            collection={collection}
-            selectedRequestIds={runnerOptions.selectedRequestIds}
-            requestWeights={runnerOptions.requestWeights}
-            trafficMode={runnerOptions.trafficMode}
-            error={importState.error}
-            isLoading={importState.isLoading}
-            isPickingFile={isPickingFile}
-            onFileImport={() => void handleFileImport()}
-            onReset={reset}
-            onSelectionChange={updateSelectedRequestIds}
-            onRequestWeightChange={updateRequestWeight}
-          />
-        </div>
+        <SourcePanel
+          panelRef={sourcePanelRef}
+          workflowTabsId={workflowTabsId}
+          isActive={activeWorkflowStep === "source"}
+          collection={collection}
+          selectedRequestIds={runnerOptions.selectedRequestIds}
+          requestWeights={runnerOptions.requestWeights}
+          trafficMode={runnerOptions.trafficMode}
+          error={importState.error}
+          isLoading={importState.isLoading}
+          isPickingFile={isPickingFile}
+          onFileImport={() => void handleFileImport()}
+          onReset={reset}
+          onSelectionChange={updateSelectedRequestIds}
+          onRequestWeightChange={updateRequestWeight}
+        />
 
-        <div
-          role="tabpanel"
-          id={`${workflowTabsId}-configure-panel`}
-          aria-labelledby={`${workflowTabsId}-configure-tab`}
-          hidden={activeWorkflowStep !== "configure"}
-        >
-          {activeWorkflowStep === "configure" ? (
-            <TestHarnessSection
-              status={harnessStatus}
-              controls={harnessControls}
-              actions={harnessActions}
-              activeStep="configure"
-            />
-          ) : null}
-        </div>
+        <ConfigurePanel
+          workflowTabsId={workflowTabsId}
+          isActive={activeWorkflowStep === "configure"}
+          status={harnessStatus}
+          controls={harnessControls}
+          actions={harnessActions}
+        />
 
-        <div
-          role="tabpanel"
-          id={`${workflowTabsId}-run-panel`}
-          aria-labelledby={`${workflowTabsId}-run-tab`}
-          hidden={activeWorkflowStep !== "run"}
-        >
-          {activeWorkflowStep === "run" ? (
-            <TestHarnessSection
-              status={harnessStatus}
-              controls={harnessControls}
-              actions={harnessActions}
-              activeStep="run"
-            />
-          ) : null}
-        </div>
+        <RunPanel
+          workflowTabsId={workflowTabsId}
+          isActive={activeWorkflowStep === "run"}
+          status={harnessStatus}
+          controls={harnessControls}
+          actions={harnessActions}
+        />
       </main>
     </div>
   );

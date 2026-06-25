@@ -3,58 +3,63 @@ mod service;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use tauri::State;
+use tauri::{AppHandle, State};
+use tauri_plugin_dialog::DialogExt;
 
 use crate::models::CollectionInfo;
 use crate::state::SharedAppState;
 
 const MAX_COLLECTION_FILE_BYTES: u64 = 20 * 1024 * 1024;
 
-#[derive(Debug, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ImportCollectionFromFileRequest {
-    pub file_path: String,
-}
-
 #[tauri::command]
-pub async fn import_collection_from_file(
+pub async fn select_and_import_collection(
+    app: AppHandle,
     state: State<'_, SharedAppState>,
-    request: ImportCollectionFromFileRequest,
-) -> Result<CollectionInfo, String> {
+) -> Result<Option<CollectionInfo>, String> {
+    let selected = app
+        .dialog()
+        .file()
+        .set_title("Select Postman Collection")
+        .add_filter("JSON", &["json"])
+        .blocking_pick_file();
+    let Some(selected) = selected else {
+        return Ok(None);
+    };
+    let path = selected.into_path().map_err(|_| {
+        "The selected collection path is not available on this platform.".to_string()
+    })?;
     let state = state.inner().clone();
-    let file_path = request.file_path;
 
-    tauri::async_runtime::spawn_blocking(move || import_collection_from_path(&state, &file_path))
+    tauri::async_runtime::spawn_blocking(move || import_collection_from_path(&state, &path))
         .await
         .map_err(|error| format!("Failed to complete collection import task: {error}"))?
+        .map(Some)
 }
 
 fn import_collection_from_path(
     state: &SharedAppState,
-    file_path: &str,
+    file_path: impl AsRef<Path>,
 ) -> Result<CollectionInfo, String> {
     service::ensure_can_import_collection(state)?;
 
-    let path = validate_import_path(file_path)?;
+    let path = validate_import_path(file_path.as_ref())?;
     let content = fs::read_to_string(&path)
         .map_err(|error| format!("Failed to read {}: {error}", path.display()))?;
 
     service::import_collection_into_state(state, &content)
 }
 
-fn validate_import_path(file_path: &str) -> Result<PathBuf, String> {
-    let trimmed = file_path.trim();
-    if trimmed.is_empty() {
+fn validate_import_path(file_path: &Path) -> Result<PathBuf, String> {
+    if file_path.as_os_str().is_empty() {
         return Err("Choose a Postman collection JSON file before importing.".to_string());
     }
 
-    let requested_path = Path::new(trimmed);
-    let resolved_path = if requested_path.is_absolute() {
-        requested_path.to_path_buf()
+    let resolved_path = if file_path.is_absolute() {
+        file_path.to_path_buf()
     } else {
         std::env::current_dir()
             .map_err(|error| format!("Failed to resolve the import location: {error}"))?
-            .join(requested_path)
+            .join(file_path)
     };
     let canonical_path = fs::canonicalize(&resolved_path).map_err(|error| {
         format!(

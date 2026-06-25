@@ -29,7 +29,9 @@ function SelectionCheckbox({
     checkboxRef.current.indeterminate = Boolean(indeterminate && !checked);
   }, [checked, indeterminate]);
 
-  return <input ref={checkboxRef} type="checkbox" checked={checked} {...props} />;
+  return (
+    <input ref={checkboxRef} type="checkbox" checked={checked} {...props} />
+  );
 }
 
 export function CollectionSummaryCard({
@@ -75,7 +77,8 @@ export function CollectionSummaryCard({
   const showWeights = trafficMode === "weighted";
   const weightedSelectionCount = (collection?.requests ?? []).filter(
     (request) =>
-      selectedRequestSet.has(request.id) && getRequestWeight(request.id, requestWeights) > 0,
+      selectedRequestSet.has(request.id) &&
+      getRequestWeight(request.id, requestWeights) > 0,
   ).length;
 
   if (!collection) {
@@ -83,8 +86,8 @@ export function CollectionSummaryCard({
       <article className="summary-card is-empty">
         <p>No imported collection yet.</p>
         <span>
-          Import a Postman collection from disk to inspect the extracted
-          request summary here.
+          Import a Postman collection from disk to inspect the extracted request
+          summary here.
         </span>
       </article>
     );
@@ -148,7 +151,9 @@ export function CollectionSummaryCard({
           <SelectionCheckbox
             checked={allSelected}
             indeterminate={selectedCount > 0 && !allSelected}
-            onChange={(event) => updateSelection(allRequestIds, event.target.checked)}
+            onChange={(event) =>
+              updateSelection(allRequestIds, event.target.checked)
+            }
           />
           <span>Run all imported requests</span>
         </label>
@@ -189,7 +194,8 @@ export function CollectionSummaryCard({
 
       <div className="summary-meta">
         <span>
-          Showing {filteredRequests.length} of {collection.requestCount} requests
+          Showing {filteredRequests.length} of {collection.requestCount}{" "}
+          requests
         </span>
         <span>
           Running {selectedCount} of {collection.requestCount} requests
@@ -203,18 +209,23 @@ export function CollectionSummaryCard({
             {weightedSelectionCount === 1 ? "" : "s"}
           </span>
         ) : null}
-        <span>{formatCount("runtime variable", collection.runtimeVariables.length)}</span>
+        <span>
+          {formatCount("runtime variable", collection.runtimeVariables.length)}
+        </span>
       </div>
 
       {showWeights ? (
         <div className="weighted-mode-callout">
-          Weighted mix uses selected requests with weight greater than 0. Weight 0
-          excludes a selected request; higher numbers run that request more often.
+          Weighted mix uses selected requests with weight greater than 0. Weight
+          0 excludes a selected request; higher numbers run that request more
+          often.
         </div>
       ) : null}
 
       <div className="request-table">
-        <div className={`request-list-header request-tree-header${showWeights ? " is-weighted" : ""}`}>
+        <div
+          className={`request-list-header request-tree-header${showWeights ? " is-weighted" : ""}`}
+        >
           <span>Run</span>
           <span>Collection item</span>
           <span>Resolved URL / Path</span>
@@ -226,8 +237,8 @@ export function CollectionSummaryCard({
             <ul className="request-list request-tree-list">
               {renderedRows.map((row) => {
                 if (row.kind === "folder") {
-                  const selectedDescendants = row.requestIds.filter((requestId) =>
-                    selectedRequestSet.has(requestId)
+                  const selectedDescendants = row.requestIds.filter(
+                    (requestId) => selectedRequestSet.has(requestId),
                   ).length;
                   const fullySelected =
                     row.requestIds.length > 0 &&
@@ -242,7 +253,8 @@ export function CollectionSummaryCard({
                       <SelectionCheckbox
                         checked={fullySelected}
                         indeterminate={
-                          selectedDescendants > 0 && selectedDescendants < row.requestIds.length
+                          selectedDescendants > 0 &&
+                          selectedDescendants < row.requestIds.length
                         }
                         onChange={(event) =>
                           updateSelection(row.requestIds, event.target.checked)
@@ -260,22 +272,31 @@ export function CollectionSummaryCard({
                           aria-label={`${isCollapsed ? "Expand" : "Collapse"} folder ${row.name}`}
                           aria-expanded={!isCollapsed}
                         >
-                          <span className={`folder-toggle-icon${isCollapsed ? "" : " is-open"}`}>
+                          <span
+                            className={`folder-toggle-icon${isCollapsed ? "" : " is-open"}`}
+                          >
                             ▸
                           </span>
-                          <strong className="request-folder-name">{row.name}</strong>
+                          <strong className="request-folder-name">
+                            {row.name}
+                          </strong>
                         </button>
                         <span className="request-folder-meta">
                           {formatCount("request", row.requestIds.length)}
                         </span>
                       </div>
                       <em className="request-url">{row.pathLabel}</em>
-                      {showWeights ? <span className="request-weight-placeholder">—</span> : null}
+                      {showWeights ? (
+                        <span className="request-weight-placeholder">—</span>
+                      ) : null}
                     </li>
                   );
                 }
 
-                const requestWeight = getRequestWeight(row.request.id, requestWeights);
+                const requestWeight = getRequestWeight(
+                  row.request.id,
+                  requestWeights,
+                );
 
                 return (
                   <li
@@ -293,7 +314,9 @@ export function CollectionSummaryCard({
                       className="request-tree-item"
                       style={{ paddingInlineStart: `${row.depth * 1.1}rem` }}
                     >
-                      <strong className="request-method">{row.request.method}</strong>
+                      <strong className="request-method">
+                        {row.request.method}
+                      </strong>
                       <span className="request-name">{row.request.name}</span>
                     </div>
                     <em className="request-url">
@@ -310,7 +333,9 @@ export function CollectionSummaryCard({
                           onChange={(event) =>
                             onRequestWeightChange(
                               row.request.id,
-                              event.target.value === "" ? 1 : Number(event.target.value),
+                              event.target.value === ""
+                                ? 1
+                                : Number(event.target.value),
                             )
                           }
                           aria-label={`Weight for ${row.request.name}`}
@@ -323,7 +348,9 @@ export function CollectionSummaryCard({
             </ul>
             {hiddenVisibleRowCount > 0 ? (
               <div className="request-list-pagination">
-                <span>{formatCount("additional row", hiddenVisibleRowCount)} hidden</span>
+                <span>
+                  {formatCount("additional row", hiddenVisibleRowCount)} hidden
+                </span>
                 <button
                   type="button"
                   className="ghost summary-action-button"

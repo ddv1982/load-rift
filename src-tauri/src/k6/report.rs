@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::Value;
 
@@ -186,7 +186,20 @@ const DETAIL_STYLES: &str = r#"
 "#;
 const METRIC_CATEGORY_ORDER: [&str; 4] = ["HTTP", "Execution", "Network", "Checks & Other"];
 
+#[cfg(test)]
 pub fn export_report_file(state: &SharedAppState, save_path: &str) -> Result<PathBuf, String> {
+    let trimmed = save_path.trim();
+    if trimmed.is_empty() {
+        return Err("Choose an HTML report file before exporting.".to_string());
+    }
+
+    export_report_file_to_path(state, Path::new(trimmed))
+}
+
+pub fn export_report_file_to_path(
+    state: &SharedAppState,
+    save_path: &Path,
+) -> Result<PathBuf, String> {
     let (result, output, summary_json) = {
         let app_state = state
             .lock()
@@ -214,19 +227,17 @@ pub fn export_report_file(state: &SharedAppState, save_path: &str) -> Result<Pat
     Ok(target_path)
 }
 
-pub(super) fn normalize_export_path(save_path: &str) -> Result<PathBuf, String> {
-    let trimmed = save_path.trim();
-    if trimmed.is_empty() {
+pub(super) fn normalize_export_path(save_path: &Path) -> Result<PathBuf, String> {
+    if save_path.as_os_str().is_empty() {
         return Err("Choose an HTML report file before exporting.".to_string());
     }
 
-    let path = PathBuf::from(trimmed);
-    let path = if path.is_absolute() {
-        path
+    let path = if save_path.is_absolute() {
+        save_path.to_path_buf()
     } else {
         env::current_dir()
             .map_err(|error| format!("Failed to resolve the export location: {error}"))?
-            .join(path)
+            .join(save_path)
     };
 
     if !path

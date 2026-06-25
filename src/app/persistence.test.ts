@@ -68,17 +68,22 @@ describe("runner preferences persistence", () => {
     ["unsafe integer", Number.MAX_SAFE_INTEGER + 1],
     ["null", null],
     ["string", "4"],
-  ])("drops persisted invalid %s VU values in favor of defaults", (_label, vus) => {
-    window.localStorage.setItem(
-      "loadrift.ui.runner-preferences",
-      JSON.stringify({
-        ...DEFAULT_K6_OPTIONS,
-        vus,
-      }),
-    );
+  ])(
+    "drops persisted invalid %s VU values in favor of defaults",
+    (_label, vus) => {
+      window.localStorage.setItem(
+        "loadrift.ui.runner-preferences",
+        JSON.stringify({
+          ...DEFAULT_K6_OPTIONS,
+          vus,
+        }),
+      );
 
-    expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS).vus).toBe(DEFAULT_K6_OPTIONS.vus);
-  });
+      expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS).vus).toBe(
+        DEFAULT_K6_OPTIONS.vus,
+      );
+    },
+  );
 
   it("does not persist invalid VU values", () => {
     saveRunnerPreferences({
@@ -86,7 +91,9 @@ describe("runner preferences persistence", () => {
       vus: Number.POSITIVE_INFINITY,
     });
 
-    expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS).vus).toBe(DEFAULT_K6_OPTIONS.vus);
+    expect(loadRunnerPreferences(DEFAULT_K6_OPTIONS).vus).toBe(
+      DEFAULT_K6_OPTIONS.vus,
+    );
   });
 
   it("drops persisted decimal thresholds in favor of defaults", () => {

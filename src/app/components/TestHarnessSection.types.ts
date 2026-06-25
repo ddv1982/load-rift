@@ -55,7 +55,10 @@ export interface TestHarnessActionsProps {
   onDurationChange: (value: string) => void;
   onRampUpChange: (value: K6Options["rampUp"]) => void;
   onRampUpTimeChange: (value: string) => void;
-  onThresholdChange: (key: keyof K6Options["thresholds"], value: string) => void;
+  onThresholdChange: (
+    key: keyof K6Options["thresholds"],
+    value: string,
+  ) => void;
   onTrafficModeChange: (value: K6Options["trafficMode"]) => void;
   onAuthTokenChange: (value: string) => void;
   onBaseUrlChange: (value: string) => void;

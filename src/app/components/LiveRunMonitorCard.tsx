@@ -39,11 +39,14 @@ export function LiveRunMonitorCard({
       {error ? <p className="inline-error">Primary k6 error: {error}</p> : null}
       {resultSource === "liveMetricsFallback" ? (
         <p className="inline-note is-error">
-          Latest result uses live metrics fallback because the structured k6 summary could not be processed
+          Latest result uses live metrics fallback because the structured k6
+          summary could not be processed
           {summaryIssue ? `: ${summaryIssue}` : "."}
         </p>
       ) : null}
-      {finishReason ? <p className="inline-note">Finish reason: {finishReason}</p> : null}
+      {finishReason ? (
+        <p className="inline-note">Finish reason: {finishReason}</p>
+      ) : null}
     </div>
   );
 }

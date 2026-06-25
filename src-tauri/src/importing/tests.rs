@@ -18,6 +18,7 @@ use std::sync::Arc;
 use std::sync::Mutex;
 #[cfg(target_os = "linux")]
 use std::thread;
+use std::time::Instant;
 #[cfg(target_os = "linux")]
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -71,6 +72,55 @@ fn sample_host_placeholder_collection() -> &'static str {
         }
       ]
     }"#
+}
+
+fn large_postman_collection_fixture(folder_count: usize, requests_per_folder: usize) -> String {
+    let mut folders = Vec::with_capacity(folder_count);
+    for folder_index in 0..folder_count {
+        let mut requests = Vec::with_capacity(requests_per_folder);
+        for request_index in 0..requests_per_folder {
+            let absolute_index = folder_index * requests_per_folder + request_index;
+            requests.push(format!(
+                r#"{{
+                  "name": "GET item {absolute_index}",
+                  "request": {{
+                    "method": "GET",
+                    "header": [
+                      {{"key": "X-Trace-Id", "value": "{{{{traceId}}}}"}}
+                    ],
+                    "url": {{
+                      "raw": "{{{{environment}}}}/folders/{folder_index}/items/{absolute_index}?page={{{{page}}}}",
+                      "host": ["{{{{environment}}}}"],
+                      "path": ["folders", "{folder_index}", "items", "{absolute_index}"]
+                    }}
+                  }}
+                }}"#
+            ));
+        }
+        folders.push(format!(
+            r#"{{
+              "name": "Folder {folder_index}",
+              "item": [{}]
+            }}"#,
+            requests.join(",")
+        ));
+    }
+
+    format!(
+        r#"{{
+          "info": {{
+            "name": "Large Fixture Collection",
+            "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+          }},
+          "variable": [
+            {{"key": "environment", "value": "https://api.example.com"}},
+            {{"key": "page", "value": "1"}},
+            {{"key": "traceId", "value": "benchmark-trace"}}
+          ],
+          "item": [{}]
+        }}"#,
+        folders.join(",")
+    )
 }
 
 #[cfg(target_os = "linux")]
@@ -554,6 +604,49 @@ fn imports_host_placeholder_fixture() {
     assert_eq!(imported.info.runtime_variables[0].key, "environment");
     assert!(imported.info.runtime_variables[0].default_value.is_none());
     assert!(imported.script.contains("Lookup beta"));
+}
+
+#[test]
+fn imports_large_postman_collection_fixture() {
+    let content = large_postman_collection_fixture(20, 100);
+    let started = Instant::now();
+    let imported = import_collection(&content).expect("large fixture should import");
+    let elapsed = started.elapsed();
+
+    if std::env::var("LOADRIFT_BENCHMARK_IMPORT").is_ok() {
+        println!(
+            "imported {} requests across {} folders in {:?}",
+            imported.info.request_count, imported.info.folder_count, elapsed
+        );
+    }
+
+    assert_eq!(imported.info.name, "Large Fixture Collection");
+    assert_eq!(imported.info.request_count, 2_000);
+    assert_eq!(imported.info.folder_count, 20);
+    assert_eq!(
+        imported.info.requests[0].folder_path,
+        vec!["Folder 0".to_string()]
+    );
+    assert_eq!(
+        imported.info.requests[1999].folder_path,
+        vec!["Folder 19".to_string()]
+    );
+    assert!(imported
+        .info
+        .runtime_variables
+        .iter()
+        .any(|variable| variable.key == "environment"));
+    assert!(imported
+        .info
+        .runtime_variables
+        .iter()
+        .any(|variable| variable.key == "page"));
+    assert!(imported
+        .info
+        .runtime_variables
+        .iter()
+        .any(|variable| variable.key == "traceId"));
+    assert!(imported.script.contains("GET item 1999"));
 }
 
 #[test]

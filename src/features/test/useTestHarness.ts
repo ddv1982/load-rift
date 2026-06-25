@@ -113,31 +113,39 @@ export function useTestHarness() {
 
       unlistenCallbacks.push(unlistenMetrics);
 
-      const unlistenComplete = await api.onK6Complete((completion: TestCompletion) => {
-        const normalizedCompletion = normalizeTestCompletion(completion);
-        if (!normalizedCompletion || !isActive || !isCurrentRun(normalizedCompletion.runId)) {
-          return;
-        }
+      const unlistenComplete = await api.onK6Complete(
+        (completion: TestCompletion) => {
+          const normalizedCompletion = normalizeTestCompletion(completion);
+          if (
+            !normalizedCompletion ||
+            !isActive ||
+            !isCurrentRun(normalizedCompletion.runId)
+          ) {
+            return;
+          }
 
-        activeRunIdRef.current = null;
-        terminalErrorRunIdRef.current =
-          normalizedCompletion.runState === "failed" ? normalizedCompletion.runId : null;
-        pendingStartIdRef.current = null;
-        setState((previous) => ({
-          ...previous,
-          status: normalizedCompletion.runState,
-          metrics: normalizedCompletion.metrics,
-          result: normalizedCompletion.result,
-          finishReason: normalizedCompletion.finishReason,
-          resultSource: normalizedCompletion.resultSource,
-          summaryIssue: normalizedCompletion.summaryIssue,
-          error: normalizedCompletion.errorMessage,
-          runId: normalizedCompletion.runId,
-          isStarting: false,
-          isBusy: false,
-          isRunning: false,
-        }));
-      });
+          activeRunIdRef.current = null;
+          terminalErrorRunIdRef.current =
+            normalizedCompletion.runState === "failed"
+              ? normalizedCompletion.runId
+              : null;
+          pendingStartIdRef.current = null;
+          setState((previous) => ({
+            ...previous,
+            status: normalizedCompletion.runState,
+            metrics: normalizedCompletion.metrics,
+            result: normalizedCompletion.result,
+            finishReason: normalizedCompletion.finishReason,
+            resultSource: normalizedCompletion.resultSource,
+            summaryIssue: normalizedCompletion.summaryIssue,
+            error: normalizedCompletion.errorMessage,
+            runId: normalizedCompletion.runId,
+            isStarting: false,
+            isBusy: false,
+            isRunning: false,
+          }));
+        },
+      );
 
       if (!isActive) {
         unlistenComplete();

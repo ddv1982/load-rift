@@ -1,0 +1,332 @@
+.app-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: clamp(1rem, 2.4vw, 2rem);
+}
+
+.app-hero {
+  display: grid;
+  gap: clamp(1rem, 2vw, 1.5rem);
+  grid-template-columns: minmax(0, 1.25fr) minmax(22rem, 0.75fr);
+  align-items: stretch;
+  margin-bottom: 1rem;
+  padding: clamp(1.05rem, 2.4vw, 1.7rem);
+  border: 1px solid var(--panel-border-strong);
+  border-radius: 1.25rem;
+  background:
+    linear-gradient(135deg, rgba(240, 168, 79, 0.09), transparent 34%),
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.055),
+      rgba(255, 255, 255, 0.018)
+    ),
+    rgba(11, 17, 24, 0.92);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(18px);
+}
+
+.app-hero-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.app-hero h1,
+.panel h2,
+.summary-card h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  letter-spacing: -0.035em;
+}
+
+.app-title-row {
+  display: flex;
+  gap: 0.7rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.app-brand-row {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.app-hero h1 {
+  font-size: clamp(2.4rem, 5vw, 4.8rem);
+  line-height: 0.9;
+}
+
+.app-icon {
+  display: block;
+  flex: 0 0 auto;
+  width: 3rem;
+  height: 3rem;
+  border-radius: 0.85rem;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 14px 30px rgba(0, 0, 0, 0.28);
+  object-fit: contain;
+}
+
+.eyebrow,
+.panel-kicker {
+  margin: 0 0 0.25rem;
+  color: var(--accent-strong);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.app-subtitle,
+.section-copy,
+.panel-copy,
+.summary-card span,
+.field span {
+  color: var(--muted);
+}
+
+.app-subtitle {
+  max-width: 54rem;
+  margin: 0;
+  color: var(--muted-strong);
+  font-size: clamp(1rem, 1.4vw, 1.16rem);
+  line-height: 1.65;
+}
+
+.overview-grid {
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin: 0;
+}
+
+.overview-card,
+.summary-card,
+.panel {
+  border: 1px solid var(--panel-border);
+  background: var(--bg-elevated);
+  backdrop-filter: blur(18px);
+  box-shadow: var(--shadow);
+}
+
+.overview-card {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  justify-content: space-between;
+  border-radius: 0.95rem;
+  padding: 0.95rem;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.045),
+      rgba(255, 255, 255, 0.012)
+    ),
+    rgba(255, 255, 255, 0.018);
+}
+
+.overview-card dt {
+  margin-bottom: 0.2rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.overview-card dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 700;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.34rem 0.66rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.status-pill.is-running,
+.status-pill.is-starting {
+  color: var(--accent-strong);
+  border-color: rgba(210, 161, 91, 0.34);
+  background: rgba(210, 161, 91, 0.12);
+}
+
+.status-pill.is-completed {
+  color: var(--success);
+  border-color: rgba(134, 215, 161, 0.32);
+  background: rgba(134, 215, 161, 0.1);
+}
+
+.status-pill.is-failed {
+  color: var(--danger);
+  border-color: rgba(255, 143, 120, 0.3);
+  background: rgba(255, 143, 120, 0.12);
+}
+
+.workspace-shell {
+  display: grid;
+  gap: 0.85rem;
+  align-items: stretch;
+}
+
+.workflow-stepper {
+  display: flex;
+  gap: 0.8rem;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
+  background: rgba(0, 0, 0, 0.18);
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.18);
+}
+
+.workflow-step-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.35rem;
+  flex: 1;
+}
+
+.workflow-step-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  min-width: 0;
+  padding: 0.72rem 0.9rem;
+  border: 1px solid transparent;
+  border-radius: 0.8rem;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 700;
+  transition:
+    transform 150ms ease,
+    color 150ms ease,
+    background 150ms ease,
+    border-color 150ms ease;
+}
+
+.workflow-step-tabs button:hover {
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.045);
+  transform: translateY(-1px);
+}
+
+.workflow-step-tabs button.is-active {
+  color: #130d07;
+  border-color: rgba(255, 209, 138, 0.24);
+  background: linear-gradient(180deg, #ffd18a 0%, #e89b3e 100%);
+  box-shadow: 0 12px 26px rgba(125, 80, 23, 0.2);
+}
+
+.workflow-step-index {
+  display: inline-grid;
+  place-items: center;
+  width: 1.45rem;
+  height: 1.45rem;
+  border-radius: 999px;
+  color: inherit;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 0.78rem;
+}
+
+.workflow-step-tabs button.is-active .workflow-step-index {
+  background: rgba(19, 13, 7, 0.12);
+}
+
+.workflow-step-status {
+  margin: 0;
+  padding: 0 0.55rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.import-panel,
+.harness-panel {
+  min-width: 0;
+}
+
+.panel {
+  border-radius: 1.1rem;
+  padding: 1.1rem;
+  background:
+    linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.032),
+      rgba(255, 255, 255, 0.012)
+    ),
+    var(--bg-panel);
+}
+
+.workspace-shell > [role="tabpanel"]:not([hidden]) {
+  animation: panel-enter 180ms ease-out;
+}
+
+.control-deck > [role="tabpanel"]:not([hidden]) {
+  animation: panel-enter 140ms ease-out;
+}
+
+@keyframes panel-enter {
+  from {
+    opacity: 0.86;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.section-heading,
+.summary-header,
+.action-row,
+.summary-badges {
+  display: flex;
+  gap: 0.9rem;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.section-heading {
+  margin-bottom: 1rem;
+  align-items: flex-start;
+}
+
+.section-heading-wide {
+  gap: 1.15rem;
+}
+
+.section-heading-copy {
+  min-width: 0;
+}
+
+.panel h2 {
+  font-size: clamp(1.18rem, 1.6vw, 1.45rem);
+  margin-bottom: 0.25rem;
+}
+
+.section-copy {
+  margin: 0;
+  max-width: 42rem;
+  font-size: 0.93rem;
+  line-height: 1.6;
+}

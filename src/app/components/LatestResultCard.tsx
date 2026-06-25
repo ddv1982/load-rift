@@ -105,7 +105,9 @@ export function LatestResultCard({
             >
               Export Latest Report
             </button>
-            <p className="inline-note export-helper">Exports the latest retained k6 report.</p>
+            <p className="inline-note export-helper">
+              Exports the latest retained k6 report.
+            </p>
           </div>
         </div>
       </div>
@@ -131,7 +133,8 @@ export function LatestResultCard({
               <p>
                 <span>Fallback context</span>
                 <strong>
-                  {summaryIssue ?? "Structured k6 summary could not be processed."}
+                  {summaryIssue ??
+                    "Structured k6 summary could not be processed."}
                 </strong>
               </p>
             ) : null}
@@ -177,7 +180,9 @@ export function LatestResultCard({
               <p key={threshold.name}>
                 <span>{threshold.name}</span>
                 <strong
-                  className={threshold.passed ? "threshold-pass" : "threshold-fail"}
+                  className={
+                    threshold.passed ? "threshold-pass" : "threshold-fail"
+                  }
                 >
                   {threshold.passed ? "Passed" : "Failed"}
                 </strong>

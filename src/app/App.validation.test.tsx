@@ -1,7 +1,11 @@
 import { act, fireEvent, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LoadRiftApi } from "../lib/loadrift/api";
-import type { K6Options, SmokeTestResponse, TestResult } from "../lib/loadrift/types";
+import type {
+  K6Options,
+  SmokeTestResponse,
+  TestResult,
+} from "../lib/loadrift/types";
 import {
   appHookTestState,
   resetAppTestEnvironment,
@@ -28,21 +32,12 @@ const SOAP_RESPONSE_PREVIEW = "<Envelope>ok</Envelope>";
 const EMPTY_SMOKE_TEST_MESSAGE =
   "Run a smoke test to execute the selected requests once and inspect the response body, headers, and status before starting load.";
 
-const dialogMocks = vi.hoisted(() => ({
-  selectReportSavePath: vi.fn(),
-}));
-
 vi.mock("../features/import/useCollectionImport", () => ({
   useCollectionImport: () => appHookTestState.importHookState,
 }));
 
 vi.mock("../features/test/useTestHarness", () => ({
   useTestHarness: () => appHookTestState.testHookState,
-}));
-
-vi.mock("../lib/tauri/dialog", () => ({
-  selectCollectionFile: vi.fn(),
-  selectReportSavePath: dialogMocks.selectReportSavePath,
 }));
 
 function createSoapSmokeResponse(
@@ -97,7 +92,9 @@ async function flushMicrotasks(count = 1) {
 
 function getLatestResultCard() {
   openWorkflowStep("Run");
-  const latestResultCard = screen.getByText("Latest Result").closest(".result-summary");
+  const latestResultCard = screen
+    .getByText("Latest Result")
+    .closest(".result-summary");
   expect(latestResultCard).not.toBeNull();
   return latestResultCard as HTMLElement;
 }
@@ -149,8 +146,9 @@ describe("App validation lifecycle", () => {
   });
 
   it("ignores stale ready responses after settings change until the next validation completes", async () => {
-    const validations: Array<ReturnType<typeof deferred<{ ready: boolean; message: string }>>> =
-      [];
+    const validations: Array<
+      ReturnType<typeof deferred<{ ready: boolean; message: string }>>
+    > = [];
     const api: LoadRiftApi = createApiMock({
       validateTestConfiguration: vi.fn((_input: { options: K6Options }) => {
         const next = deferred<{ ready: boolean; message: string }>();
@@ -163,7 +161,9 @@ describe("App validation lifecycle", () => {
 
     expect(getRunAction("Start Test")).toBeDisabled();
     openWorkflowStep("Configure");
-    expect(screen.getByText("Validating current configuration...")).toBeInTheDocument();
+    expect(
+      screen.getByText("Validating current configuration..."),
+    ).toBeInTheDocument();
 
     await act(async () => {
       await vi.advanceTimersByTimeAsync(250);
@@ -171,10 +171,14 @@ describe("App validation lifecycle", () => {
 
     expect(api.validateTestConfiguration).toHaveBeenCalledTimes(1);
 
-    fireEvent.change(getConfigureField("Duration"), { target: { value: "2m" } });
+    fireEvent.change(getConfigureField("Duration"), {
+      target: { value: "2m" },
+    });
 
     openWorkflowStep("Configure");
-    expect(screen.getByText("Validating current configuration...")).toBeInTheDocument();
+    expect(
+      screen.getByText("Validating current configuration..."),
+    ).toBeInTheDocument();
     expect(getRunAction("Start Test")).toBeDisabled();
 
     await act(async () => {
@@ -188,7 +192,9 @@ describe("App validation lifecycle", () => {
     });
 
     openWorkflowStep("Configure");
-    expect(screen.getByText("Validating current configuration...")).toBeInTheDocument();
+    expect(
+      screen.getByText("Validating current configuration..."),
+    ).toBeInTheDocument();
     expect(getRunAction("Start Test")).toBeDisabled();
 
     await act(async () => {
@@ -214,7 +220,9 @@ describe("App validation lifecycle", () => {
 
     expect(getRunAction("Start Test")).toBeEnabled();
     openWorkflowStep("Configure");
-    expect(screen.getByText("Configuration looks ready to run.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Configuration looks ready to run."),
+    ).toBeInTheDocument();
   });
 
   it("allows temporary invalid virtual user edits while blocking Start Test", async () => {
@@ -227,18 +235,26 @@ describe("App validation lifecycle", () => {
     expect(getRunAction("Start Test")).toBeEnabled();
     expect(getRunAction("Check Config")).toBeEnabled();
 
-    fireEvent.change(getConfigureField("Virtual users"), { target: { value: "" } });
+    fireEvent.change(getConfigureField("Virtual users"), {
+      target: { value: "" },
+    });
 
     expect(screen.getByText("Virtual users is required.")).toBeInTheDocument();
     expect(getRunAction("Start Test")).toBeDisabled();
-    expect(screen.getByText("Fix the highlighted runner inputs before starting.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Fix the highlighted runner inputs before starting."),
+    ).toBeInTheDocument();
     openWorkflowStep("Configure");
     expect(
-      screen.getByText("Fix the highlighted runner inputs before checking configuration or starting."),
+      screen.getByText(
+        "Fix the highlighted runner inputs before checking configuration or starting.",
+      ),
     ).toBeInTheDocument();
     expect(getRunAction("Check Config")).toBeDisabled();
 
-    fireEvent.change(getConfigureField("Virtual users"), { target: { value: "3.5" } });
+    fireEvent.change(getConfigureField("Virtual users"), {
+      target: { value: "3.5" },
+    });
 
     expect(
       screen.getByText("Virtual users must be a whole number of 1 or more."),
@@ -246,7 +262,9 @@ describe("App validation lifecycle", () => {
     expect(getRunAction("Start Test")).toBeDisabled();
     expect(getRunAction("Check Config")).toBeDisabled();
 
-    fireEvent.change(getConfigureField("Virtual users"), { target: { value: "9007199254740992" } });
+    fireEvent.change(getConfigureField("Virtual users"), {
+      target: { value: "9007199254740992" },
+    });
 
     expect(
       screen.getByText("Virtual users must be a whole number of 1 or more."),
@@ -254,13 +272,16 @@ describe("App validation lifecycle", () => {
     expect(getRunAction("Start Test")).toBeDisabled();
     expect(getRunAction("Check Config")).toBeDisabled();
 
-    fireEvent.change(getConfigureField("Virtual users"), { target: { value: "25" } });
+    fireEvent.change(getConfigureField("Virtual users"), {
+      target: { value: "25" },
+    });
 
     await advanceValidationTimer();
 
     expect(getRunAction("Start Test")).toBeEnabled();
     expect(getRunAction("Check Config")).toBeEnabled();
-    const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock.lastCall;
+    const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock
+      .lastCall;
     expect(lastValidationCall).toBeDefined();
     expect(lastValidationCall?.[0].options.vus).toBe(25);
   });
@@ -290,9 +311,12 @@ describe("App validation lifecycle", () => {
     await advanceValidationTimer();
 
     expect(getRunAction("Start Test")).toBeEnabled();
-    const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock.lastCall;
+    const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock
+      .lastCall;
     expect(lastValidationCall).toBeDefined();
-    expect(lastValidationCall?.[0].options.thresholds.p95ResponseTime).toBe(2001);
+    expect(lastValidationCall?.[0].options.thresholds.p95ResponseTime).toBe(
+      2001,
+    );
   });
 
   it("applies base URL and bearer token from a pasted curl command", () => {
@@ -303,17 +327,22 @@ describe("App validation lifecycle", () => {
     expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
     );
-    expect((screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value).toBe(
-      "integration-token",
-    );
     expect(
-      screen.getByText(/Extracted base URL https:\/\/api\.example\.com and bearer token/),
+      (screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value,
+    ).toBe("integration-token");
+    expect(
+      screen.getByText(
+        /Extracted base URL https:\/\/api\.example\.com and bearer token/,
+      ),
     ).toHaveTextContent("cleared to avoid keeping tokens on screen");
-    expect((screen.getByLabelText("Paste Postman cURL") as HTMLTextAreaElement).value).toBe("");
+    expect(
+      (screen.getByLabelText("Paste Postman cURL") as HTMLTextAreaElement)
+        .value,
+    ).toBe("");
     fireEvent.click(screen.getByRole("tab", { name: "Variables" }));
-    expect((screen.getByLabelText("Environment") as HTMLInputElement).value).toBe(
-      "https://api.example.com",
-    );
+    expect(
+      (screen.getByLabelText("Environment") as HTMLInputElement).value,
+    ).toBe("https://api.example.com");
   });
 
   it("allows manual base URL edits for host-style variables without persisting mirrored overrides", async () => {
@@ -335,16 +364,17 @@ describe("App validation lifecycle", () => {
     );
     expect(api.validateTestConfiguration).toHaveBeenCalledTimes(1);
     expect(
-      (api.validateTestConfiguration as ReturnType<typeof vi.fn>).mock.calls[0]?.[0].options,
+      (api.validateTestConfiguration as ReturnType<typeof vi.fn>).mock
+        .calls[0]?.[0].options,
     ).toMatchObject({
       baseUrl: "https://manual.example.com",
       variableOverrides: {},
     });
 
     fireEvent.click(screen.getByRole("tab", { name: "Variables" }));
-    expect((screen.getByLabelText("Environment") as HTMLInputElement).value).toBe(
-      "https://manual.example.com",
-    );
+    expect(
+      (screen.getByLabelText("Environment") as HTMLInputElement).value,
+    ).toBe("https://manual.example.com");
 
     fireEvent.click(getRunAction("Start Test"));
     expect(appHookTestState.testHookState.startTest).toHaveBeenCalledWith(
@@ -369,7 +399,8 @@ describe("App validation lifecycle", () => {
     );
     expect(api.validateTestConfiguration).toHaveBeenCalledTimes(1);
     expect(
-      (api.validateTestConfiguration as ReturnType<typeof vi.fn>).mock.calls[0]?.[0].options,
+      (api.validateTestConfiguration as ReturnType<typeof vi.fn>).mock
+        .calls[0]?.[0].options,
     ).toMatchObject({
       baseUrl: "https://api.example.com",
       variableOverrides: {},
@@ -381,13 +412,17 @@ describe("App validation lifecycle", () => {
 
     fireEvent.click(screen.getByRole("tab", { name: "Variables" }));
 
-    expect(screen.getByText(/Empty variables:\s*environment\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/Empty variables:\s*environment\./),
+    ).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
     fireEvent.click(screen.getByRole("tab", { name: "Variables" }));
-    expect(screen.queryByText(/Empty variables:\s*environment\./)).not.toBeInTheDocument();
+    expect(
+      screen.queryByText(/Empty variables:\s*environment\./),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("tab", { name: "Controls" }));
     expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
@@ -405,10 +440,14 @@ describe("App validation lifecycle", () => {
 
     renderApp(api);
 
-    expect(screen.getByText("Runner").closest(".overview-card")).toHaveTextContent("IDLE");
+    expect(
+      screen.getByText("Runner").closest(".overview-card"),
+    ).toHaveTextContent("IDLE");
     openWorkflowStep("Run");
     expect(screen.getByText("Live metrics")).toBeInTheDocument();
-    expect(screen.getByLabelText("Live run metrics overview")).toHaveTextContent("Active VUs");
+    expect(
+      screen.getByLabelText("Live run metrics overview"),
+    ).toHaveTextContent("Active VUs");
     expect(screen.queryByText("Run State")).not.toBeInTheDocument();
     expect(screen.queryByText("Verdict")).not.toBeInTheDocument();
     expect(screen.queryByText("PENDING")).not.toBeInTheDocument();
@@ -438,13 +477,17 @@ describe("App validation lifecycle", () => {
     });
 
     expect(getRunAction("Start Test")).toBeDisabled();
-    expect(screen.getByText("Fix the highlighted runner inputs before starting.")).toBeInTheDocument();
+    expect(
+      screen.getByText("Fix the highlighted runner inputs before starting."),
+    ).toBeInTheDocument();
     expect(getRunAction("Smoke Test")).toBeDisabled();
     expect(getRunAction("Check Config")).toBeDisabled();
     openWorkflowStep("Configure");
     expect(screen.getByText(/Invalid JSON:/)).toBeInTheDocument();
     expect(
-      screen.getByText("Fix the highlighted runner inputs before checking configuration or starting."),
+      screen.getByText(
+        "Fix the highlighted runner inputs before checking configuration or starting.",
+      ),
     ).toBeInTheDocument();
 
     await advanceValidationTimer();
@@ -468,7 +511,7 @@ describe("App validation lifecycle", () => {
 
   it("shows k6 primary error, fallback context, and finish reason", () => {
     const primaryError =
-      "The moduleSpecifier \"/tmp/loadrift/run/script.js\" couldn't be found on local disk.";
+      'The moduleSpecifier "/tmp/loadrift/run/script.js" couldn\'t be found on local disk.';
     const summaryIssue = "summary.json was not written before k6 exited";
     const fallbackResult: TestResult = {
       status: "warning",
@@ -497,11 +540,15 @@ describe("App validation lifecycle", () => {
     renderApp(createApiMock());
 
     openWorkflowStep("Run");
-    expect(screen.getAllByText(`Primary k6 error: ${primaryError}`)).not.toHaveLength(0);
-    expect(screen.getByText("Finish reason: execution_error")).toBeInTheDocument();
-    expect(screen.getByText(/Latest result uses live metrics fallback/)).toHaveTextContent(
-      summaryIssue,
-    );
+    expect(
+      screen.getAllByText(`Primary k6 error: ${primaryError}`),
+    ).not.toHaveLength(0);
+    expect(
+      screen.getByText("Finish reason: execution_error"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Latest result uses live metrics fallback/),
+    ).toHaveTextContent(summaryIssue);
     expect(screen.getByText("Result source").closest("p")).toHaveTextContent(
       "Live metrics fallback",
     );
@@ -529,7 +576,11 @@ describe("App validation lifecycle", () => {
     fireEvent.click(smokeButton);
 
     expect(api.smokeTestRequests).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("Running the selected requests once to capture live response samples.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Running the selected requests once to capture live response samples.",
+      ),
+    ).toBeInTheDocument();
     expect(getRunAction("Smoke testing...")).toBeDisabled();
     expect(startButton).toBeDisabled();
 
@@ -770,9 +821,9 @@ describe("App validation lifecycle", () => {
     expect((screen.getByLabelText("Base URL") as HTMLInputElement).value).toBe(
       "https://api.example.com",
     );
-    expect((screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value).toBe(
-      "token-only",
-    );
+    expect(
+      (screen.getByLabelText("Bearer token / JWT") as HTMLInputElement).value,
+    ).toBe("token-only");
   });
 
   it("keeps empty result export and reset actions disabled until they are actionable", () => {
@@ -787,16 +838,17 @@ describe("App validation lifecycle", () => {
       }),
     ).toBeDisabled();
     expect(
-      within(getLatestResultCard()).getByText("Run a test before exporting the retained k6 report."),
+      within(getLatestResultCard()).getByText(
+        "Run a test before exporting the retained k6 report.",
+      ),
     ).toBeInTheDocument();
   });
 
   it("prompts for a report destination from the latest result card before exporting", async () => {
     const longSavePath =
       "/tmp/loadrift/reports/releases/very-long-directory-name-without-natural-breaks/loadrift-report-api-example-com-20260325-151332.html";
-    dialogMocks.selectReportSavePath.mockResolvedValue(longSavePath);
     const api = createApiMock({
-      exportReport: vi.fn(async () => undefined),
+      selectAndExportReport: vi.fn(async () => ({ savePath: longSavePath })),
     });
 
     appHookTestState.testHookState.state = {
@@ -816,7 +868,9 @@ describe("App validation lifecycle", () => {
     });
 
     expect(
-      within(liveRunMonitor).queryByRole("button", { name: "Export Latest Report" }),
+      within(liveRunMonitor).queryByRole("button", {
+        name: "Export Latest Report",
+      }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(exportButton);
@@ -827,24 +881,28 @@ describe("App validation lifecycle", () => {
 
     const successMessage = `Report saved to ${longSavePath}.`;
 
-    expect(dialogMocks.selectReportSavePath).toHaveBeenCalledTimes(1);
-    expect(dialogMocks.selectReportSavePath).toHaveBeenCalledWith(
-      "loadrift-report-api-example-com-20260325-151332.html",
-    );
-    expect(api.exportReport).toHaveBeenCalledWith({
-      savePath: longSavePath,
+    expect(api.selectAndExportReport).toHaveBeenCalledTimes(1);
+    expect(api.selectAndExportReport).toHaveBeenCalledWith({
+      defaultPath: "loadrift-report-api-example-com-20260325-151332.html",
     });
-    expect(within(latestResultCard).getByText("Exports the latest retained k6 report.")).toBeInTheDocument();
+    expect(
+      within(latestResultCard).getByText(
+        "Exports the latest retained k6 report.",
+      ),
+    ).toBeInTheDocument();
     const notice = within(latestResultCard).getByRole("status");
     expect(notice).toHaveTextContent(successMessage);
     expect(notice).toHaveClass("export-notice");
-    expect(within(liveRunMonitor).queryByText(successMessage)).not.toBeInTheDocument();
+    expect(
+      within(liveRunMonitor).queryByText(successMessage),
+    ).not.toBeInTheDocument();
   });
 
   it("keeps result-state export controls and notices in the latest result card", async () => {
-    dialogMocks.selectReportSavePath.mockResolvedValue("/tmp/loadrift-report.html");
     const api = createApiMock({
-      exportReport: vi.fn(async () => undefined),
+      selectAndExportReport: vi.fn(async () => ({
+        savePath: "/tmp/loadrift-report.html",
+      })),
     });
 
     appHookTestState.testHookState.state = {
@@ -862,7 +920,9 @@ describe("App validation lifecycle", () => {
     });
 
     expect(
-      within(liveRunMonitor).queryByRole("button", { name: "Export Latest Report" }),
+      within(liveRunMonitor).queryByRole("button", {
+        name: "Export Latest Report",
+      }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(exportButton);
@@ -870,14 +930,17 @@ describe("App validation lifecycle", () => {
     await flushMicrotasks(2);
 
     const successMessage = "Report saved to /tmp/loadrift-report.html.";
-    expect(within(latestResultCard).getByRole("status")).toHaveTextContent(successMessage);
-    expect(within(liveRunMonitor).queryByText(successMessage)).not.toBeInTheDocument();
+    expect(within(latestResultCard).getByRole("status")).toHaveTextContent(
+      successMessage,
+    );
+    expect(
+      within(liveRunMonitor).queryByText(successMessage),
+    ).not.toBeInTheDocument();
   });
 
   it("shows export failures in the latest result card", async () => {
-    dialogMocks.selectReportSavePath.mockResolvedValue("/tmp/loadrift-report.html");
     const api = createApiMock({
-      exportReport: vi.fn(async () => {
+      selectAndExportReport: vi.fn(async () => {
         throw new Error("Run a k6 test before exporting a report.");
       }),
     });
@@ -894,11 +957,15 @@ describe("App validation lifecycle", () => {
     const liveRunMonitor = getLiveRunMonitor();
 
     expect(
-      within(liveRunMonitor).queryByRole("button", { name: "Export Latest Report" }),
+      within(liveRunMonitor).queryByRole("button", {
+        name: "Export Latest Report",
+      }),
     ).not.toBeInTheDocument();
 
     fireEvent.click(
-      within(latestResultCard).getByRole("button", { name: "Export Latest Report" }),
+      within(latestResultCard).getByRole("button", {
+        name: "Export Latest Report",
+      }),
     );
 
     await flushMicrotasks(2);
@@ -907,6 +974,8 @@ describe("App validation lifecycle", () => {
     const notice = within(latestResultCard).getByRole("alert");
     expect(notice).toHaveTextContent(failureMessage);
     expect(notice).toHaveClass("export-notice");
-    expect(within(liveRunMonitor).queryByText(failureMessage)).not.toBeInTheDocument();
+    expect(
+      within(liveRunMonitor).queryByText(failureMessage),
+    ).not.toBeInTheDocument();
   });
 });

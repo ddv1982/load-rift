@@ -38,7 +38,8 @@ export function filterRequests(
   const normalizedSearchQuery = searchQuery.trim().toLowerCase();
 
   return requests.filter((request) => {
-    const matchesMethod = methodFilter === "all" || request.method === methodFilter;
+    const matchesMethod =
+      methodFilter === "all" || request.method === methodFilter;
     const matchesSearch =
       !normalizedSearchQuery ||
       `${request.folderPath.join(" ")} ${request.name} ${request.url}`
@@ -73,7 +74,9 @@ export function buildCollectionRows(requests: RequestInfo[]): CollectionRow[] {
           depth: index,
           ancestorFolderIds: pathSegments
             .slice(0, -1)
-            .map((_, ancestorIndex) => createFolderId(pathSegments.slice(0, ancestorIndex + 1))),
+            .map((_, ancestorIndex) =>
+              createFolderId(pathSegments.slice(0, ancestorIndex + 1)),
+            ),
           pathLabel,
           requestIds: [],
         };
@@ -131,6 +134,8 @@ export function getVisibleRows(
   collapsedFolderIds: Set<string>,
 ) {
   return rows.filter((row) =>
-    row.ancestorFolderIds.every((folderId) => !collapsedFolderIds.has(folderId))
+    row.ancestorFolderIds.every(
+      (folderId) => !collapsedFolderIds.has(folderId),
+    ),
   );
 }

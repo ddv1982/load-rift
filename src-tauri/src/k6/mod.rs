@@ -8,7 +8,9 @@ pub(crate) use process::{
     validate_advanced_options_json,
 };
 pub use process::{start_k6_process, stop_k6_process};
+#[cfg(test)]
 pub use report::export_report_file;
+pub use report::export_report_file_to_path;
 
 #[cfg(test)]
 mod tests;

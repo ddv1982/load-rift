@@ -1,11 +1,9 @@
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
-import { loadHarnessTab, saveHarnessTab, type HarnessTab } from "../persistence";
+  loadHarnessTab,
+  saveHarnessTab,
+  type HarnessTab,
+} from "../persistence";
 import { AdvancedOptionsCard } from "./AdvancedOptionsCard";
 import { RunnerSettingsCard } from "./RunnerSettingsCard";
 import { RuntimeVariablesCard } from "./RuntimeVariablesCard";
@@ -80,7 +78,8 @@ export function TestHarnessConfigurePanel({
   const validationBanner = !runnerOptionsAreValid
     ? {
         status: "invalid" as const,
-        message: "Fix the highlighted runner inputs before checking configuration or starting.",
+        message:
+          "Fix the highlighted runner inputs before checking configuration or starting.",
       }
     : configValidation.status === "idle"
       ? null

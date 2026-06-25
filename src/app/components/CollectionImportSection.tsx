@@ -29,13 +29,16 @@ export function CollectionImportSection({
   onRequestWeightChange,
 }: CollectionImportSectionProps) {
   return (
-    <section className={`panel import-panel workflow-panel source-panel${collection ? " is-complete" : " is-current"}`}>
+    <section
+      className={`panel import-panel workflow-panel source-panel${collection ? " is-complete" : " is-current"}`}
+    >
       <div className="section-heading section-heading-tight">
         <div className="section-heading-copy">
           <p className="panel-kicker">Step 1 · Source</p>
           <h2>Import a collection</h2>
           <p className="section-copy">
-            Load a Postman collection, then refine request scope only when needed.
+            Load a Postman collection, then refine request scope only when
+            needed.
           </p>
         </div>
 
@@ -72,11 +75,7 @@ export function CollectionImportSection({
       </div>
 
       <details className="progressive-panel" open={Boolean(collection)}>
-        <summary>
-          {collection
-            ? "Collection details"
-            : "After import"}
-        </summary>
+        <summary>{collection ? "Collection details" : "After import"}</summary>
         <div className="progressive-panel-body">
           <CollectionSummaryCard
             collection={collection}

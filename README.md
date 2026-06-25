@@ -133,6 +133,9 @@ build workflow.
 - `npm run lint`: runs ESLint
 - `npm run typecheck`: runs TypeScript checks
 - `npm run test:coverage`: runs Vitest with V8 coverage, including uncovered files under `src/`
+- `npm run test:browser-smoke`: runs the browser import/configure/smoke/load/export workflow smoke with Playwright Chromium
+- `npm run test:workflow-smoke`: runs the focused jsdom workflow tests, browser workflow smoke, and large importer regression
+- `npm run benchmark:large-collection`: runs Vitest large-collection model benchmarks and the Rust large-import fixture with timing output
 - `npm run rust:fmt`: checks Rust formatting with `cargo fmt --check`
 - `npm run rust:clippy`: runs Clippy for all targets and features with warnings denied
 - `npm run rust:audit`: audits Cargo dependencies with `cargo-audit`
@@ -147,6 +150,8 @@ build workflow.
 Use the narrowest command that covers the change while developing:
 - Frontend state/UI changes: `npm test`, plus `npm run typecheck` when types or contracts changed
 - Frontend coverage review: `npm run test:coverage`
+- Import/configure/smoke/load/export workflow evidence: `npm run test:workflow-smoke`
+- Large collection import/render performance evidence: `npm run benchmark:large-collection`
 - Rust backend, import, k6, or report changes: `cargo test --manifest-path src-tauri/Cargo.toml`, plus `npm run rust:clippy` for shared process or command changes
 - Packaging/config/docs that affect release shape: `npm run build`, `cargo check --manifest-path src-tauri/Cargo.toml`, and workflow/static review
 
@@ -168,10 +173,14 @@ frontend build plus Rust format, Clippy, audit, test, and check commands. Instal
 the bundled k6 binary first with `npm run install:k6` when you need local parity
 with CI's mandatory bundled k6 regression tests.
 
-Coverage reports are available through `npm run test:coverage`. Browser/Tauri-driver
-end-to-end checks are not yet first-class commands in this repository. Treat browser
-screenshots and import-to-export desktop smoke tests as release evidence when they
-are run manually, and add dedicated commands before making them required gates.
+Coverage reports are available through `npm run test:coverage`. Focused workflow
+smoke evidence is available through `npm run test:workflow-smoke`. The browser
+smoke uses a gated `VITE_LOADRIFT_E2E=true` API fixture to cover the real React
+workflow without native dialogs and writes screenshots to `docs/quality/screenshots/`.
+Full Tauri-driver desktop checks are still manual because they require
+platform-native WebDriver setup (`tauri-driver` plus `WebKitWebDriver` on Linux).
+Capture desktop import-to-export smoke evidence when releases change native dialog
+or filesystem behavior.
 
 ## Current Behavior
 

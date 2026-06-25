@@ -54,7 +54,9 @@ export function useConfigValidation({
       setState(CHECKING_STATE);
 
       try {
-        const response = await api.validateTestConfiguration({ options: nextOptions });
+        const response = await api.validateTestConfiguration({
+          options: nextOptions,
+        });
         if (validationRequestId.current !== requestId) {
           return;
         }
@@ -97,7 +99,15 @@ export function useConfigValidation({
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [collection, isBusy, isRunning, isStarting, isEnabled, options, validateNow]);
+  }, [
+    collection,
+    isBusy,
+    isRunning,
+    isStarting,
+    isEnabled,
+    options,
+    validateNow,
+  ]);
 
   return {
     state,

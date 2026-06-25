@@ -12,7 +12,7 @@ export function createLoadRiftApiMock(
   };
 
   return {
-    importCollectionFromFile: vi.fn(),
+    selectAndImportCollection: vi.fn(() => Promise.resolve(null)),
     validateTestConfiguration: vi.fn((_input: { options: K6Options }) =>
       Promise.resolve({
         ready: true,
@@ -24,7 +24,7 @@ export function createLoadRiftApiMock(
       Promise.resolve({ runId: input.runId ?? "test-run" }),
     ),
     stopTest: vi.fn(),
-    exportReport: vi.fn(),
+    selectAndExportReport: vi.fn(() => Promise.resolve(null)),
     getTestStatus: vi.fn(),
     onK6Output: vi.fn(() => Promise.resolve(() => {})),
     onK6Metrics: vi.fn(() => Promise.resolve(() => {})),

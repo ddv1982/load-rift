@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { UnlistenFn } from "@tauri-apps/api/event";
-import type { LoadRiftApi } from "../loadrift/api";
+import type { ExportReportResponse, LoadRiftApi } from "../loadrift/api";
 import {
   K6_COMPLETE_EVENT,
   K6_ERROR_EVENT,
@@ -45,10 +45,8 @@ async function listenScoped<TPayload>(
 
 export function createTauriLoadRiftApi(): LoadRiftApi {
   return {
-    importCollectionFromFile(input: { filePath: string }) {
-      return command<CollectionInfo>("import_collection_from_file", {
-        request: input,
-      });
+    selectAndImportCollection() {
+      return command<CollectionInfo | null>("select_and_import_collection");
     },
     validateTestConfiguration(input: { options: K6Options }) {
       return command<ValidateTestConfigurationResponse>(
@@ -66,18 +64,22 @@ export function createTauriLoadRiftApi(): LoadRiftApi {
     startTest(input: { options: K6Options; runId?: string }) {
       return command<unknown>("start_test", {
         request: input,
-      }).then((response) => normalizeStartTestResponse(response, input.runId ?? ""));
+      }).then((response) =>
+        normalizeStartTestResponse(response, input.runId ?? ""),
+      );
     },
     stopTest() {
       return command<void>("stop_test");
     },
-    exportReport(input: { savePath: string }) {
-      return command<void>("export_report", {
+    selectAndExportReport(input: { defaultPath: string }) {
+      return command<ExportReportResponse | null>("select_and_export_report", {
         request: input,
       });
     },
     getTestStatus() {
-      return command<unknown>("get_test_status").then(normalizeGetTestStatusResponse);
+      return command<unknown>("get_test_status").then(
+        normalizeGetTestStatusResponse,
+      );
     },
     onK6Output(callback: (payload: string) => void) {
       return listenScoped<unknown>(K6_OUTPUT_EVENT, (payload) => {

@@ -1,4 +1,9 @@
-export type TestStatus = "idle" | "running" | "completed" | "failed" | "stopped";
+export type TestStatus =
+  | "idle"
+  | "running"
+  | "completed"
+  | "failed"
+  | "stopped";
 
 export type RampUpStrategy = "instant" | "gradual" | "staged";
 
@@ -248,14 +253,38 @@ export function normalizeLiveMetrics(value: unknown): LiveMetrics {
   const metrics = isRecord(value) ? value : {};
 
   return {
-    activeVus: normalizeNumber(metrics.activeVus, DEFAULT_LIVE_METRICS.activeVus),
-    totalRequests: normalizeNumber(metrics.totalRequests, DEFAULT_LIVE_METRICS.totalRequests),
-    failedRequests: normalizeNumber(metrics.failedRequests, DEFAULT_LIVE_METRICS.failedRequests),
-    errorRate: normalizeNumber(metrics.errorRate, DEFAULT_LIVE_METRICS.errorRate),
-    avgResponseTime: normalizeNumber(metrics.avgResponseTime, DEFAULT_LIVE_METRICS.avgResponseTime),
-    p50ResponseTime: normalizeNumber(metrics.p50ResponseTime, DEFAULT_LIVE_METRICS.p50ResponseTime),
-    p95ResponseTime: normalizeNumber(metrics.p95ResponseTime, DEFAULT_LIVE_METRICS.p95ResponseTime),
-    maxResponseTime: normalizeNumber(metrics.maxResponseTime, DEFAULT_LIVE_METRICS.maxResponseTime),
+    activeVus: normalizeNumber(
+      metrics.activeVus,
+      DEFAULT_LIVE_METRICS.activeVus,
+    ),
+    totalRequests: normalizeNumber(
+      metrics.totalRequests,
+      DEFAULT_LIVE_METRICS.totalRequests,
+    ),
+    failedRequests: normalizeNumber(
+      metrics.failedRequests,
+      DEFAULT_LIVE_METRICS.failedRequests,
+    ),
+    errorRate: normalizeNumber(
+      metrics.errorRate,
+      DEFAULT_LIVE_METRICS.errorRate,
+    ),
+    avgResponseTime: normalizeNumber(
+      metrics.avgResponseTime,
+      DEFAULT_LIVE_METRICS.avgResponseTime,
+    ),
+    p50ResponseTime: normalizeNumber(
+      metrics.p50ResponseTime,
+      DEFAULT_LIVE_METRICS.p50ResponseTime,
+    ),
+    p95ResponseTime: normalizeNumber(
+      metrics.p95ResponseTime,
+      DEFAULT_LIVE_METRICS.p95ResponseTime,
+    ),
+    maxResponseTime: normalizeNumber(
+      metrics.maxResponseTime,
+      DEFAULT_LIVE_METRICS.maxResponseTime,
+    ),
     requestsPerSecond: normalizeNumber(
       metrics.requestsPerSecond,
       DEFAULT_LIVE_METRICS.requestsPerSecond,
@@ -282,7 +311,9 @@ export function normalizeTestResult(value: unknown): TestResult | null {
   };
 }
 
-export function normalizeRunMetricsEvent(value: unknown): RunMetricsEvent | null {
+export function normalizeRunMetricsEvent(
+  value: unknown,
+): RunMetricsEvent | null {
   if (!isRecord(value) || typeof value.runId !== "string") {
     return null;
   }
@@ -300,7 +331,10 @@ export function normalizeRunErrorEvent(value: unknown): RunErrorEvent | null {
 
   return {
     runId: value.runId,
-    message: normalizeString(value.message, "The k6 runner reported an unknown error."),
+    message: normalizeString(
+      value.message,
+      "The k6 runner reported an unknown error.",
+    ),
   };
 }
 
@@ -360,7 +394,8 @@ export function normalizeGetTestStatusResponse(
     runId,
     status: normalizeTestStatus(value.status, isRunning ? "running" : "idle"),
     isRunning,
-    metrics: value.metrics === null ? null : normalizeLiveMetrics(value.metrics),
+    metrics:
+      value.metrics === null ? null : normalizeLiveMetrics(value.metrics),
     result: value.result === null ? null : normalizeTestResult(value.result),
     finishReason: normalizeNullableString(value.finishReason),
     errorMessage: normalizeNullableString(value.errorMessage),

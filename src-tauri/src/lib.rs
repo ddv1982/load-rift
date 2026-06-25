@@ -9,9 +9,9 @@ mod test_support;
 
 use std::sync::{Arc, Mutex};
 
-use commands::collection::import_collection_from_file;
+use commands::collection::select_and_import_collection;
 use commands::testing::{
-    export_report, get_test_status, smoke_test_requests, start_test, stop_test,
+    get_test_status, select_and_export_report, smoke_test_requests, start_test, stop_test,
     validate_test_configuration,
 };
 use state::{AppState, SharedAppState};
@@ -37,11 +37,11 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            import_collection_from_file,
+            select_and_import_collection,
             start_test,
             stop_test,
             smoke_test_requests,
-            export_report,
+            select_and_export_report,
             get_test_status,
             validate_test_configuration
         ])

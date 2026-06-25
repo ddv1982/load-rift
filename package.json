@@ -1,6 +1,6 @@
 {
   "name": "loadrift",
-  "version": "0.2.20",
+  "version": "0.2.21",
   "license": "MIT",
   "private": true,
   "repository": {
@@ -11,31 +11,35 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"*.{ts,json,js}\" \".github/workflows/*.yml\"",
-    "lint": "eslint src vite.config.ts",
+    "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"tests/**/*.{ts,tsx}\" \"*.{ts,json,js}\" \".github/workflows/*.yml\"",
+    "lint": "eslint src tests vite.config.ts playwright.config.ts",
     "preview": "vite preview",
     "install:k6": "bash scripts/install-k6.sh",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:browser-smoke": "playwright test",
+    "test:workflow-smoke": "vitest run src/app/App.validation.test.tsx src/features/import/useCollectionImport.test.tsx && npm run test:browser-smoke && cargo test --manifest-path src-tauri/Cargo.toml imports_large_postman_collection_fixture",
+    "benchmark:large-collection": "vitest bench src/benchmarks/largeCollection.bench.ts --run && LOADRIFT_BENCHMARK_IMPORT=1 cargo test --manifest-path src-tauri/Cargo.toml imports_large_postman_collection_fixture -- --nocapture",
     "typecheck": "tsc --noEmit",
     "rust:fmt": "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
     "rust:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features -- -D warnings",
     "rust:audit": "cargo audit --file src-tauri/Cargo.lock",
-    "verify": "npm run typecheck && npm run lint && npm test && npm run build && npm run rust:fmt && npm run rust:clippy && npm run rust:audit && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run test:workflow-smoke && npm run build && npm run rust:fmt && npm run rust:clippy && npm run rust:audit && cargo test --manifest-path src-tauri/Cargo.toml && cargo check --manifest-path src-tauri/Cargo.toml",
     "tauri": "tauri"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.11.1",
-    "@tauri-apps/plugin-dialog": "^2.7.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.61.1",
     "@tauri-apps/cli": "^2.11.3",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
+    "@types/node": "^26.0.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",

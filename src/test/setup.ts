@@ -13,7 +13,7 @@ function createMemoryStorage(): Storage {
       values.clear();
     },
     getItem(key) {
-      return values.has(key) ? values.get(key) ?? null : null;
+      return values.has(key) ? (values.get(key) ?? null) : null;
     },
     key(index) {
       return Array.from(values.keys())[index] ?? null;

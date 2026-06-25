@@ -9,7 +9,9 @@ interface AppHeroProps {
 }
 
 function AppIcon() {
-  return <img className="app-icon" src={appIconUrl} alt="" aria-hidden="true" />;
+  return (
+    <img className="app-icon" src={appIconUrl} alt="" aria-hidden="true" />
+  );
 }
 
 export function AppHero({
@@ -45,7 +47,9 @@ export function AppHero({
         <div className="overview-card">
           <dt>Requests</dt>
           <dd>
-            {collection ? formatCount("request", collection.requestCount) : "0 requests"}
+            {collection
+              ? formatCount("request", collection.requestCount)
+              : "0 requests"}
           </dd>
         </div>
         <div className="overview-card">

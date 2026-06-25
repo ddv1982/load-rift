@@ -57,13 +57,18 @@ export function useCollectionSummaryState({
   const [searchQuery, setSearchQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
   const [collapsedFolderIds, setCollapsedFolderIds] = useState<string[]>([]);
-  const [visibleRowLimit, setVisibleRowLimit] = useState(INITIAL_VISIBLE_ROW_LIMIT);
+  const [visibleRowLimit, setVisibleRowLimit] = useState(
+    INITIAL_VISIBLE_ROW_LIMIT,
+  );
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const collectionKey = useMemo(
     () => (collection ? createCollectionStorageKey(collection) : null),
     [collection],
   );
-  const selectedRequestSet = useMemo(() => new Set(selectedRequestIds), [selectedRequestIds]);
+  const selectedRequestSet = useMemo(
+    () => new Set(selectedRequestIds),
+    [selectedRequestIds],
+  );
   const hasActiveFilters = searchQuery.trim() !== "" || methodFilter !== "all";
   const {
     availableMethods,
@@ -73,11 +78,18 @@ export function useCollectionSummaryState({
     allRequestIds,
   } = useMemo(() => {
     const requests = collection?.requests ?? [];
-    const availableMethods = [...new Set(requests.map((request) => request.method))].sort();
-    const filteredRequests = filterRequests(requests, methodFilter, deferredSearchQuery);
+    const availableMethods = [
+      ...new Set(requests.map((request) => request.method)),
+    ].sort();
+    const filteredRequests = filterRequests(
+      requests,
+      methodFilter,
+      deferredSearchQuery,
+    );
     const rows = buildCollectionRows(filteredRequests);
     const folderRows = rows.filter(
-      (row): row is Extract<CollectionRow, { kind: "folder" }> => row.kind === "folder",
+      (row): row is Extract<CollectionRow, { kind: "folder" }> =>
+        row.kind === "folder",
     );
     const allRequestIds = requests.map((request) => request.id);
 
@@ -93,7 +105,10 @@ export function useCollectionSummaryState({
     const collapsedFolderSet = new Set(collapsedFolderIds);
     const visibleRows = getVisibleRows(rows, collapsedFolderSet);
     const visibleRequestIds = visibleRows
-      .filter((row): row is Extract<CollectionRow, { kind: "request" }> => row.kind === "request")
+      .filter(
+        (row): row is Extract<CollectionRow, { kind: "request" }> =>
+          row.kind === "request",
+      )
       .map((row) => row.request.id);
 
     return {
@@ -106,7 +121,10 @@ export function useCollectionSummaryState({
     () => visibleRows.slice(0, visibleRowLimit),
     [visibleRowLimit, visibleRows],
   );
-  const hiddenVisibleRowCount = Math.max(0, visibleRows.length - renderedRows.length);
+  const hiddenVisibleRowCount = Math.max(
+    0,
+    visibleRows.length - renderedRows.length,
+  );
 
   useEffect(() => {
     if (!collectionKey) {
@@ -140,7 +158,9 @@ export function useCollectionSummaryState({
 
   useEffect(() => {
     const folderIds = new Set(folderRows.map((row) => row.id));
-    setCollapsedFolderIds((previous) => previous.filter((folderId) => folderIds.has(folderId)));
+    setCollapsedFolderIds((previous) =>
+      previous.filter((folderId) => folderIds.has(folderId)),
+    );
   }, [folderRows]);
 
   useEffect(() => {
@@ -148,15 +168,18 @@ export function useCollectionSummaryState({
   }, [collectionKey, deferredSearchQuery, methodFilter]);
 
   const selectedCount = selectedRequestIds.length;
-  const allSelected = collection ? selectedCount === collection.requestCount : false;
+  const allSelected = collection
+    ? selectedCount === collection.requestCount
+    : false;
   const visibleSelectedCount = visibleRequestIds.filter((requestId) =>
-    selectedRequestSet.has(requestId)
+    selectedRequestSet.has(requestId),
   ).length;
   const filteredSelectedCount = filteredRequests.filter((request) =>
-    selectedRequestSet.has(request.id)
+    selectedRequestSet.has(request.id),
   ).length;
   const allFoldersCollapsed =
-    folderRows.length > 0 && folderRows.every((row) => collapsedFolderSet.has(row.id));
+    folderRows.length > 0 &&
+    folderRows.every((row) => collapsedFolderSet.has(row.id));
 
   function clearFilters() {
     setSearchQuery("");
@@ -192,12 +215,14 @@ export function useCollectionSummaryState({
     setCollapsedFolderIds((previous) =>
       previous.includes(folderId)
         ? previous.filter((value) => value !== folderId)
-        : [...previous, folderId]
+        : [...previous, folderId],
     );
   }
 
   function toggleAllFolders() {
-    setCollapsedFolderIds(allFoldersCollapsed ? [] : folderRows.map((row) => row.id));
+    setCollapsedFolderIds(
+      allFoldersCollapsed ? [] : folderRows.map((row) => row.id),
+    );
   }
 
   return {

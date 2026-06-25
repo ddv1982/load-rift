@@ -1,6 +1,9 @@
 import { useId } from "react";
 import type { K6Options } from "../../lib/loadrift/types";
-import type { ThresholdInputErrors, ThresholdInputValues } from "../hooks/useRunnerOptions";
+import type {
+  ThresholdInputErrors,
+  ThresholdInputValues,
+} from "../hooks/useRunnerOptions";
 import type { CurlImportState } from "../types";
 import { SettingsCardHeader } from "./SettingsCardHeader";
 
@@ -16,7 +19,10 @@ interface RunnerSettingsCardProps {
   onDurationChange: (value: string) => void;
   onRampUpChange: (value: K6Options["rampUp"]) => void;
   onRampUpTimeChange: (value: string) => void;
-  onThresholdChange: (key: keyof K6Options["thresholds"], value: string) => void;
+  onThresholdChange: (
+    key: keyof K6Options["thresholds"],
+    value: string,
+  ) => void;
   onTrafficModeChange: (value: K6Options["trafficMode"]) => void;
   onAuthTokenChange: (value: string) => void;
   onBaseUrlChange: (value: string) => void;
@@ -70,7 +76,11 @@ export function RunnerSettingsCard({
             aria-invalid={vusError ? "true" : undefined}
             aria-describedby={vusError ? vusErrorId : undefined}
           />
-          {vusError ? <p id={vusErrorId} className="inline-note is-error">{vusError}</p> : null}
+          {vusError ? (
+            <p id={vusErrorId} className="inline-note is-error">
+              {vusError}
+            </p>
+          ) : null}
         </label>
 
         <label className="field">
@@ -127,7 +137,9 @@ export function RunnerSettingsCard({
             }
           />
           {thresholdErrors.p95ResponseTime ? (
-            <p id={p95ThresholdErrorId} className="inline-note is-error">{thresholdErrors.p95ResponseTime}</p>
+            <p id={p95ThresholdErrorId} className="inline-note is-error">
+              {thresholdErrors.p95ResponseTime}
+            </p>
           ) : null}
         </label>
 
@@ -141,7 +153,9 @@ export function RunnerSettingsCard({
             inputMode="numeric"
             value={thresholdInputs.errorRate}
             aria-label="Error-rate threshold (%)"
-            onChange={(event) => onThresholdChange("errorRate", event.target.value)}
+            onChange={(event) =>
+              onThresholdChange("errorRate", event.target.value)
+            }
             placeholder="5"
             aria-invalid={thresholdErrors.errorRate ? "true" : undefined}
             aria-describedby={
@@ -149,7 +163,9 @@ export function RunnerSettingsCard({
             }
           />
           {thresholdErrors.errorRate ? (
-            <p id={errorRateThresholdErrorId} className="inline-note is-error">{thresholdErrors.errorRate}</p>
+            <p id={errorRateThresholdErrorId} className="inline-note is-error">
+              {thresholdErrors.errorRate}
+            </p>
           ) : null}
         </label>
 
@@ -158,7 +174,9 @@ export function RunnerSettingsCard({
           <select
             value={runnerOptions.trafficMode}
             onChange={(event) =>
-              onTrafficModeChange(event.target.value as K6Options["trafficMode"])
+              onTrafficModeChange(
+                event.target.value as K6Options["trafficMode"],
+              )
             }
           >
             <option value="sequential">Sequential</option>
@@ -168,22 +186,23 @@ export function RunnerSettingsCard({
 
         <div className="field field-note">
           <span>Traffic mode notes</span>
-            <p className="inline-note">
-              {runnerOptions.trafficMode === "weighted"
+          <p className="inline-note">
+            {runnerOptions.trafficMode === "weighted"
               ? "Edit request weights in Source."
               : "Runs selected requests in order."}
-            </p>
+          </p>
         </div>
 
-        <section className="auth-setup-panel field-wide" aria-labelledby="auth-setup-title">
+        <section
+          className="auth-setup-panel field-wide"
+          aria-labelledby="auth-setup-title"
+        >
           <div className="auth-setup-heading">
             <div>
               <p className="eyebrow">Request target & auth</p>
               <h4 id="auth-setup-title">Fill from cURL or enter manually</h4>
             </div>
-            <p className="field-hint">
-              Paste cURL or type values manually.
-            </p>
+            <p className="field-hint">Paste cURL or type values manually.</p>
           </div>
 
           <label className="field field-wide">

@@ -56,7 +56,11 @@ export function WorkflowStepper({
 
   return (
     <nav className="workflow-stepper" aria-label="Load test workflow">
-      <div className="workflow-step-tabs" role="tablist" aria-label="Workflow steps">
+      <div
+        className="workflow-step-tabs"
+        role="tablist"
+        aria-label="Workflow steps"
+      >
         {workflowSteps.map((step, index) => {
           const isActive = activeWorkflowStep === step;
           const tabId = `${workflowTabsId}-${step}-tab`;

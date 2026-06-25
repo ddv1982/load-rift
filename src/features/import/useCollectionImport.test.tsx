@@ -30,16 +30,16 @@ const replacementCollection: CollectionInfo = {
 };
 
 describe("useCollectionImport", () => {
-  it("stores the imported collection after a successful file import", async () => {
+  it("stores the imported collection after a successful native import", async () => {
     const api = createApiMock({
-      importCollectionFromFile: vi.fn(async () => importedCollection),
+      selectAndImportCollection: vi.fn(async () => importedCollection),
     });
     const { result } = renderHook(() => useCollectionImport(), {
       wrapper: createWrapper(api),
     });
 
     await act(async () => {
-      await result.current.importFromFile("/tmp/fixture.postman_collection.json");
+      await result.current.selectAndImport();
     });
 
     await waitFor(() => {
@@ -48,14 +48,35 @@ describe("useCollectionImport", () => {
 
     expect(result.current.state.error).toBeNull();
     expect(result.current.state.isLoading).toBe(false);
-    expect(api.importCollectionFromFile).toHaveBeenCalledWith({
-      filePath: "/tmp/fixture.postman_collection.json",
+    expect(api.selectAndImportCollection).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the current collection when the native import dialog is cancelled", async () => {
+    const api = createApiMock({
+      selectAndImportCollection: vi.fn(async () => null),
+    });
+    const { result } = renderHook(() => useCollectionImport(), {
+      wrapper: createWrapper(api),
+    });
+
+    act(() => {
+      result.current.reportError("Previous picker failure");
+    });
+
+    await act(async () => {
+      await result.current.selectAndImport();
+    });
+
+    expect(result.current.state).toEqual({
+      isLoading: false,
+      error: null,
+      collection: null,
     });
   });
 
   it("normalizes import failures through the Tauri error helper", async () => {
     const api = createApiMock({
-      importCollectionFromFile: vi.fn(async () => {
+      selectAndImportCollection: vi.fn(async () => {
         throw new Error("HTTP 404");
       }),
     });
@@ -64,7 +85,7 @@ describe("useCollectionImport", () => {
     });
 
     await act(async () => {
-      await result.current.importFromFile("/tmp/fixture.postman_collection.json");
+      await result.current.selectAndImport();
     });
 
     expect(result.current.state).toEqual({
@@ -76,7 +97,7 @@ describe("useCollectionImport", () => {
 
   it("keeps the previous collection when a replacement import fails", async () => {
     const api = createApiMock({
-      importCollectionFromFile: vi
+      selectAndImportCollection: vi
         .fn()
         .mockResolvedValueOnce(importedCollection)
         .mockRejectedValueOnce(new Error("HTTP 404")),
@@ -86,7 +107,7 @@ describe("useCollectionImport", () => {
     });
 
     await act(async () => {
-      await result.current.importFromFile("/tmp/fixture.postman_collection.json");
+      await result.current.selectAndImport();
     });
 
     await waitFor(() => {
@@ -94,7 +115,7 @@ describe("useCollectionImport", () => {
     });
 
     await act(async () => {
-      await result.current.importFromFile("/tmp/replacement.postman_collection.json");
+      await result.current.selectAndImport();
     });
 
     expect(result.current.state).toEqual({
@@ -107,7 +128,7 @@ describe("useCollectionImport", () => {
   it("ignores stale imports after a newer import completes", async () => {
     const firstImport = deferred<CollectionInfo>();
     const api = createApiMock({
-      importCollectionFromFile: vi
+      selectAndImportCollection: vi
         .fn()
         .mockReturnValueOnce(firstImport.promise)
         .mockResolvedValueOnce(replacementCollection),
@@ -117,12 +138,12 @@ describe("useCollectionImport", () => {
     });
 
     await act(async () => {
-      void result.current.importFromFile("/tmp/stale.postman_collection.json");
+      void result.current.selectAndImport();
       await Promise.resolve();
     });
 
     await act(async () => {
-      await result.current.importFromFile("/tmp/replacement.postman_collection.json");
+      await result.current.selectAndImport();
     });
 
     await act(async () => {
@@ -140,7 +161,7 @@ describe("useCollectionImport", () => {
   it("ignores stale import failures after a newer import completes", async () => {
     const firstImport = deferred<CollectionInfo>();
     const api = createApiMock({
-      importCollectionFromFile: vi
+      selectAndImportCollection: vi
         .fn()
         .mockReturnValueOnce(firstImport.promise)
         .mockResolvedValueOnce(replacementCollection),
@@ -150,12 +171,12 @@ describe("useCollectionImport", () => {
     });
 
     await act(async () => {
-      void result.current.importFromFile("/tmp/stale.postman_collection.json");
+      void result.current.selectAndImport();
       await Promise.resolve();
     });
 
     await act(async () => {
-      await result.current.importFromFile("/tmp/replacement.postman_collection.json");
+      await result.current.selectAndImport();
     });
 
     await act(async () => {
@@ -173,14 +194,14 @@ describe("useCollectionImport", () => {
   it("ignores stale imports after reset", async () => {
     const importRequest = deferred<CollectionInfo>();
     const api = createApiMock({
-      importCollectionFromFile: vi.fn(() => importRequest.promise),
+      selectAndImportCollection: vi.fn(() => importRequest.promise),
     });
     const { result } = renderHook(() => useCollectionImport(), {
       wrapper: createWrapper(api),
     });
 
     await act(async () => {
-      void result.current.importFromFile("/tmp/stale.postman_collection.json");
+      void result.current.selectAndImport();
       await Promise.resolve();
     });
 
@@ -203,14 +224,14 @@ describe("useCollectionImport", () => {
   it("ignores stale imports after reportError", async () => {
     const importRequest = deferred<CollectionInfo>();
     const api = createApiMock({
-      importCollectionFromFile: vi.fn(() => importRequest.promise),
+      selectAndImportCollection: vi.fn(() => importRequest.promise),
     });
     const { result } = renderHook(() => useCollectionImport(), {
       wrapper: createWrapper(api),
     });
 
     await act(async () => {
-      void result.current.importFromFile("/tmp/stale.postman_collection.json");
+      void result.current.selectAndImport();
       await Promise.resolve();
     });
 
