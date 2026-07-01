@@ -12,6 +12,10 @@ This repository currently contains the first working Tauri vertical slice:
 - Optional weighted request mix mode for request-level traffic importance
 - Bundled project-local k6 binary for Linux and macOS desktop builds
 
+## Documentation
+
+- [Project wiki](https://github.com/ddv1982/load-rift/wiki)
+
 ## Prerequisites
 
 - Node.js 22+
