@@ -20,7 +20,7 @@ This repository currently contains the first working Tauri vertical slice:
 
 - Node.js 22+
 - npm
-- Rust and Cargo
+- Rust 1.88.0+ and Cargo
 - Tauri system dependencies
 
 On this machine, `cargo check` succeeded against the current Linux GTK/WebKit stack.

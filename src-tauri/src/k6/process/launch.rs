@@ -1,5 +1,5 @@
 use std::fs;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -8,7 +8,7 @@ use std::time::Duration;
 use serde_json::{Map, Value};
 use tauri::AppHandle;
 
-use crate::events::emit_k6_metrics;
+use crate::events::{emit_k6_error, emit_k6_metrics};
 use crate::models::{K6Options, LiveMetrics, TestResultSource, TrafficMode};
 use crate::state::{RunningTest, SharedAppState};
 
@@ -33,7 +33,9 @@ use super::live_metrics::spawn_metrics_forwarder;
 use super::output_forwarding::{
     spawn_output_forwarder, stderr_tail_snapshot, wait_for_output_forwarders, BoundedLineBuffer,
 };
-use super::state::{mark_stopped, store_started_state, UPDATE_STATE_ERROR};
+use super::state::{mark_failed, mark_stopped, store_started_state, UPDATE_STATE_ERROR};
+
+const MAX_UNSETTLED_CHILD_ATTEMPTS: u32 = 15;
 
 pub fn start_k6_process(
     app: AppHandle,
@@ -324,6 +326,12 @@ struct RunWaitContext {
     configured_vus: u32,
 }
 
+enum ChildWaitPoll {
+    Running,
+    Exited(ExitStatus),
+    Unsettled(String),
+}
+
 fn spawn_waiter(context: RunWaitContext) {
     thread::spawn(move || {
         let RunWaitContext {
@@ -342,8 +350,9 @@ fn spawn_waiter(context: RunWaitContext) {
             configured_vus,
         } = context;
         let summary_path = artifacts.summary_path.clone();
-        let exit_status = loop {
-            let maybe_status = {
+        let mut unsettled_attempts = 0;
+        let child_wait_result = loop {
+            let wait_poll = {
                 let mut child = match child.lock() {
                     Ok(child) => child,
                     Err(poisoned) => {
@@ -354,29 +363,77 @@ fn spawn_waiter(context: RunWaitContext) {
                     }
                 };
                 match child.try_wait() {
-                    Ok(status) => status,
+                    Ok(Some(status)) => ChildWaitPoll::Exited(status),
+                    Ok(None) => ChildWaitPoll::Running,
                     Err(error) => {
                         log::warn!(
                             "Failed while waiting for the k6 process: {error}; attempting to settle child before updating run state"
                         );
                         match terminate_and_reap_child(&mut child) {
-                            ChildSettlement::Settled { status, .. } => Some(status),
+                            ChildSettlement::Settled { status, .. } => {
+                                ChildWaitPoll::Exited(status)
+                            }
                             ChildSettlement::Unsettled { message } => {
-                                log::warn!(
-                                    "{message}; keeping active k6 state and temp artifacts because child state is uncertain"
-                                );
-                                None
+                                ChildWaitPoll::Unsettled(message)
                             }
                         }
                     }
                 }
             };
 
-            if let Some(status) = maybe_status {
-                break status;
+            match wait_poll {
+                ChildWaitPoll::Exited(status) => break Ok(status),
+                ChildWaitPoll::Running => unsettled_attempts = 0,
+                ChildWaitPoll::Unsettled(message) => {
+                    unsettled_attempts += 1;
+                    if unsettled_attempts >= MAX_UNSETTLED_CHILD_ATTEMPTS {
+                        break Err(format!(
+                            "Failed to settle the k6 child process after {unsettled_attempts} attempts: {message}"
+                        ));
+                    }
+                    log::warn!(
+                        "{message}; k6 child state remains uncertain after {unsettled_attempts} attempts"
+                    );
+                }
             }
 
             thread::sleep(Duration::from_millis(200));
+        };
+
+        let exit_status = match child_wait_result {
+            Ok(status) => status,
+            Err(error_message) => {
+                metrics_shutdown.store(true, Ordering::SeqCst);
+                let _ = forwarders.metrics.join();
+                let summary_issue = "Load Rift could not determine whether the k6 child process exited; artifacts were preserved for debugging.".to_string();
+                let stored = mark_failed(
+                    &state,
+                    &run_id,
+                    error_message.clone(),
+                    Some(summary_issue.clone()),
+                );
+                if stored {
+                    super::output_forwarding::append_run_output_and_emit(
+                        &state,
+                        &app,
+                        &run_id,
+                        &format!("{error_message}\n{summary_issue}\n"),
+                    );
+                    let _ = emit_k6_error(&app, &run_id, &error_message);
+                }
+                let cleanup = artifacts.cleanup(ArtifactRetentionPolicy::PreserveDebug);
+                log_artifact_cleanup(&cleanup);
+                super::output_forwarding::append_run_output_and_emit(
+                    &state,
+                    &app,
+                    &run_id,
+                    &format!(
+                        "{}\n",
+                        cleanup.message_for_user(retention_policy.preserve_debug())
+                    ),
+                );
+                return;
+            }
         };
 
         let stop_requested = stop_requested.load(Ordering::SeqCst);

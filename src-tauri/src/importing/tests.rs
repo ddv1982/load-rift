@@ -23,7 +23,7 @@ use std::time::Instant;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use super::{import_collection, runtime, validate_test_run};
-use crate::models::RequestBodyOverride;
+use crate::models::{RampUpStrategy, RequestBodyOverride};
 use crate::test_support::test_k6_options;
 
 fn imported_test_k6_options(
@@ -883,6 +883,87 @@ fn validation_only_checks_the_selected_request_subset() {
 
     validate_test_run(&imported.runtime_collection, &options)
         .expect("validation should only inspect the selected request");
+}
+
+#[test]
+fn validation_rejects_partially_stale_selected_request_ids() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.selected_request_ids = vec![
+        imported.info.requests[0].id.clone(),
+        "request-from-previous-import".to_string(),
+    ];
+
+    let error = validate_test_run(&imported.runtime_collection, &options)
+        .expect_err("partially stale selections should be rejected");
+    assert!(error.contains("request-from-previous-import"));
+}
+
+#[test]
+fn validation_rejects_invalid_basic_load_shape_options() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.vus = 0;
+    let error = validate_test_run(&imported.runtime_collection, &options)
+        .expect_err("zero VUs should be rejected");
+    assert!(error.contains("Virtual users"));
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.thresholds.error_rate = Some(101);
+    let error = validate_test_run(&imported.runtime_collection, &options)
+        .expect_err("out-of-range error threshold should be rejected");
+    assert!(error.contains("Error-rate threshold"));
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.duration = "soon".to_string();
+    let error = validate_test_run(&imported.runtime_collection, &options)
+        .expect_err("invalid duration should be rejected");
+    assert!(error.contains("Duration"));
+
+    for invalid_duration in [" 30s", "30s ", "1 s", "1", "1.", "0s", "0m0s"] {
+        let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+        options.duration = invalid_duration.to_string();
+        let error = validate_test_run(&imported.runtime_collection, &options)
+            .expect_err("invalid duration edge case should be rejected");
+        assert!(
+            error.contains("Duration"),
+            "expected duration error for {invalid_duration:?}, got {error:?}"
+        );
+    }
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.duration = "1.5m".to_string();
+    validate_test_run(&imported.runtime_collection, &options)
+        .expect("valid decimal k6 duration should be accepted");
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.duration = "1m30s".to_string();
+    validate_test_run(&imported.runtime_collection, &options)
+        .expect("valid segmented k6 duration should be accepted");
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.ramp_up = RampUpStrategy::Gradual;
+    options.ramp_up_time = Some("later".to_string());
+    let error = validate_test_run(&imported.runtime_collection, &options)
+        .expect_err("invalid ramp-up time should be rejected");
+    assert!(error.contains("Ramp-up time"));
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.ramp_up = RampUpStrategy::Gradual;
+    options.ramp_up_time = Some(" 30s".to_string());
+    let error = validate_test_run(&imported.runtime_collection, &options)
+        .expect_err("whitespace-padded ramp-up time should be rejected");
+    assert!(error.contains("Ramp-up time"));
+
+    let mut options = imported_test_k6_options(&imported, Some("https://api.example.com"));
+    options.ramp_up = RampUpStrategy::Gradual;
+    options.ramp_up_time = Some("".to_string());
+    validate_test_run(&imported.runtime_collection, &options)
+        .expect("blank ramp-up time should keep the generated script default");
 }
 
 #[test]

@@ -22,7 +22,7 @@ pub(crate) fn test_k6_options(base_url: Option<&str>) -> K6Options {
         request_body_override: None,
         variable_overrides: Default::default(),
         advanced_options_json: None,
-        selected_request_ids: (0..64).map(|index| format!("request-{index}")).collect(),
+        selected_request_ids: vec!["request-0".to_string()],
         traffic_mode: TrafficMode::Sequential,
         request_weights: Default::default(),
     }

@@ -273,6 +273,7 @@ fn validate_test_configuration_allows_mixed_zero_and_positive_weighted_requests(
     }));
     let mut options = test_k6_options(Some("https://api.example.com"));
     options.traffic_mode = TrafficMode::Weighted;
+    options.selected_request_ids = vec!["request-0".to_string(), "request-1".to_string()];
     options.request_weights.insert("request-0".to_string(), 0);
     options.request_weights.insert("request-1".to_string(), 2);
 

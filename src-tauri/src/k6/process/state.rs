@@ -42,6 +42,31 @@ pub(crate) fn mark_stopped(state: &SharedAppState, run_id: &str) -> bool {
     false
 }
 
+pub(crate) fn mark_failed(
+    state: &SharedAppState,
+    run_id: &str,
+    error_message: String,
+    summary_issue: Option<String>,
+) -> bool {
+    if let Ok(mut app_state) = state.lock() {
+        if !is_current_run(&app_state, run_id) {
+            return false;
+        }
+
+        clear_active_run(&mut app_state);
+        app_state.test_status = TestStatus::Failed;
+        app_state.latest_finish_reason = Some(FINISH_REASON_EXECUTION_ERROR.to_string());
+        app_state.latest_error_message = Some(error_message);
+        app_state.latest_result = None;
+        app_state.latest_summary_json = None;
+        app_state.latest_result_source = None;
+        app_state.latest_summary_issue = summary_issue;
+        return true;
+    }
+
+    false
+}
+
 pub(crate) struct CompletionRecord {
     pub(crate) metrics: LiveMetrics,
     pub(crate) result: TestResult,

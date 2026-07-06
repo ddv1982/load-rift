@@ -27,4 +27,6 @@ pub(crate) use live_metrics::LiveMetricsAggregator;
 #[cfg(test)]
 pub(crate) use output_forwarding::primary_error_from_stderr;
 #[cfg(test)]
-pub(crate) use state::{completion_status, mark_stopped, store_completion, CompletionRecord};
+pub(crate) use state::{
+    completion_status, mark_failed, mark_stopped, store_completion, CompletionRecord,
+};

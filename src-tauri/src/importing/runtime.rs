@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::models::{K6Options, RequestBodyOverride, TrafficMode};
+use crate::models::{K6Options, RampUpStrategy, RequestBodyOverride, TrafficMode};
 
 use super::{ResolvedRuntimeRequest, RuntimeCollection, RuntimeRequest};
 
@@ -8,6 +8,7 @@ pub(crate) fn validate_test_run(
     collection: &RuntimeCollection,
     options: &K6Options,
 ) -> Result<(), String> {
+    validate_basic_load_shape(options)?;
     let selected_requests = select_requests(collection, options)?;
     validate_weighted_selection(&selected_requests, options)?;
     let context = build_runtime_context(collection, options)?;
@@ -45,6 +46,23 @@ fn select_requests<'a>(
         .iter()
         .map(String::as_str)
         .collect();
+    let available_ids: BTreeSet<&str> = collection
+        .requests
+        .iter()
+        .map(|request| request.id.as_str())
+        .collect();
+    let missing_ids: Vec<&str> = selected_ids
+        .iter()
+        .copied()
+        .filter(|id| !available_ids.contains(id))
+        .collect();
+    if !missing_ids.is_empty() {
+        return Err(format!(
+            "The selected requests are no longer available in the imported collection: {}.",
+            missing_ids.join(", ")
+        ));
+    }
+
     let selected_requests: Vec<&RuntimeRequest> = collection
         .requests
         .iter()
@@ -58,6 +76,90 @@ fn select_requests<'a>(
     }
 
     Ok(selected_requests)
+}
+
+fn validate_basic_load_shape(options: &K6Options) -> Result<(), String> {
+    if options.vus == 0 {
+        return Err("Virtual users must be at least 1.".to_string());
+    }
+
+    if options
+        .thresholds
+        .error_rate
+        .is_some_and(|value| value > 100)
+    {
+        return Err("Error-rate threshold must be a whole percentage from 0 to 100.".to_string());
+    }
+
+    if !is_valid_k6_duration(&options.duration) {
+        return Err("Duration must be a k6 duration like 30s, 1m, or 1m30s.".to_string());
+    }
+
+    if !matches!(options.ramp_up, RampUpStrategy::Instant) {
+        if let Some(ramp_up_time) = options
+            .ramp_up_time
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            if !is_valid_k6_duration(ramp_up_time) {
+                return Err(
+                    "Ramp-up time must be a k6 duration like 30s, 1m, or 1m30s.".to_string()
+                );
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn is_valid_k6_duration(value: &str) -> bool {
+    let trimmed = value.trim();
+    if trimmed.is_empty() || value != trimmed || trimmed.contains(char::is_whitespace) {
+        return false;
+    }
+    let value = trimmed;
+
+    let mut index = 0;
+    let bytes = value.as_bytes();
+    let mut has_segment = false;
+    let mut has_positive_segment = false;
+
+    while index < bytes.len() {
+        let number_start = index;
+        while index < bytes.len() && bytes[index].is_ascii_digit() {
+            index += 1;
+        }
+
+        if index < bytes.len() && bytes[index] == b'.' {
+            index += 1;
+            while index < bytes.len() && bytes[index].is_ascii_digit() {
+                index += 1;
+            }
+        }
+
+        if number_start == index || value[number_start..index].ends_with('.') {
+            return false;
+        }
+
+        let number = match value[number_start..index].parse::<f64>() {
+            Ok(number) if number.is_finite() => number,
+            _ => return false,
+        };
+        has_positive_segment |= number > 0.0;
+
+        let remaining = &value[index..];
+        let unit_len = ["ms", "ns", "us", "s", "m", "h"]
+            .into_iter()
+            .find_map(|unit| remaining.starts_with(unit).then_some(unit.len()));
+        let Some(unit_len) = unit_len else {
+            return false;
+        };
+
+        index += unit_len;
+        has_segment = true;
+    }
+
+    has_segment && has_positive_segment
 }
 
 fn validate_weighted_selection(

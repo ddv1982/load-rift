@@ -310,6 +310,55 @@ fn mark_stopped_sets_stopped_state_and_clears_error() {
 }
 
 #[test]
+fn mark_failed_sets_failed_state_and_clears_active_run() {
+    let state = Arc::new(Mutex::new(AppState {
+        launch_in_progress: true,
+        active_test: Some(test_running_test()),
+        latest_metrics: Some(LiveMetrics {
+            active_vus: 2,
+            ..LiveMetrics::default()
+        }),
+        latest_result_source: Some(TestResultSource::Summary),
+        ..AppState::default()
+    }));
+
+    let stored = process::mark_failed(
+        &state,
+        "run-1",
+        "child state is uncertain".to_string(),
+        Some("artifacts preserved".to_string()),
+    );
+
+    let app_state = state.lock().expect("state should remain readable");
+    assert!(stored);
+    assert!(app_state.active_test.is_none());
+    assert!(!app_state.launch_in_progress);
+    assert!(matches!(app_state.test_status, TestStatus::Failed));
+    assert_eq!(
+        app_state.latest_finish_reason.as_deref(),
+        Some("execution_error")
+    );
+    assert_eq!(
+        app_state.latest_error_message.as_deref(),
+        Some("child state is uncertain")
+    );
+    assert_eq!(
+        app_state.latest_summary_issue.as_deref(),
+        Some("artifacts preserved")
+    );
+    assert!(app_state.latest_result.is_none());
+    assert!(app_state.latest_summary_json.is_none());
+    assert!(app_state.latest_result_source.is_none());
+    assert_eq!(
+        app_state
+            .latest_metrics
+            .as_ref()
+            .map(|value| value.active_vus),
+        Some(0)
+    );
+}
+
+#[test]
 fn stale_completion_does_not_overwrite_newer_active_run_state() {
     let state = Arc::new(Mutex::new(AppState {
         launch_in_progress: false,
@@ -380,6 +429,42 @@ fn stale_stop_does_not_clear_newer_active_run_state() {
     assert!(app_state.active_test.is_some());
     assert!(matches!(app_state.test_status, TestStatus::Running));
     assert_eq!(app_state.latest_finish_reason, None);
+    assert_eq!(
+        app_state
+            .latest_metrics
+            .as_ref()
+            .map(|value| value.active_vus),
+        Some(3)
+    );
+}
+
+#[test]
+fn stale_failure_does_not_clear_newer_active_run_state() {
+    let state = Arc::new(Mutex::new(AppState {
+        launch_in_progress: false,
+        active_test: Some(test_running_test_with_id("new-run")),
+        latest_run_id: Some("new-run".to_string()),
+        latest_metrics: Some(LiveMetrics {
+            active_vus: 3,
+            ..LiveMetrics::default()
+        }),
+        test_status: TestStatus::Running,
+        ..AppState::default()
+    }));
+
+    let stored = process::mark_failed(
+        &state,
+        "old-run",
+        "stale failure".to_string(),
+        Some("stale summary".to_string()),
+    );
+
+    let app_state = state.lock().expect("state should remain readable");
+    assert!(!stored);
+    assert!(app_state.active_test.is_some());
+    assert!(matches!(app_state.test_status, TestStatus::Running));
+    assert_eq!(app_state.latest_error_message, None);
+    assert_eq!(app_state.latest_summary_issue, None);
     assert_eq!(
         app_state
             .latest_metrics
