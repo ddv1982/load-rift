@@ -725,6 +725,30 @@ jobs:
             --name release-verification-evidence \
             --dir release-assets
 
+      - name: Normalize desktop release filenames
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -d '' desktop_assets < <(
+            find release-assets -type f -name 'Load Rift*' -print0
+          )
+          if [[ ${#desktop_assets[@]} -ne 5 ]]; then
+            echo "Expected five Tauri desktop assets requiring filename normalization; found ${#desktop_assets[@]}." >&2
+            exit 1
+          fi
+
+          for asset in "${desktop_assets[@]}"; do
+            directory="$(dirname "$asset")"
+            filename="$(basename "$asset")"
+            normalized_name="${filename/Load Rift/Load.Rift}"
+            target="${directory}/${normalized_name}"
+            if [[ -e "$target" ]]; then
+              echo "Refusing to overwrite normalized release asset: ${target}" >&2
+              exit 1
+            fi
+            mv -- "$asset" "$target"
+          done
+
       - name: Generate release-wide SBOM
         uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
         with:

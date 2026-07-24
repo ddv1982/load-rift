@@ -168,6 +168,26 @@ class SupplyChainPolicyTests(unittest.TestCase):
         self.assertLess(evidence, attestation)
         self.assertLess(attestation, upload)
 
+    def test_tauri_asset_names_are_normalized_before_inventory_validation(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release.yml").read_text(
+            encoding="utf-8"
+        )
+        publish_assets = workflow.split("  publish-release-assets:\n", 1)[1].split(
+            "\n  deploy-apt-pages:", 1
+        )[0]
+        normalization = publish_assets.index(
+            "      - name: Normalize desktop release filenames\n"
+        )
+        inventory = publish_assets.index("scripts/verify_release_assets.py")
+        self.assertLess(normalization, inventory)
+        self.assertIn(
+            "find release-assets -type f -name 'Load Rift*' -print0", publish_assets
+        )
+        self.assertIn(
+            'normalized_name="${filename/Load Rift/Load.Rift}"', publish_assets
+        )
+        self.assertIn("[[ ${#desktop_assets[@]} -ne 5 ]]", publish_assets)
+
     def test_evidence_command_uses_real_ecosystem_generators(self) -> None:
         self.assertEqual(
             verify_supply_chain_evidence.JSON_COMMANDS["frontend.cdx.json"],
