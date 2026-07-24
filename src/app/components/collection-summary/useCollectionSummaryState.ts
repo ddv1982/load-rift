@@ -140,9 +140,16 @@ export function useCollectionSummaryState({
       return;
     }
 
+    const restoredMethod =
+      persistedFilters.methodFilter === "all" ||
+      collection?.requests.some(
+        (request) => request.method === persistedFilters.methodFilter,
+      )
+        ? persistedFilters.methodFilter
+        : "all";
     setSearchQuery(persistedFilters.searchQuery);
-    setMethodFilter(persistedFilters.methodFilter);
-  }, [collectionKey]);
+    setMethodFilter(restoredMethod);
+  }, [collection, collectionKey]);
 
   useEffect(() => {
     if (!collectionKey) {

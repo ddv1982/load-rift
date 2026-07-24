@@ -12,25 +12,88 @@ on:
         type: string
 
 concurrency:
-  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
+  resolve-release:
+    name: Resolve Release Identity
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      tag_name: ${{ steps.identity.outputs.tag_name }}
+      commit_sha: ${{ steps.identity.outputs.commit_sha }}
+
+    steps:
+      - name: Validate tag and resolve immutable commit
+        id: identity
+        env:
+          REQUESTED_TAG: ${{ inputs.tag }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            tag_name="$REQUESTED_TAG"
+          else
+            [[ "$GITHUB_REF_TYPE" == "tag" ]] || {
+              echo "Release workflow must run for a tag ref." >&2
+              exit 1
+            }
+            tag_name="$GITHUB_REF_NAME"
+          fi
+
+          release_tag_pattern='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?(\+[0-9A-Za-z]+([.-][0-9A-Za-z]+)*)?$'
+          if [[ ! "$tag_name" =~ $release_tag_pattern ]]; then
+            echo "Tag must be a v-prefixed semantic release version (for example, v1.2.3)." >&2
+            exit 1
+          fi
+
+          gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/git/ref/tags/${tag_name}" \
+            --silent
+          commit_sha="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/commits/${tag_name}" \
+            --jq '.sha')"
+          if [[ ! "$commit_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Tag ${tag_name} did not resolve to an immutable commit SHA." >&2
+            exit 1
+          fi
+
+          {
+            echo "tag_name=$tag_name"
+            echo "commit_sha=$commit_sha"
+          } >> "$GITHUB_OUTPUT"
+
   verify:
     name: Verify (Ubuntu)
-    runs-on: ubuntu-22.04
+    needs: resolve-release
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ needs.resolve-release.outputs.commit_sha }}
+          persist-credentials: false
+
+      - name: Verify checkout identity
+        env:
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$COMMIT_SHA" ]]
+          echo "Verified ${TAG_NAME} at ${COMMIT_SHA}."
 
       - name: Install Tauri Linux dependencies
         run: |
@@ -43,22 +106,22 @@ jobs:
             gnupg
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch (2026-06-30)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch (2026-07-16)
         with:
-          toolchain: 1.88.0
+          toolchain: 1.97.1
           components: rustfmt, clippy
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.8.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
-          key: ubuntu-22.04-${{ runner.arch }}
+          key: ubuntu-24.04-${{ runner.arch }}
 
       - name: Install Node dependencies
         run: npm ci
@@ -72,97 +135,86 @@ jobs:
       - name: Install bundled k6 binary
         run: npm run install:k6
 
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Frontend tests
-        run: npm test
-
-      - name: Workflow smoke
-        run: npm run test:workflow-smoke
-
-      - name: Frontend build
-        run: npm run build
-
-      - name: Rust fmt
-        run: npm run rust:fmt
-
-      - name: Rust clippy
-        run: npm run rust:clippy
-
-      - name: Rust audit
-        run: npm run rust:audit
-
-      - name: Rust tests
-        working-directory: src-tauri
+      - name: Verify repository
         env:
           LOADRIFT_REQUIRE_BUNDLED_K6_TESTS: "true"
-        run: cargo test
+        run: npm run verify
 
-      - name: Rust check
-        working-directory: src-tauri
-        run: cargo check
+      - name: Generate release verification evidence
+        run: python3 scripts/verify_supply_chain_evidence.py generate --output release-verification-evidence
+
+      - name: Upload release verification evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-verification-evidence
+          path: release-verification-evidence
+          if-no-files-found: error
 
   create-release:
     name: Create Draft Release
-    needs: verify
-    runs-on: ubuntu-22.04
+    needs: [resolve-release, verify]
+    runs-on: ubuntu-24.04
+    environment: release
     permissions:
       contents: write
-    outputs:
-      tag_name: ${{ steps.release.outputs.tag_name }}
 
     steps:
       - name: Resolve release metadata
         id: release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          tag_name="${{ github.event.inputs.tag || github.ref_name }}"
-          notes_path="docs/releases/${tag_name}.md"
+          notes_path="docs/releases/${TAG_NAME}.md"
           notes_file="$RUNNER_TEMP/release-notes.md"
-          if ! gh api \
+          if ! gh api --method GET \
             -H "Accept: application/vnd.github.raw" \
-            "repos/${{ github.repository }}/contents/${notes_path}?ref=${tag_name}" > "$notes_file"; then
-            gh api \
+            "repos/${GITHUB_REPOSITORY}/contents/${notes_path}" \
+            -f "ref=${COMMIT_SHA}" > "$notes_file"; then
+            gh api --method GET \
               -H "Accept: application/vnd.github.raw" \
-              "repos/${{ github.repository }}/contents/.github/RELEASE_TEMPLATE.md?ref=${tag_name}" > "$notes_file"
+              "repos/${GITHUB_REPOSITORY}/contents/.github/RELEASE_TEMPLATE.md" \
+              -f "ref=${COMMIT_SHA}" > "$notes_file"
           fi
 
-          {
-            echo "tag_name=$tag_name"
-            echo "notes_file=$notes_file"
-          } >> "$GITHUB_OUTPUT"
+          echo "notes_file=$notes_file" >> "$GITHUB_OUTPUT"
 
       - name: Create or refresh draft release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ steps.release.outputs.tag_name }}
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
           NOTES_FILE: ${{ steps.release.outputs.notes_file }}
         run: |
           set -euo pipefail
 
-          if gh release view "$TAG_NAME" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            is_draft="$(gh release view "$TAG_NAME" --repo "${{ github.repository }}" --json isDraft --jq '.isDraft')"
+          current_commit_sha="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" \
+            --jq '.sha')"
+          if [[ "$current_commit_sha" != "$COMMIT_SHA" ]]; then
+            echo "Tag ${TAG_NAME} moved from ${COMMIT_SHA} to ${current_commit_sha}; refusing to create or update its release." >&2
+            exit 1
+          fi
+
+          if gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            is_draft="$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json isDraft --jq '.isDraft')"
             if [[ "$is_draft" != "true" ]]; then
               echo "Release $TAG_NAME is already published; refusing to flip it back to draft." >&2
               echo "Use a new version tag for a replacement release." >&2
               exit 1
             fi
             gh release edit "$TAG_NAME" \
-              --repo "${{ github.repository }}" \
+              --repo "$GITHUB_REPOSITORY" \
               --title "Load Rift $TAG_NAME" \
               --notes-file "$NOTES_FILE" \
               --draft=true \
               --prerelease=false
           else
             gh release create "$TAG_NAME" \
-              --repo "${{ github.repository }}" \
+              --repo "$GITHUB_REPOSITORY" \
               --title "Load Rift $TAG_NAME" \
               --notes-file "$NOTES_FILE" \
               --draft \
@@ -170,10 +222,19 @@ jobs:
               --latest
           fi
 
+          current_commit_sha="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" \
+            --jq '.sha')"
+          [[ "$current_commit_sha" == "$COMMIT_SHA" ]] || {
+            echo "Tag ${TAG_NAME} moved while its draft release was being updated." >&2
+            exit 1
+          }
+
   publish-tauri:
     name: Build and Upload (${{ matrix.platform_label }})
-    needs: create-release
+    needs: [resolve-release, create-release]
     runs-on: ${{ matrix.platform }}
+    environment: release
     permissions:
       contents: read
 
@@ -196,10 +257,21 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-          ref: ${{ github.event.inputs.tag || github.ref }}
+          ref: ${{ needs.resolve-release.outputs.commit_sha }}
+          persist-credentials: false
+
+      - name: Verify checkout identity
+        env:
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$(git rev-parse HEAD)" == "$COMMIT_SHA" ]]
+          echo "Building ${TAG_NAME} at ${COMMIT_SHA}."
 
       - name: Install Tauri Linux dependencies
         if: matrix.platform == 'ubuntu-22.04'
@@ -213,19 +285,19 @@ jobs:
             gnupg
 
       - name: Setup Node.js
-        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.0.0
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
 
       - name: Setup Rust toolchain
-        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable branch (2026-06-30)
+        uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable branch (2026-07-16)
         with:
-          toolchain: 1.88.0
+          toolchain: 1.97.1
           targets: ${{ matrix.rust_target }}
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2.8.1
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
         with:
           workspaces: src-tauri
           key: ${{ matrix.platform }}-${{ runner.arch }}-${{ matrix.rust_target }}
@@ -333,7 +405,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          npm run tauri -- build ${{ matrix.args }}
+          npm run tauri -- build ${{ matrix.args }} -- --locked
 
       - name: Clean up Apple signing environment
         if: always() && startsWith(matrix.platform, 'macos-')
@@ -348,7 +420,7 @@ jobs:
 
       - name: Upload Linux desktop artifact
         if: matrix.platform == 'ubuntu-22.04'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-release-assets-${{ matrix.rust_target }}
           path: |
@@ -359,7 +431,7 @@ jobs:
 
       - name: Upload macOS desktop artifact
         if: startsWith(matrix.platform, 'macos-')
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: desktop-release-assets-${{ matrix.rust_target }}
           path: src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg
@@ -506,9 +578,18 @@ jobs:
           setup_signer_fingerprint="$setup_validsig_fingerprints"
           sed "s/__LOAD_RIFT_APT_SIGNING_KEY_FINGERPRINT__/$setup_signer_fingerprint/g" \
             scripts/install-apt-repo.sh > "$setup_installer"
-          ! grep -q __LOAD_RIFT_APT_SIGNING_KEY_FINGERPRINT__ "$setup_installer"
-          ! grep -q LOAD_RIFT_ALLOW_UNVERIFIED_REPOSITORY_SETUP "$setup_installer"
-          grep -F "$setup_signer_fingerprint" "$setup_installer"
+          rendered_fingerprint_assignment="expected_signing_fingerprint=\"\${LOAD_RIFT_REPOSITORY_SETUP_SIGNING_KEY_FINGERPRINT:-${setup_signer_fingerprint}}\""
+          grep -Fx "$rendered_fingerprint_assignment" "$setup_installer"
+          if grep -q __LOAD_RIFT_APT_SIGNING_KEY_FINGERPRINT__ "$setup_installer"; then
+            echo "Rendered installer still contains the signing fingerprint placeholder." >&2
+            exit 1
+          fi
+          # shellcheck disable=SC2016
+          grep -Fx 'if [ "$expected_signing_fingerprint" = "$unrendered_signing_fingerprint" ]; then' "$setup_installer"
+          if grep -q LOAD_RIFT_ALLOW_UNVERIFIED_REPOSITORY_SETUP "$setup_installer"; then
+            echo "Rendered installer contains the forbidden verification bypass." >&2
+            exit 1
+          fi
           sh -n "$setup_installer"
 
           installer_keyring_validation="$(GNUPGHOME="$verification_home" gpg --batch --import-options show-only --with-colons --import apt-repository/load-rift-archive-keyring.pgp | awk -F: -v expected="$setup_signer_fingerprint" '
@@ -580,7 +661,7 @@ jobs:
 
       - name: Upload APT setup release assets artifact
         if: matrix.platform == 'ubuntu-22.04'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: apt-release-assets
           path: |
@@ -592,7 +673,7 @@ jobs:
 
       - name: Upload APT repository site artifact
         if: matrix.platform == 'ubuntu-22.04'
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: apt-pages-site
           path: pages-site
@@ -600,13 +681,22 @@ jobs:
 
   publish-release-assets:
     name: Publish Release Assets
-    needs: [create-release, publish-tauri]
-    runs-on: ubuntu-22.04
+    needs: [resolve-release, create-release, publish-tauri, verify]
+    runs-on: ubuntu-24.04
+    environment: release
     permissions:
       actions: read
+      attestations: write
       contents: write
+      id-token: write
 
     steps:
+      - name: Checkout release tooling
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.resolve-release.outputs.commit_sha }}
+          persist-credentials: false
+
       - name: Download release asset artifacts
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -630,69 +720,172 @@ jobs:
             --repo "${{ github.repository }}" \
             --name apt-release-assets \
             --dir release-assets
+          gh run download "$GITHUB_RUN_ID" \
+            --repo "${{ github.repository }}" \
+            --name release-verification-evidence \
+            --dir release-assets
+
+      - name: Generate release-wide SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: release-assets
+          format: spdx-json
+          output-file: release-assets/release.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+
+      - name: Validate inventory and generate release-wide checksums
+        env:
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          release_version="${TAG_NAME#v}"
+          [[ "v${release_version}" == "$TAG_NAME" ]]
+          python3 scripts/verify_release_assets.py --version "$release_version" release-assets
+          python3 scripts/verify_supply_chain_evidence.py validate --version "$release_version" release-assets
+          test -s release-assets/ASSET-INVENTORY.txt
+          test -s release-assets/SHA256SUMS
+          LC_ALL=C sort -c release-assets/ASSET-INVENTORY.txt
+          LC_ALL=C sort -c -k2 release-assets/SHA256SUMS
+
+      - name: Attest release assets
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6 # v4.2.0
+        with:
+          subject-path: release-assets/**/*
 
       - name: Upload GitHub release assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.create-release.outputs.tag_name }}
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
         shell: bash
         run: |
           set -euo pipefail
+          assert_tag_identity() {
+            local current_commit_sha
+            current_commit_sha="$(gh api --method GET \
+              "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" \
+              --jq '.sha')"
+            if [[ "$current_commit_sha" != "$COMMIT_SHA" ]]; then
+              echo "Tag ${TAG_NAME} moved from ${COMMIT_SHA} to ${current_commit_sha}; refusing to publish assets." >&2
+              exit 1
+            fi
+          }
+
           mapfile -d '' assets < <(find release-assets -type f -print0)
           if [[ ${#assets[@]} -eq 0 ]]; then
             echo "No release assets were downloaded from build artifacts." >&2
             exit 1
           fi
 
+          assert_tag_identity
           gh release upload "$TAG_NAME" "${assets[@]}" \
-            --repo "${{ github.repository }}" \
+            --repo "$GITHUB_REPOSITORY" \
             --clobber
+          assert_tag_identity
 
-          for asset_name in \
-            install-apt-repo.sh \
-            load-rift-repository-setup_1.0_all.deb \
-            load-rift-repository-setup_1.0_all.deb.sha256 \
-            load-rift-repository-setup_1.0_all.deb.sha256.asc; do
-            gh release view "$TAG_NAME" \
-              --repo "${{ github.repository }}" \
-              --json assets \
-              --jq '.assets[].name' \
-              | grep -Fx "$asset_name"
-          done
+          {
+            cat release-assets/ASSET-INVENTORY.txt
+            printf '%s\n' ASSET-INVENTORY.txt SHA256SUMS
+          } | LC_ALL=C sort > "$RUNNER_TEMP/expected-release-assets.txt"
+          gh release view "$TAG_NAME" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json assets \
+            --jq '.assets[].name' \
+            | LC_ALL=C sort > "$RUNNER_TEMP/actual-release-assets.txt"
+          diff -u "$RUNNER_TEMP/expected-release-assets.txt" "$RUNNER_TEMP/actual-release-assets.txt"
+          assert_tag_identity
 
   deploy-apt-pages:
     name: Deploy APT repository pages
-    needs: publish-tauri
-    runs-on: ubuntu-22.04
+    needs: [resolve-release, publish-release-assets]
+    runs-on: ubuntu-24.04
+    environment: release
     permissions:
       contents: read
       pages: write
       id-token: write
 
     steps:
+      - name: Verify release identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_commit_sha="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" \
+            --jq '.sha')"
+          if [[ "$current_commit_sha" != "$COMMIT_SHA" ]]; then
+            echo "Tag ${TAG_NAME} moved from ${COMMIT_SHA} to ${current_commit_sha}; refusing to deploy Pages." >&2
+            exit 1
+          fi
+
       - name: Download APT repository site artifact
-        uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5.0.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: apt-pages-site
           path: pages-site
 
       - name: Configure GitHub Pages
-        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
         with:
           enablement: true
 
       - name: Upload APT repository Pages artifact
-        uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: pages-site
 
+      - name: Reverify release identity before Pages deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_commit_sha="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" \
+            --jq '.sha')"
+          if [[ "$current_commit_sha" != "$COMMIT_SHA" ]]; then
+            echo "Tag ${TAG_NAME} moved from ${COMMIT_SHA} to ${current_commit_sha}; refusing to deploy Pages." >&2
+            exit 1
+          fi
+
       - name: Deploy APT repository to GitHub Pages
-        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4.0.5
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+
+      - name: Verify release identity after Pages deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          current_commit_sha="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" \
+            --jq '.sha')"
+          if [[ "$current_commit_sha" != "$COMMIT_SHA" ]]; then
+            echo "Tag ${TAG_NAME} moved from ${COMMIT_SHA} to ${current_commit_sha} during Pages deployment." >&2
+            exit 1
+          fi
 
   publish-release:
     name: Publish Release
-    needs: [create-release, publish-release-assets, deploy-apt-pages]
-    runs-on: ubuntu-22.04
+    needs:
+      [
+        resolve-release,
+        create-release,
+        publish-release-assets,
+        deploy-apt-pages,
+      ]
+    runs-on: ubuntu-24.04
+    environment: release
     permissions:
       contents: write
 
@@ -700,10 +893,25 @@ jobs:
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG_NAME: ${{ needs.create-release.outputs.tag_name }}
+          TAG_NAME: ${{ needs.resolve-release.outputs.tag_name }}
+          COMMIT_SHA: ${{ needs.resolve-release.outputs.commit_sha }}
         run: |
           set -euo pipefail
+          current_commit_sha="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" \
+            --jq '.sha')"
+          if [[ "$current_commit_sha" != "$COMMIT_SHA" ]]; then
+            echo "Tag ${TAG_NAME} moved from ${COMMIT_SHA} to ${current_commit_sha}; refusing to publish the release." >&2
+            exit 1
+          fi
           gh release edit "$TAG_NAME" \
-            --repo "${{ github.repository }}" \
+            --repo "$GITHUB_REPOSITORY" \
             --draft=false \
             --prerelease=false
+          current_commit_sha="$(gh api --method GET \
+            "repos/${GITHUB_REPOSITORY}/commits/${TAG_NAME}" \
+            --jq '.sha')"
+          if [[ "$current_commit_sha" != "$COMMIT_SHA" ]]; then
+            echo "Tag ${TAG_NAME} moved from ${COMMIT_SHA} to ${current_commit_sha} during release publication." >&2
+            exit 1
+          fi

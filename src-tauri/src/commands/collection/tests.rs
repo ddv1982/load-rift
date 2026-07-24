@@ -77,7 +77,7 @@ fn import_collection_into_state_rejects_busy_runner() {
 
     let error = service::import_collection_into_state(&state, sample_collection())
         .expect_err("busy state should reject collection import");
-    assert!(error.contains("Stop the active k6 test before importing a different collection."));
+    assert!(error.contains("active load or smoke test"));
 
     let app_state = state.lock().expect("state should remain readable");
     assert_eq!(
@@ -96,7 +96,7 @@ fn import_collection_from_path_checks_busy_before_reading_file() {
     let error = super::import_collection_from_path(&state, "/definitely/missing/load-rift.json")
         .expect_err("busy state should reject before file IO");
 
-    assert!(error.contains("Stop the active k6 test before importing a different collection."));
+    assert!(error.contains("active load or smoke test"));
     assert!(!error.contains("Failed to read"));
 }
 
@@ -138,6 +138,29 @@ fn import_collection_into_state_checks_busy_before_parsing() {
     let error = service::import_collection_into_state(&state, "not valid json")
         .expect_err("busy state should reject before parsing");
 
-    assert!(error.contains("Stop the active k6 test before importing a different collection."));
+    assert!(error.contains("active load or smoke test"));
     assert!(!error.contains("Invalid JSON"));
+}
+
+#[test]
+fn import_collection_into_state_rejects_active_smoke_test() {
+    let state = Arc::new(Mutex::new(AppState {
+        smoke_test_in_progress: true,
+        generated_script: Some("existing script".to_string()),
+        runtime_collection: Some(empty_runtime_collection()),
+        ..AppState::default()
+    }));
+
+    let error = service::import_collection_into_state(&state, sample_collection())
+        .expect_err("active smoke test should reject collection replacement");
+
+    assert!(error.contains("active load or smoke test"));
+    assert_eq!(
+        state
+            .lock()
+            .expect("state should remain readable")
+            .generated_script
+            .as_deref(),
+        Some("existing script")
+    );
 }

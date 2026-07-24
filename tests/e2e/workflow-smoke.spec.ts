@@ -1,6 +1,6 @@
 import { mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import type {
   RunErrorEvent,
   RunMetricsEvent,
@@ -9,11 +9,20 @@ import type {
 } from "../../src/lib/loadrift/types";
 
 const screenshotDir = resolve("docs/quality/screenshots");
+const updateDocsScreenshots =
+  process.env.LOADRIFT_UPDATE_DOCS_SCREENSHOTS === "1";
 
-async function captureWorkflowScreenshot(page: Page, name: string) {
-  mkdirSync(screenshotDir, { recursive: true });
+async function captureWorkflowScreenshot(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+) {
+  const path = updateDocsScreenshots
+    ? resolve(screenshotDir, name)
+    : testInfo.outputPath("workflow-screenshots", name);
+  mkdirSync(resolve(path, ".."), { recursive: true });
   await page.screenshot({
-    path: resolve(screenshotDir, name),
+    path,
     fullPage: true,
   });
 }
@@ -165,7 +174,7 @@ test.beforeEach(async ({ page }) => {
 
 test("covers import, configure, smoke, load, and export in a browser", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.goto("/");
 
   await expect(
@@ -173,6 +182,7 @@ test("covers import, configure, smoke, load, and export in a browser", async ({
   ).toBeVisible();
   await captureWorkflowScreenshot(
     page,
+    testInfo,
     "2026-06-25-browser-smoke-before-import.png",
   );
 
@@ -189,6 +199,7 @@ test("covers import, configure, smoke, load, and export in a browser", async ({
   ).toBeVisible();
   await captureWorkflowScreenshot(
     page,
+    testInfo,
     "2026-06-25-browser-smoke-after-import.png",
   );
 
@@ -221,6 +232,7 @@ test("covers import, configure, smoke, load, and export in a browser", async ({
   ).toBeVisible();
   await captureWorkflowScreenshot(
     page,
+    testInfo,
     "2026-06-25-browser-smoke-after-export.png",
   );
 });

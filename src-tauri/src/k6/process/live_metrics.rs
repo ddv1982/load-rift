@@ -1,5 +1,5 @@
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::BufReader;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::{self, JoinHandle};
@@ -13,8 +13,11 @@ use crate::events::emit_k6_metrics;
 use crate::models::LiveMetrics;
 use crate::state::SharedAppState;
 
+use super::output_forwarding::{BoundedRecord, BoundedRecordReader};
+
 const MAX_TRACKED_RESPONSE_TIME_MS: u64 = 24 * 60 * 60 * 1000;
 const RESPONSE_TIME_PRECISION_DIGITS: u8 = 3;
+const MAX_METRICS_RECORD_BYTES: usize = 64 * 1024;
 
 pub(crate) fn spawn_metrics_forwarder(
     metrics_path: PathBuf,
@@ -34,7 +37,10 @@ pub(crate) fn spawn_metrics_forwarder(
             if reader.is_none() {
                 match File::open(&metrics_path) {
                     Ok(file) => {
-                        reader = Some(BufReader::new(file));
+                        reader = Some(BoundedRecordReader::new(
+                            BufReader::new(file),
+                            MAX_METRICS_RECORD_BYTES,
+                        ));
                     }
                     Err(_) if shutdown.load(Ordering::SeqCst) => break,
                     Err(_) => {
@@ -44,22 +50,39 @@ pub(crate) fn spawn_metrics_forwarder(
                 }
             }
 
-            let mut line = String::new();
-            let bytes_read = reader
+            let record = match reader
                 .as_mut()
-                .and_then(|file_reader| file_reader.read_line(&mut line).ok())
-                .unwrap_or(0);
-
-            if bytes_read == 0 {
-                if shutdown.load(Ordering::SeqCst) {
+                .expect("metrics reader should be initialized")
+                .read_record(false)
+            {
+                Ok(Some(record)) => Some(record),
+                Ok(None) if shutdown.load(Ordering::SeqCst) => {
+                    let pending = reader
+                        .as_mut()
+                        .expect("metrics reader should be initialized")
+                        .finish_pending();
+                    if let Some(record) = pending {
+                        apply_metric_record(&mut aggregator, &run_id, record);
+                    }
                     break;
                 }
+                Ok(None) => {
+                    thread::sleep(Duration::from_millis(75));
+                    continue;
+                }
+                Err(error) => {
+                    log::warn!("Failed while reading live k6 metrics for run {run_id}: {error}");
+                    if shutdown.load(Ordering::SeqCst) {
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(75));
+                    continue;
+                }
+            };
 
-                thread::sleep(Duration::from_millis(75));
-                continue;
-            }
-
-            if aggregator.apply_line(&line) && last_emit.elapsed() >= Duration::from_millis(200) {
+            if record.is_some_and(|record| apply_metric_record(&mut aggregator, &run_id, record))
+                && last_emit.elapsed() >= Duration::from_millis(200)
+            {
                 publish_live_metrics(&state, &app, &run_id, aggregator.snapshot());
                 last_emit = Instant::now();
             }
@@ -67,6 +90,21 @@ pub(crate) fn spawn_metrics_forwarder(
 
         publish_live_metrics(&state, &app, &run_id, aggregator.snapshot());
     })
+}
+
+fn apply_metric_record(
+    aggregator: &mut LiveMetricsAggregator,
+    run_id: &str,
+    record: BoundedRecord,
+) -> bool {
+    if record.was_truncated() {
+        log::warn!(
+            "A live k6 metrics record for run {run_id} exceeded {MAX_METRICS_RECORD_BYTES} bytes; the remainder was discarded"
+        );
+        return false;
+    }
+
+    aggregator.apply_line(record.text_lossy().as_ref())
 }
 
 fn publish_live_metrics(
@@ -239,5 +277,42 @@ impl LiveMetricsAggregator {
             max_response_time: max,
             requests_per_second,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Cursor;
+
+    #[test]
+    fn oversized_metric_record_is_skipped_and_later_line_is_applied() {
+        let mut input = vec![b'x'; 256];
+        input.extend_from_slice(
+            b"\n{\"type\":\"Point\",\"metric\":\"http_reqs\",\"data\":{\"value\":1}}\n",
+        );
+        let mut reader = BoundedRecordReader::new(Cursor::new(input), 128);
+        let mut aggregator = LiveMetricsAggregator::default();
+
+        let oversized = reader.read_record(true).unwrap().unwrap();
+        let valid = reader.read_record(true).unwrap().unwrap();
+
+        assert!(oversized.was_truncated());
+        assert!(!apply_metric_record(&mut aggregator, "test-run", oversized));
+        assert!(aggregator.apply_line(valid.text_lossy().as_ref()));
+        assert_eq!(aggregator.snapshot().total_requests, 1);
+    }
+
+    #[test]
+    fn valid_metric_at_eof_without_newline_is_applied() {
+        let input = b"{\"type\":\"Point\",\"metric\":\"http_reqs\",\"data\":{\"value\":2}}";
+        let mut reader = BoundedRecordReader::new(Cursor::new(input), MAX_METRICS_RECORD_BYTES);
+        let mut aggregator = LiveMetricsAggregator::default();
+
+        assert!(reader.read_record(false).unwrap().is_none());
+        let pending = reader.finish_pending().unwrap();
+
+        assert!(apply_metric_record(&mut aggregator, "test-run", pending));
+        assert_eq!(aggregator.snapshot().total_requests, 2);
     }
 }

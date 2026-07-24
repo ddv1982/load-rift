@@ -95,6 +95,71 @@ function getRunReadinessMessage({
   };
 }
 
+function getRunOutcome(testState: TestHarnessStatusProps["testState"]): {
+  role: "status" | "alert";
+  live: "polite" | "assertive";
+  label: string;
+} | null {
+  if (testState.isStarting) {
+    return {
+      role: "status",
+      live: "polite",
+      label: "Load test starting.",
+    };
+  }
+
+  if (testState.isRunning) {
+    return {
+      role: "status",
+      live: "polite",
+      label: "Load test running.",
+    };
+  }
+
+  if (
+    testState.error ||
+    testState.status === "failed" ||
+    testState.result?.status === "failed"
+  ) {
+    return {
+      role: "alert",
+      live: "assertive",
+      label: testState.error
+        ? `Load test failed: ${testState.error}`
+        : "Load test completed with a failed result.",
+    };
+  }
+
+  if (testState.result?.status === "warning") {
+    return {
+      role: "status",
+      live: "polite",
+      label: "Load test completed with warnings.",
+    };
+  }
+
+  if (testState.result?.status === "passed") {
+    return {
+      role: "status",
+      live: "polite",
+      label: "Load test completed successfully.",
+    };
+  }
+
+  if (testState.status === "completed" || testState.status === "stopped") {
+    return {
+      role: "status",
+      live: "polite",
+      label:
+        testState.status === "stopped"
+          ? "Load test stopped."
+          : "Load test completed.",
+    };
+  }
+
+  return null;
+}
+
 export function TestHarnessRunPanel({
   status,
   controls,
@@ -129,6 +194,7 @@ export function TestHarnessRunPanel({
     canStartTest,
     runnerOptionsAreValid,
   });
+  const runOutcome = getRunOutcome(testState);
 
   return (
     <section
@@ -151,7 +217,13 @@ export function TestHarnessRunPanel({
         </div>
 
         <div className="harness-heading-meta">
-          <span className={`status-pill is-${displayedTestStatus}`}>
+          <span
+            className={`status-pill is-${displayedTestStatus}`}
+            role={runOutcome?.role}
+            aria-live={runOutcome?.live}
+            aria-atomic={runOutcome ? "true" : undefined}
+            aria-label={runOutcome?.label}
+          >
             {displayedVerdict}
           </span>
           <p className="panel-copy">
@@ -197,7 +269,9 @@ export function TestHarnessRunPanel({
           type="button"
           className="ghost"
           onClick={onStopTest}
-          disabled={!testState.isRunning || testState.isStarting}
+          disabled={
+            !testState.isRunning || testState.isStarting || testState.isBusy
+          }
         >
           Stop
         </button>
@@ -210,7 +284,7 @@ export function TestHarnessRunPanel({
           Refresh Status
         </button>
       </div>
-      <p className={`action-guidance is-${readiness.tone}`} aria-live="polite">
+      <p className={`action-guidance is-${readiness.tone}`}>
         {readiness.message}
       </p>
 

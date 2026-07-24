@@ -135,8 +135,8 @@ fn generated_script_supports_weighted_request_scheduling_and_tags() {
     assert!(
         imported
             .script
-            .contains("buildWeightedSchedule(runnableRequests, requestWeights)"),
-        "expected generated script to build a deterministic weighted schedule"
+            .contains("buildWeightedDistribution(runnableRequests, requestWeights)"),
+        "expected generated script to build a deterministic cumulative weighted distribution"
     );
     assert!(
         imported.script.contains("exec.scenario.iterationInTest"),
@@ -145,6 +145,102 @@ fn generated_script_supports_weighted_request_scheduling_and_tags() {
     assert!(
         !imported.script.contains("Math.random()"),
         "expected generated script to avoid probabilistic random weighted selection"
+    );
+}
+
+#[test]
+fn generated_script_does_not_expand_weighted_requests_per_weight_unit() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    assert!(
+        imported.script.contains("let totalWeight = 0;"),
+        "expected generated script to track a cumulative total weight"
+    );
+    assert!(
+        imported.script.contains("totalWeight += weight;"),
+        "expected generated script to represent weights with cumulative arithmetic"
+    );
+    assert!(
+        imported.script.contains("cumulativeWeight: totalWeight"),
+        "expected one cumulative boundary per runnable request"
+    );
+    assert!(
+        !imported.script.contains("index < weight"),
+        "expected generated script not to loop once per weight unit"
+    );
+    assert!(
+        !imported.script.contains("schedule.push(request.id)"),
+        "expected generated script not to expand request ids into a weighted schedule"
+    );
+    assert!(
+        !imported.script.contains("new Array(weight)"),
+        "expected generated script not to allocate an array sized by a request weight"
+    );
+}
+
+#[test]
+fn generated_script_handles_max_u32_weights_without_a_weight_cap_or_expansion() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+    let maximum_u32_weight = f64::from(u32::MAX);
+
+    assert_eq!(
+        maximum_u32_weight + maximum_u32_weight,
+        8_589_934_590.0,
+        "expected two maximum u32 weights to remain exactly representable by JavaScript Number arithmetic"
+    );
+
+    assert!(
+        imported
+            .script
+            .contains("return Math.max(0, Math.trunc(rawWeight));"),
+        "expected maximum u32 weights to remain numerically represented without clamping"
+    );
+    assert!(
+        imported.script.contains("weightedRequests.push({"),
+        "expected generated script to allocate only one distribution entry per runnable request"
+    );
+    assert!(
+        imported
+            .script
+            .contains("const weightedIndex = iterationIndex % distribution.totalWeight;"),
+        "expected exact iteration wrap boundaries to use the cumulative total, including two large weights"
+    );
+    assert!(
+        imported.script.contains("!Number.isFinite(rawWeight)"),
+        "expected non-finite runtime weight values to retain the default weight fallback"
+    );
+    assert!(
+        !imported.script.contains("4294967295"),
+        "expected generated script not to introduce a hidden maximum-u32 clamp"
+    );
+}
+
+#[test]
+fn generated_script_preserves_weight_defaults_exclusions_and_wrap_boundaries() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    assert!(
+        imported.script.contains("return 1;"),
+        "expected missing and non-finite runtime weights to default to one"
+    );
+    assert!(
+        imported.script.contains("if (weight <= 0)"),
+        "expected zero-weight requests to be excluded from the cumulative distribution"
+    );
+    assert!(
+        imported
+            .script
+            .contains("weightedIndex < distribution.weightedRequests[midpoint].cumulativeWeight"),
+        "expected exact cumulative boundaries to advance to the next request"
+    );
+    assert!(
+        imported.script.contains(
+            "Weighted mix requires at least one selected request with a positive weight."
+        ),
+        "expected an actionable empty or all-zero weighted-pool failure"
     );
 }
 
@@ -176,5 +272,16 @@ fn generated_script_supports_runtime_headers_and_body_override() {
             .script
             .contains("requestHeaders, requestBodyOverride"),
         "expected generated script to pass runtime request details into execution"
+    );
+}
+
+#[test]
+fn generated_script_disables_redirects_per_request() {
+    let imported =
+        import_collection(sample_host_placeholder_collection()).expect("fixture should import");
+
+    assert!(
+        imported.script.contains("redirects: 0,"),
+        "expected each generated k6 request to disable redirects independently of global options"
     );
 }

@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::process::Child;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
@@ -28,14 +29,20 @@ pub struct AppState {
     pub latest_summary_issue: Option<String>,
     pub latest_output: String,
     pub latest_run_id: Option<String>,
+    pub used_run_ids: HashSet<String>,
     pub test_status: TestStatus,
     pub launch_in_progress: bool,
     pub active_test: Option<RunningTest>,
+    pub smoke_test_in_progress: bool,
 }
 
 impl AppState {
     pub fn test_is_busy(&self) -> bool {
         self.launch_in_progress || self.active_test.is_some()
+    }
+
+    pub fn test_operation_is_busy(&self) -> bool {
+        self.test_is_busy() || self.smoke_test_in_progress
     }
 
     pub fn clear_test_run_state(&mut self) {
@@ -69,9 +76,11 @@ impl Default for AppState {
             latest_summary_issue: None,
             latest_output: String::new(),
             latest_run_id: None,
+            used_run_ids: HashSet::new(),
             test_status: TestStatus::Idle,
             launch_in_progress: false,
             active_test: None,
+            smoke_test_in_progress: false,
         }
     }
 }

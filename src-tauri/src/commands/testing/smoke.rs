@@ -4,6 +4,7 @@ use std::time::{Duration, Instant};
 
 use reqwest::blocking::Client;
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
+use reqwest::redirect::Policy;
 
 use crate::importing::ResolvedRuntimeRequest;
 use crate::models::{SmokeTestResponse, SmokeTestResult};
@@ -49,6 +50,7 @@ fn run_smoke_test_with_limits(
 
     let client = Client::builder()
         .timeout(limits.per_request_timeout)
+        .redirect(Policy::none())
         .build()
         .map_err(|error| format!("Failed to prepare the smoke test client: {error}"))?;
 
@@ -339,7 +341,7 @@ mod tests {
     }
 
     #[test]
-    fn run_smoke_test_captures_response_preview_headers_and_status() {
+    fn run_smoke_test_allows_direct_loopback_and_captures_response_details() {
         let listener = TcpListener::bind("127.0.0.1:0").expect("listener should bind");
         let address = listener
             .local_addr()
@@ -393,5 +395,51 @@ mod tests {
             Some("<Envelope>ok</Envelope>")
         );
         assert!(first.error_message.is_none());
+    }
+
+    #[test]
+    fn run_smoke_test_does_not_contact_redirect_target() {
+        let target_listener = TcpListener::bind("127.0.0.1:0").expect("target should bind");
+        let target_address = target_listener
+            .local_addr()
+            .expect("target should expose address");
+        target_listener
+            .set_nonblocking(true)
+            .expect("target should support nonblocking accepts");
+
+        let redirect_listener = TcpListener::bind("127.0.0.1:0").expect("redirect should bind");
+        let redirect_address = redirect_listener
+            .local_addr()
+            .expect("redirect should expose address");
+        let server = thread::spawn(move || {
+            let (mut stream, _) = redirect_listener
+                .accept()
+                .expect("initial request should arrive");
+            let mut buffer = [0u8; 2048];
+            let _ = stream.read(&mut buffer);
+            let response = format!(
+                "HTTP/1.1 302 Found\r\nLocation: http://{target_address}/redirected\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+            );
+            stream
+                .write_all(response.as_bytes())
+                .expect("redirect response should write");
+        });
+
+        let response = run_smoke_test(vec![ResolvedRuntimeRequest {
+            id: "redirect-request".to_string(),
+            name: "Redirect".to_string(),
+            method: "GET".to_string(),
+            url: format!("http://{redirect_address}/start"),
+            headers: BTreeMap::new(),
+            body: None,
+        }])
+        .expect("smoke test should return the redirect response");
+
+        server.join().expect("redirect server should exit cleanly");
+        assert_eq!(response.responses[0].status_code, Some(302));
+        assert!(matches!(
+            target_listener.accept(),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock
+        ));
     }
 }

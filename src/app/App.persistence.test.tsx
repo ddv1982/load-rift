@@ -13,6 +13,7 @@ import {
   renderApp,
   sameNameDifferentCollection,
 } from "./test-support/appTestUtils";
+import { createCollectionStorageKey } from "./persistence";
 
 vi.mock("../features/import/useCollectionImport", () => ({
   useCollectionImport: () => appHookTestState.importHookState,
@@ -28,6 +29,15 @@ vi.mock("../features/test/useSmokeTest", () => ({
 
 function openWorkflowStep(step: "Source" | "Configure" | "Run") {
   fireEvent.click(screen.getByRole("tab", { name: new RegExp(step) }));
+}
+
+function expectDefaultCollectionFilters() {
+  expect(
+    (screen.getByLabelText("Search requests") as HTMLInputElement).value,
+  ).toBe("");
+  expect((screen.getByLabelText("Method") as HTMLSelectElement).value).toBe(
+    "all",
+  );
 }
 
 describe("App persistence", () => {
@@ -163,9 +173,9 @@ describe("App persistence", () => {
     ).toBe("");
     expect(screen.queryByDisplayValue("X-Previous")).not.toBeInTheDocument();
     expect(screen.queryByDisplayValue("previous")).not.toBeInTheDocument();
-    expect(
-      appHookTestState.testHookState.clearTestState,
-    ).toHaveBeenCalledTimes(1);
+    expect(appHookTestState.testHookState.clearTestState).toHaveBeenCalledTimes(
+      1,
+    );
     expect(
       appHookTestState.smokeHookState.clearSmokeTest,
     ).toHaveBeenCalledTimes(1);
@@ -470,6 +480,139 @@ describe("App persistence", () => {
     expect((screen.getByLabelText("Method") as HTMLSelectElement).value).toBe(
       "all",
     );
+  });
+
+  it.each([
+    ["an array payload", []],
+    ["a string payload", "invalid"],
+    ["a null payload", null],
+    ["an array entries container", { version: 2, entries: [] }],
+    ["a string entries container", { version: 2, entries: "invalid" }],
+    ["a null entries container", { version: 2, entries: null }],
+  ])("ignores collection filters stored as %s", (_description, stored) => {
+    window.localStorage.setItem(
+      "loadrift.ui.collection-filters",
+      JSON.stringify(stored),
+    );
+
+    expect(() => renderApp(createApiMock())).not.toThrow();
+    openWorkflowStep("Source");
+    expectDefaultCollectionFilters();
+  });
+
+  it.each([
+    ["an array", []],
+    ["a string", "invalid"],
+    ["null", null],
+    [
+      "a mismatched collection key",
+      {
+        collectionKey: "collection:not-the-current-key",
+        methodFilter: "GET",
+        searchQuery: "users",
+      },
+    ],
+    [
+      "a non-string collection key",
+      { collectionKey: 42, methodFilter: "GET", searchQuery: "users" },
+    ],
+    [
+      "a non-string search query",
+      { methodFilter: "GET", searchQuery: ["users"] },
+    ],
+    ["a null method filter", { methodFilter: null, searchQuery: "users" }],
+    [
+      "an object method filter",
+      { methodFilter: { method: "GET" }, searchQuery: "users" },
+    ],
+    ["an empty method filter", { methodFilter: "", searchQuery: "users" }],
+    ["a padded method filter", { methodFilter: " GET ", searchQuery: "users" }],
+  ])("ignores collection filter entry containing %s", (_description, entry) => {
+    const collectionKey = createCollectionStorageKey(importedCollection);
+    const storedEntry =
+      entry && typeof entry === "object" && !Array.isArray(entry)
+        ? { collectionKey, ...(entry as Record<string, unknown>) }
+        : entry;
+    window.localStorage.setItem(
+      "loadrift.ui.collection-filters",
+      JSON.stringify({
+        version: 2,
+        entries: { [collectionKey]: storedEntry },
+      }),
+    );
+
+    expect(() => renderApp(createApiMock())).not.toThrow();
+    openWorkflowStep("Source");
+    expectDefaultCollectionFilters();
+  });
+
+  it("keeps a valid collection filter entry when a neighboring entry is corrupt", () => {
+    const collectionKey = createCollectionStorageKey(importedCollection);
+    const otherCollectionKey = createCollectionStorageKey(anotherCollection);
+    window.localStorage.setItem(
+      "loadrift.ui.collection-filters",
+      JSON.stringify({
+        version: 2,
+        entries: {
+          [otherCollectionKey]: {
+            collectionKey: otherCollectionKey,
+            methodFilter: null,
+            searchQuery: ["login"],
+          },
+          [collectionKey]: {
+            collectionKey,
+            methodFilter: "GET",
+            searchQuery: "users",
+          },
+        },
+      }),
+    );
+
+    renderApp(createApiMock());
+    openWorkflowStep("Source");
+
+    expect(
+      (screen.getByLabelText("Search requests") as HTMLInputElement).value,
+    ).toBe("users");
+    expect((screen.getByLabelText("Method") as HTMLSelectElement).value).toBe(
+      "GET",
+    );
+  });
+
+  it("falls back to all methods when a persisted method is absent from the collection", () => {
+    const collectionKey = createCollectionStorageKey(importedCollection);
+    window.localStorage.setItem(
+      "loadrift.ui.collection-filters",
+      JSON.stringify({
+        version: 2,
+        entries: {
+          [collectionKey]: {
+            collectionKey,
+            methodFilter: "TRACE",
+            searchQuery: "",
+          },
+        },
+      }),
+    );
+
+    renderApp(createApiMock());
+    openWorkflowStep("Source");
+
+    expect((screen.getByLabelText("Method") as HTMLSelectElement).value).toBe(
+      "all",
+    );
+    expect(screen.getByText("GET users")).toBeInTheDocument();
+  });
+
+  it("ignores collection filter storage that cannot be parsed", () => {
+    window.localStorage.setItem(
+      "loadrift.ui.collection-filters",
+      "{not-valid-json",
+    );
+
+    expect(() => renderApp(createApiMock())).not.toThrow();
+    openWorkflowStep("Source");
+    expectDefaultCollectionFilters();
   });
 
   it("keeps working when storage access is blocked", () => {

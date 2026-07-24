@@ -33,6 +33,7 @@ DEFAULT_PACKAGE = "load-rift"
 DEFAULT_ORIGIN = "load-rift-stable-main"
 DEFAULT_LABEL = "Load Rift"
 DEFAULT_DESCRIPTION = "Load Rift APT repository"
+DEFAULT_VALID_FOR_DAYS = 30
 DEFAULT_REPOSITORY_URL = "https://ddv1982.github.io/load-rift/apt/"
 DEFAULT_SETUP_PACKAGE_NAME = "load-rift-repository-setup"
 DEFAULT_SETUP_PACKAGE_VERSION = "1.0"
@@ -254,20 +255,34 @@ def collect_package(source: pathlib.Path, pool_path: pathlib.PurePosixPath) -> D
     )
 
 
-def release_file(repo_root: pathlib.Path, args: argparse.Namespace, architectures: list[str]) -> str:
+def release_file(
+    repo_root: pathlib.Path,
+    args: argparse.Namespace,
+    architectures: list[str],
+    *,
+    generated_at: dt.datetime | None = None,
+) -> str:
     dists_root = repo_root / "dists" / args.suite
     targets = sorted(
         path
         for path in dists_root.rglob("*")
         if path.is_file() and path.name not in {"Release", "InRelease", "Release.gpg"}
     )
-    now = dt.datetime.now(dt.timezone.utc).replace(microsecond=0)
+    if args.valid_for_days <= 0:
+        raise ValueError("APT Release validity must be greater than zero days")
+    if generated_at is None:
+        generated_at = dt.datetime.now(dt.timezone.utc)
+    if generated_at.tzinfo is None or generated_at.utcoffset() is None:
+        raise ValueError("APT Release date must be timezone-aware")
+    release_date = generated_at.astimezone(dt.timezone.utc).replace(microsecond=0)
+    valid_until = release_date + dt.timedelta(days=args.valid_for_days)
     lines = [
         f"Origin: {args.origin}",
         f"Label: {args.label}",
         f"Suite: {args.suite}",
         f"Codename: {args.suite}",
-        f"Date: {format_datetime(now, usegmt=True)}",
+        f"Date: {format_datetime(release_date, usegmt=True)}",
+        f"Valid-Until: {format_datetime(valid_until, usegmt=True)}",
         f"Architectures: {' '.join(architectures)}",
         f"Components: {args.component}",
         f"Description: {args.description}",
@@ -445,6 +460,16 @@ def validate_clean_output_path(path: pathlib.Path) -> None:
         )
 
 
+def positive_int(value: str) -> int:
+    try:
+        parsed = int(value)
+    except ValueError as error:
+        raise argparse.ArgumentTypeError("must be an integer greater than zero") from error
+    if parsed <= 0:
+        raise argparse.ArgumentTypeError("must be greater than zero")
+    return parsed
+
+
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Build a signed Load Rift APT repository.")
     parser.add_argument("deb", nargs="+", help="built .deb artifact(s) to publish")
@@ -454,6 +479,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--origin", default=DEFAULT_ORIGIN)
     parser.add_argument("--label", default=DEFAULT_LABEL)
     parser.add_argument("--description", default=DEFAULT_DESCRIPTION)
+    parser.add_argument(
+        "--valid-for-days",
+        type=positive_int,
+        default=DEFAULT_VALID_FOR_DAYS,
+        help=f"days after Date that Release metadata remains valid (default: {DEFAULT_VALID_FOR_DAYS})",
+    )
     parser.add_argument("--repository-url", default=DEFAULT_REPOSITORY_URL)
     parser.add_argument("--gpg-key", help="GPG key id/fingerprint used for signing")
     parser.add_argument("--gpg-homedir", help="GPG home directory containing the signing key")

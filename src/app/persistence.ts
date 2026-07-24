@@ -100,6 +100,34 @@ function hashString(value: string): string {
   return (hash >>> 0).toString(16).padStart(8, "0");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function normalizeCollectionFilterEntry(
+  entryKey: string,
+  value: unknown,
+): PersistedCollectionFilters | null {
+  if (
+    !isRecord(value) ||
+    typeof value.collectionKey !== "string" ||
+    value.collectionKey.length === 0 ||
+    value.collectionKey !== entryKey ||
+    typeof value.methodFilter !== "string" ||
+    value.methodFilter.trim() !== value.methodFilter ||
+    value.methodFilter.length === 0 ||
+    typeof value.searchQuery !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    collectionKey: value.collectionKey,
+    methodFilter: value.methodFilter,
+    searchQuery: value.searchQuery,
+  };
+}
+
 function normalizePersistedVus(value: unknown, fallback: number): number {
   return typeof value === "number" &&
     Number.isFinite(value) &&
@@ -175,18 +203,18 @@ export function createCollectionStorageKey(collection: CollectionInfo): string {
 function normalizeCollectionFilterStore(
   stored: unknown,
 ): PersistedCollectionFilterStore | null {
-  if (!stored || typeof stored !== "object") {
+  if (!isRecord(stored) || stored.version !== 2 || !isRecord(stored.entries)) {
     return null;
   }
 
-  if ("version" in stored && "entries" in stored) {
-    const versionedStore = stored as PersistedCollectionFilterStore;
-    if (versionedStore.version === 2 && versionedStore.entries) {
-      return versionedStore;
-    }
-  }
+  const entries = Object.fromEntries(
+    Object.entries(stored.entries).flatMap(([entryKey, value]) => {
+      const normalized = normalizeCollectionFilterEntry(entryKey, value);
+      return normalized ? [[entryKey, normalized] as const] : [];
+    }),
+  );
 
-  return null;
+  return { version: 2, entries };
 }
 
 function normalizeCollectionRequestWeightStore(

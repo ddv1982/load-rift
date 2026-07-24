@@ -4,11 +4,11 @@ use crate::state::SharedAppState;
 
 const UPDATE_STATE_ERROR: &str = "Failed to update the shared Tauri app state.";
 const ACTIVE_TEST_IMPORT_ERROR: &str =
-    "Stop the active k6 test before importing a different collection.";
+    "Wait for the active load or smoke test to finish before importing a different collection.";
 
 pub(super) fn ensure_can_import_collection(state: &SharedAppState) -> Result<(), String> {
     let app_state = state.lock().map_err(|_| UPDATE_STATE_ERROR.to_string())?;
-    if app_state.test_is_busy() {
+    if app_state.test_operation_is_busy() {
         return Err(ACTIVE_TEST_IMPORT_ERROR.to_string());
     }
 
@@ -25,7 +25,7 @@ pub(super) fn import_collection_into_state(
     let collection = imported.info.clone();
 
     let mut app_state = state.lock().map_err(|_| UPDATE_STATE_ERROR.to_string())?;
-    if app_state.test_is_busy() {
+    if app_state.test_operation_is_busy() {
         return Err(ACTIVE_TEST_IMPORT_ERROR.to_string());
     }
 

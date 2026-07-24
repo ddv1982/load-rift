@@ -124,6 +124,24 @@ fn large_postman_collection_fixture(folder_count: usize, requests_per_folder: us
     )
 }
 
+fn postman_body_fixture(request_name: &str, body: &str) -> String {
+    format!(
+        r#"{{
+          "info": {{ "name": "Body fixture" }},
+          "item": [
+            {{
+              "name": "{request_name}",
+              "request": {{
+                "method": "POST",
+                "url": {{ "raw": "https://api.example.com/body" }},
+                "body": {body}
+              }}
+            }}
+          ]
+        }}"#
+    )
+}
+
 #[cfg(target_os = "linux")]
 fn sample_structured_relative_query_collection() -> &'static str {
     r#"{
@@ -301,26 +319,32 @@ fn structured_urlencoded_body_pairs_are_percent_encoded() {
         imported.runtime_collection.requests[0].body.as_deref(),
         Some("space%20key=a%20b&reserved=a%26b%3Dc")
     );
+    assert_eq!(
+        imported.runtime_collection.requests[0]
+            .headers
+            .get("Content-Type")
+            .map(String::as_str),
+        Some("application/x-www-form-urlencoded")
+    );
 }
 
 #[test]
-fn structured_formdata_text_pairs_are_percent_encoded_and_file_entries_skipped() {
+fn urlencoded_body_preserves_an_explicit_content_type() {
     let imported = import_collection(
         r#"{
-          "info": { "name": "Encoded multipart fallback" },
+          "info": { "name": "Encoded form" },
           "item": [
             {
               "name": "Submit",
               "request": {
                 "method": "POST",
                 "url": { "raw": "https://api.example.com/form" },
+                "header": [
+                  { "key": "content-type", "value": "application/x-custom-form" }
+                ],
                 "body": {
-                  "mode": "formdata",
-                  "formdata": [
-                    { "key": "space key", "value": "a b", "type": "text" },
-                    { "key": "reserved", "value": "a&b=c", "type": "text" },
-                    { "key": "upload", "value": "/tmp/file.txt", "type": "file" }
-                  ]
+                  "mode": "urlencoded",
+                  "urlencoded": [{ "key": "name", "value": "Load Rift" }]
                 }
               }
             }
@@ -330,9 +354,290 @@ fn structured_formdata_text_pairs_are_percent_encoded_and_file_entries_skipped()
     .expect("collection should import");
 
     assert_eq!(
-        imported.runtime_collection.requests[0].body.as_deref(),
+        imported.runtime_collection.requests[0]
+            .headers
+            .get("content-type")
+            .map(String::as_str),
+        Some("application/x-custom-form")
+    );
+    assert_eq!(imported.runtime_collection.requests[0].headers.len(), 1);
+}
+
+#[test]
+fn multipart_text_body_is_rejected_instead_of_being_changed_to_urlencoded() {
+    let fixture = postman_body_fixture(
+        "Submit multipart text",
+        r#"{
+          "mode": "formdata",
+          "formdata": [
+            { "key": "space key", "value": "a b", "type": "text" },
+            { "key": "reserved", "value": "a&b=c", "type": "text" }
+          ]
+        }"#,
+    );
+
+    let error = import_collection(&fixture)
+        .expect_err("text-only multipart bodies must not be converted to urlencoded bodies");
+
+    assert!(error.contains("Submit multipart text"));
+    assert!(error.contains("formdata"));
+    assert!(error.contains("multipart"));
+    assert!(error.contains("content type"));
+}
+
+#[test]
+fn multipart_file_part_is_rejected_instead_of_being_skipped() {
+    let fixture = postman_body_fixture(
+        "Upload multipart file",
+        r#"{
+          "mode": "formdata",
+          "formdata": [
+            { "key": "description", "value": "report", "type": "text" },
+            { "key": "upload", "src": "/tmp/file.txt", "type": "file" }
+          ]
+        }"#,
+    );
+
+    let error = import_collection(&fixture)
+        .expect_err("multipart file parts must fail rather than disappear");
+
+    assert!(error.contains("Upload multipart file"));
+    assert!(error.contains("formdata"));
+    assert!(error.contains("file part"));
+}
+
+#[test]
+fn explicit_multipart_body_mode_is_rejected() {
+    let fixture = postman_body_fixture(
+        "Explicit multipart",
+        r#"{
+          "mode": "multipart/form-data",
+          "multipart": [{ "key": "name", "value": "example", "type": "text" }]
+        }"#,
+    );
+
+    let error = import_collection(&fixture).expect_err("multipart modes must be rejected");
+
+    assert!(error.contains("Explicit multipart"));
+    assert!(error.contains("multipart/form-data"));
+    assert!(error.contains("content type"));
+}
+
+#[test]
+fn graphql_body_mode_is_rejected() {
+    let fixture = postman_body_fixture(
+        "GraphQL query",
+        r#"{
+          "mode": "graphql",
+          "graphql": {
+            "query": "query User { user { id } }",
+            "variables": "{}"
+          }
+        }"#,
+    );
+
+    let error = import_collection(&fixture).expect_err("GraphQL bodies must be rejected");
+
+    assert!(error.contains("GraphQL query"));
+    assert!(error.contains("graphql"));
+    assert!(error.contains("unsupported"));
+}
+
+#[test]
+fn file_body_mode_is_rejected() {
+    let fixture = postman_body_fixture(
+        "Binary upload",
+        r#"{ "mode": "file", "file": { "src": "/tmp/file.bin" } }"#,
+    );
+
+    let error = import_collection(&fixture).expect_err("file bodies must be rejected");
+
+    assert!(error.contains("Binary upload"));
+    assert!(error.contains("mode 'file'"));
+    assert!(error.contains("cannot be preserved"));
+}
+
+#[test]
+fn unknown_body_mode_is_rejected() {
+    let fixture = postman_body_fixture(
+        "Future body",
+        r#"{ "mode": "future-mode", "future-mode": "payload" }"#,
+    );
+
+    let error = import_collection(&fixture).expect_err("unknown body modes must be rejected");
+
+    assert!(error.contains("Future body"));
+    assert!(error.contains("future-mode"));
+    assert!(error.contains("raw"));
+    assert!(error.contains("urlencoded"));
+}
+
+#[test]
+fn enabled_body_without_mode_is_rejected() {
+    let fixture = postman_body_fixture("Missing mode", r#"{ "raw": "payload" }"#);
+
+    let error =
+        import_collection(&fixture).expect_err("an enabled body without a mode must be rejected");
+
+    assert!(error.contains("Missing mode"));
+    assert!(error.contains("without a valid string mode"));
+}
+
+#[test]
+fn raw_body_without_payload_is_rejected_instead_of_becoming_bodyless() {
+    let fixture = postman_body_fixture("Missing raw payload", r#"{ "mode": "raw" }"#);
+
+    let error = import_collection(&fixture)
+        .expect_err("an enabled raw body without its payload must not disappear");
+
+    assert!(error.contains("Missing raw payload"));
+    assert!(error.contains("mode 'raw'"));
+    assert!(error.contains("requires"));
+}
+
+#[test]
+fn malformed_urlencoded_and_formdata_payload_arrays_are_rejected() {
+    for (request_name, body_mode, payload) in [
+        (
+            "Malformed urlencoded",
+            "urlencoded",
+            r#"{ "mode": "urlencoded", "urlencoded": { "key": "q", "value": "x" } }"#,
+        ),
+        (
+            "Malformed formdata",
+            "formdata",
+            r#"{ "mode": "formdata", "formdata": { "key": "q", "value": "x" } }"#,
+        ),
+    ] {
+        let fixture = postman_body_fixture(request_name, payload);
+        let error = import_collection(&fixture)
+            .expect_err("mode payload objects must not be treated as missing bodies");
+
+        assert!(error.contains(request_name));
+        assert!(error.contains(body_mode));
+        assert!(error.contains("array"));
+    }
+}
+
+#[test]
+fn malformed_enabled_urlencoded_entries_are_rejected() {
+    let fixture = postman_body_fixture(
+        "Malformed urlencoded entry",
+        r#"{
+          "mode": "urlencoded",
+          "urlencoded": [{ "value": "would previously disappear" }]
+        }"#,
+    );
+
+    let error = import_collection(&fixture)
+        .expect_err("enabled urlencoded entries without keys must not disappear");
+
+    assert!(error.contains("Malformed urlencoded entry"));
+    assert!(error.contains("urlencoded"));
+    assert!(error.contains("index 0"));
+    assert!(error.contains("key"));
+}
+
+#[test]
+fn raw_and_urlencoded_body_fixtures_preserve_supported_behavior() {
+    let raw_fixture = postman_body_fixture(
+        "Raw body",
+        r#"{ "mode": "raw", "raw": "{\"term\":\"{{term}} & unchanged\"}" }"#,
+    );
+    let raw = import_collection(&raw_fixture).expect("raw body should import");
+    assert_eq!(
+        raw.runtime_collection.requests[0].body.as_deref(),
+        Some(r#"{"term":"{{term}} & unchanged"}"#)
+    );
+    assert!(!raw.runtime_collection.requests[0].encode_body_variable_values);
+
+    let urlencoded_fixture = postman_body_fixture(
+        "Urlencoded body",
+        r#"{
+          "mode": "urlencoded",
+          "urlencoded": [
+            { "key": "space key", "value": "a b" },
+            { "key": "reserved", "value": "a&b=c" },
+            { "key": "ignored", "value": "disabled", "disabled": true }
+          ]
+        }"#,
+    );
+    let urlencoded =
+        import_collection(&urlencoded_fixture).expect("valid urlencoded body should import");
+    assert_eq!(
+        urlencoded.runtime_collection.requests[0].body.as_deref(),
         Some("space%20key=a%20b&reserved=a%26b%3Dc")
     );
+    assert!(urlencoded.runtime_collection.requests[0].encode_body_variable_values);
+}
+
+#[test]
+fn disabled_unsupported_or_malformed_body_is_ignored() {
+    let fixture = postman_body_fixture(
+        "Disabled body",
+        r#"{
+          "disabled": true,
+          "mode": "formdata",
+          "formdata": { "type": "file", "src": "/tmp/file.bin" }
+        }"#,
+    );
+
+    let imported = import_collection(&fixture)
+        .expect("a disabled body must remain bodyless without validating its payload");
+
+    assert_eq!(imported.runtime_collection.requests.len(), 1);
+    assert!(imported.runtime_collection.requests[0].body.is_none());
+    assert!(!imported.runtime_collection.requests[0].encode_body_variable_values);
+}
+
+#[test]
+fn unsupported_nested_request_fails_the_whole_import() {
+    let error = import_collection(
+        r#"{
+          "info": { "name": "Nested body failure" },
+          "item": [
+            {
+              "name": "Valid before failure",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "https://api.example.com/first" }
+              }
+            },
+            {
+              "name": "Outer folder",
+              "item": [
+                {
+                  "name": "Inner folder",
+                  "item": [
+                    {
+                      "name": "Nested GraphQL request",
+                      "request": {
+                        "method": "POST",
+                        "url": { "raw": "https://api.example.com/graphql" },
+                        "body": {
+                          "mode": "graphql",
+                          "graphql": { "query": "query { viewer { id } }" }
+                        }
+                      }
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "name": "Valid after failure",
+              "request": {
+                "method": "GET",
+                "url": { "raw": "https://api.example.com/last" }
+              }
+            }
+          ]
+        }"#,
+    )
+    .expect_err("a nested unsupported request must fail rather than return a partial collection");
+
+    assert!(error.contains("Nested GraphQL request"));
+    assert!(error.contains("graphql"));
 }
 
 #[test]
@@ -377,7 +682,7 @@ fn structured_query_variable_values_are_percent_encoded_after_resolution() {
 }
 
 #[test]
-fn structured_form_variable_overrides_are_percent_encoded_after_resolution() {
+fn structured_urlencoded_variable_overrides_are_percent_encoded_after_resolution() {
     let imported = import_collection(
         r#"{
           "info": { "name": "Encoded form variables" },
@@ -391,17 +696,6 @@ fn structured_form_variable_overrides_are_percent_encoded_after_resolution() {
                 "body": {
                   "mode": "urlencoded",
                   "urlencoded": [{ "key": "q", "value": "{{term}}" }]
-                }
-              }
-            },
-            {
-              "name": "Submit formdata",
-              "request": {
-                "method": "POST",
-                "url": { "raw": "https://api.example.com/formdata" },
-                "body": {
-                  "mode": "formdata",
-                  "formdata": [{ "key": "q", "value": "{{term}}", "type": "text" }]
                 }
               }
             }
@@ -419,10 +713,6 @@ fn structured_form_variable_overrides_are_percent_encoded_after_resolution() {
 
     assert_eq!(
         requests[0].body.as_deref(),
-        Some("q=a%26b%3Dc%20%C3%BC%21%27%28%29%2A")
-    );
-    assert_eq!(
-        requests[1].body.as_deref(),
         Some("q=a%26b%3Dc%20%C3%BC%21%27%28%29%2A")
     );
 }

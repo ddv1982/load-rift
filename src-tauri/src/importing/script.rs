@@ -372,26 +372,49 @@ function selectRunnableRequests(selectedRequests, trafficMode, requestWeights) {
   return selectedRequests.filter((request) => resolveRequestWeight(request, requestWeights) > 0);
 }}
 
-function buildWeightedSchedule(requests, requestWeights) {{
-  const schedule = [];
+function buildWeightedDistribution(requests, requestWeights) {{
+  const weightedRequests = [];
+  let totalWeight = 0;
 
   for (const request of requests) {{
     const weight = resolveRequestWeight(request, requestWeights);
-    for (let index = 0; index < weight; index += 1) {{
-      schedule.push(request.id);
+    if (weight <= 0) {{
+      continue;
     }}
+
+    totalWeight += weight;
+    weightedRequests.push({{
+      requestId: request.id,
+      cumulativeWeight: totalWeight,
+    }});
   }}
 
-  if (!schedule.length) {{
+  if (!weightedRequests.length) {{
     throw new Error("Weighted mix requires at least one selected request with a positive weight.");
   }}
 
-  return schedule;
+  return {{ weightedRequests, totalWeight }};
 }}
 
-function pickWeightedRequestId(schedule) {{
-  const iterationIndex = Number(exec.scenario.iterationInTest || 0);
-  return schedule[iterationIndex % schedule.length];
+function pickWeightedRequestId(distribution) {{
+  const rawIterationIndex = Number(exec.scenario.iterationInTest || 0);
+  const iterationIndex = Number.isFinite(rawIterationIndex)
+    ? Math.max(0, Math.trunc(rawIterationIndex))
+    : 0;
+  const weightedIndex = iterationIndex % distribution.totalWeight;
+  let lowerBound = 0;
+  let upperBound = distribution.weightedRequests.length - 1;
+
+  while (lowerBound < upperBound) {{
+    const midpoint = Math.floor((lowerBound + upperBound) / 2);
+    if (weightedIndex < distribution.weightedRequests[midpoint].cumulativeWeight) {{
+      upperBound = midpoint;
+    }} else {{
+      lowerBound = midpoint + 1;
+    }}
+  }}
+
+  return distribution.weightedRequests[lowerBound].requestId;
 }}
 
 function findRequestById(requestId) {{
@@ -423,6 +446,7 @@ function executeRequest(request, context, trafficMode, requestHeaders, requestBo
   const payload = resolveRequestBody(request, context, requestBodyOverride);
   const response = http.request(request.method, url, payload, {{
     headers,
+    redirects: 0,
     tags: {{
       request_id: request.id,
       request_name: request.name,
@@ -456,9 +480,9 @@ export default function () {{
   }}
 
   if (trafficMode === "weighted") {{
-    const weightedSchedule = buildWeightedSchedule(runnableRequests, requestWeights);
+    const weightedDistribution = buildWeightedDistribution(runnableRequests, requestWeights);
     executeRequest(
-      findRequestById(pickWeightedRequestId(weightedSchedule)),
+      findRequestById(pickWeightedRequestId(weightedDistribution)),
       context,
       trafficMode,
       requestHeaders,

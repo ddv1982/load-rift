@@ -31,9 +31,9 @@ use super::diagnostics::{
 };
 use super::live_metrics::spawn_metrics_forwarder;
 use super::output_forwarding::{
-    spawn_output_forwarder, stderr_tail_snapshot, wait_for_output_forwarders, BoundedLineBuffer,
+    spawn_output_forwarder, stderr_tail_snapshot, wait_for_forwarders, BoundedLineBuffer,
 };
-use super::state::{mark_failed, mark_stopped, store_started_state, UPDATE_STATE_ERROR};
+use super::state::{mark_failed, mark_stopped, store_started_state};
 
 const MAX_UNSETTLED_CHILD_ATTEMPTS: u32 = 15;
 
@@ -281,33 +281,33 @@ pub(crate) fn validate_advanced_options_json(
     analyze_advanced_options_json(value).map(|config| config.normalized_json)
 }
 
-pub fn stop_k6_process(state: &SharedAppState) -> Result<String, String> {
-    let running = {
-        let app_state = state.lock().map_err(|_| UPDATE_STATE_ERROR.to_string())?;
-        app_state.active_test.clone()
-    };
-
-    let Some(running) = running else {
-        return Err("No k6 test is currently running.".to_string());
-    };
-
-    running.stop_requested.store(true, Ordering::SeqCst);
-
-    let mut child = running
-        .child
-        .lock()
-        .map_err(|_| "Failed to access the active k6 process.".to_string())?;
-    child
-        .kill()
-        .map_err(|error| format!("Failed to stop the active k6 process: {error}"))?;
-
-    Ok(running.run_id)
-}
-
 struct WaitForwarders {
     stdout: Option<JoinHandle<()>>,
     stderr: Option<JoinHandle<()>>,
     metrics: JoinHandle<()>,
+}
+
+fn wait_for_run_forwarders(
+    forwarders: WaitForwarders,
+    state: &SharedAppState,
+    app: &AppHandle,
+    run_id: &str,
+) -> bool {
+    let report = wait_for_forwarders([
+        ("metrics", Some(forwarders.metrics)),
+        ("stdout", forwarders.stdout),
+        ("stderr", forwarders.stderr),
+    ]);
+    for warning in report.warnings {
+        super::output_forwarding::append_run_output_and_emit(
+            state,
+            app,
+            run_id,
+            &format!("Warning: {warning}\n"),
+        );
+    }
+
+    report.timed_out.contains(&"metrics")
 }
 
 struct RunWaitContext {
@@ -404,7 +404,7 @@ fn spawn_waiter(context: RunWaitContext) {
             Ok(status) => status,
             Err(error_message) => {
                 metrics_shutdown.store(true, Ordering::SeqCst);
-                let _ = forwarders.metrics.join();
+                wait_for_run_forwarders(forwarders, &state, &app, &run_id);
                 let summary_issue = "Load Rift could not determine whether the k6 child process exited; artifacts were preserved for debugging.".to_string();
                 let stored = mark_failed(
                     &state,
@@ -438,8 +438,14 @@ fn spawn_waiter(context: RunWaitContext) {
 
         let stop_requested = stop_requested.load(Ordering::SeqCst);
         metrics_shutdown.store(true, Ordering::SeqCst);
-        let _ = forwarders.metrics.join();
-        wait_for_output_forwarders([forwarders.stdout, forwarders.stderr]);
+        let metrics_reader_timed_out = wait_for_run_forwarders(forwarders, &state, &app, &run_id);
+        let effective_retention_policy = if metrics_reader_timed_out {
+            // A detached metrics reader may still hold the metrics file open.
+            // Preserve the run directory rather than racing cleanup against it.
+            ArtifactRetentionPolicy::PreserveDebug
+        } else {
+            retention_policy
+        };
         let stderr_tail = stderr_tail_snapshot(&stderr_tail);
 
         if stop_requested {
@@ -451,7 +457,7 @@ fn spawn_waiter(context: RunWaitContext) {
                     "k6 run stopped.\n",
                 );
             }
-            finish_artifact_cleanup(artifacts, retention_policy, &state, &app, &run_id);
+            finish_artifact_cleanup(artifacts, effective_retention_policy, &state, &app, &run_id);
             return;
         }
 
@@ -464,7 +470,7 @@ fn spawn_waiter(context: RunWaitContext) {
             state: &state,
             run_id: &run_id,
             run_exit,
-            include_artifact_paths: retention_policy.preserve_debug(),
+            include_artifact_paths: effective_retention_policy.preserve_debug(),
             stderr_tail: &stderr_tail,
         };
 
@@ -491,13 +497,16 @@ fn spawn_waiter(context: RunWaitContext) {
                         k6_binary: &k6_binary,
                         pre_spawn_diagnostics: &pre_spawn_diagnostics,
                         fallback_diagnostics: &fallback_diagnostics,
-                        retention_policy,
+                        retention_policy: effective_retention_policy,
                     });
                 }
             },
             Err(error) => {
-                let summary_issue =
-                    summary_file_issue(&summary_path, &error, retention_policy.preserve_debug());
+                let summary_issue = summary_file_issue(
+                    &summary_path,
+                    &error,
+                    effective_retention_policy.preserve_debug(),
+                );
                 let fallback_diagnostics = artifacts.diagnostics();
                 emit_live_metrics_fallback_completion(FallbackCompletionContext {
                     completion: completion_context,
@@ -506,12 +515,12 @@ fn spawn_waiter(context: RunWaitContext) {
                     k6_binary: &k6_binary,
                     pre_spawn_diagnostics: &pre_spawn_diagnostics,
                     fallback_diagnostics: &fallback_diagnostics,
-                    retention_policy,
+                    retention_policy: effective_retention_policy,
                 });
             }
         }
 
-        finish_artifact_cleanup(artifacts, retention_policy, &state, &app, &run_id);
+        finish_artifact_cleanup(artifacts, effective_retention_policy, &state, &app, &run_id);
     });
 }
 

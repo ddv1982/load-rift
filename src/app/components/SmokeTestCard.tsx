@@ -11,11 +11,51 @@ export function SmokeTestCard({
   error,
   isRunning,
 }: SmokeTestCardProps) {
+  const hasFailedResult = Boolean(
+    result?.responses.some((response) => !response.ok),
+  );
+  const outcome = isRunning
+    ? {
+        label: "Running",
+        announcement: "Smoke test running.",
+        role: "status" as const,
+        live: "polite" as const,
+      }
+    : error
+      ? {
+          label: "Error",
+          announcement: `Smoke test command failed: ${error}`,
+          role: "alert" as const,
+          live: "assertive" as const,
+        }
+      : result
+        ? hasFailedResult
+          ? {
+              label: "Failed",
+              announcement: "Smoke test completed with failed responses.",
+              role: "alert" as const,
+              live: "assertive" as const,
+            }
+          : {
+              label: "Captured",
+              announcement: "Smoke test completed successfully.",
+              role: "status" as const,
+              live: "polite" as const,
+            }
+        : null;
+
   return (
     <section className="panel smoke-test-card">
       <div className="result-summary-header">
         <p className="eyebrow">Smoke Test</p>
-        <strong>{isRunning ? "Running" : result ? "Captured" : "Idle"}</strong>
+        <strong
+          role={outcome?.role}
+          aria-live={outcome?.live}
+          aria-atomic={outcome ? "true" : undefined}
+          aria-label={outcome?.announcement}
+        >
+          {outcome?.label ?? "Idle"}
+        </strong>
       </div>
 
       <div className="result-summary-scroll">

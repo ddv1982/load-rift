@@ -1,8 +1,8 @@
 use std::env;
+use std::ffi::OsStr;
 use std::fmt;
-#[cfg(test)]
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use tauri::{AppHandle, Manager};
 #[cfg(test)]
@@ -21,7 +21,6 @@ pub(crate) enum K6BinarySource {
     ExecutableDirectory,
     CurrentExecutableDirectory,
     ManifestBin,
-    WorkingDirectory,
     Path,
 }
 
@@ -33,7 +32,6 @@ impl fmt::Display for K6BinarySource {
             K6BinarySource::ExecutableDirectory => "executable_directory",
             K6BinarySource::CurrentExecutableDirectory => "current_executable_directory",
             K6BinarySource::ManifestBin => "manifest_bin",
-            K6BinarySource::WorkingDirectory => "working_directory",
             K6BinarySource::Path => "PATH",
         };
         formatter.write_str(value)
@@ -41,47 +39,113 @@ impl fmt::Display for K6BinarySource {
 }
 
 pub(crate) fn resolve_k6_binary(app: &AppHandle) -> Result<K6BinaryResolution, String> {
-    if let Ok(value) = env::var("LOADRIFT_K6_BIN") {
+    let mut rejected_candidates = Vec::new();
+    if let Some(value) = env::var_os("LOADRIFT_K6_BIN") {
         let path = PathBuf::from(value);
-        if path.is_file() {
-            return Ok(K6BinaryResolution {
-                path,
-                source: K6BinarySource::LoadriftK6BinEnv,
-            });
+        match validate_binary_candidate(&path) {
+            Ok(()) => {
+                return Ok(K6BinaryResolution {
+                    path,
+                    source: K6BinarySource::LoadriftK6BinEnv,
+                });
+            }
+            Err(error) => {
+                rejected_candidates.push(format!("LOADRIFT_K6_BIN={} ({error})", path.display()))
+            }
         }
     }
 
     for (candidate, source) in bundled_k6_candidates(app) {
-        if candidate.is_file() {
-            return Ok(K6BinaryResolution {
-                path: candidate,
-                source,
-            });
-        }
-    }
-
-    for candidate in ["k6", "./k6", "./bin/k6"] {
-        let path = PathBuf::from(candidate);
-        if path.is_file() {
-            return Ok(K6BinaryResolution {
-                path,
-                source: K6BinarySource::WorkingDirectory,
-            });
+        match validate_binary_candidate(&candidate) {
+            Ok(()) => {
+                return Ok(K6BinaryResolution {
+                    path: candidate,
+                    source,
+                });
+            }
+            Err(CandidateError::Missing) => {}
+            Err(error) => rejected_candidates.push(format!("{} ({error})", candidate.display())),
         }
     }
 
     let path_var = env::var_os("PATH").unwrap_or_default();
-    for directory in env::split_paths(&path_var) {
-        let candidate = directory.join("k6");
-        if candidate.is_file() {
-            return Ok(K6BinaryResolution {
-                path: candidate,
-                source: K6BinarySource::Path,
-            });
+    for candidate in path_k6_candidates(&path_var) {
+        match validate_binary_candidate(&candidate) {
+            Ok(()) => {
+                return Ok(K6BinaryResolution {
+                    path: candidate,
+                    source: K6BinarySource::Path,
+                });
+            }
+            Err(CandidateError::Missing) => {}
+            Err(error) => rejected_candidates.push(format!("{} ({error})", candidate.display())),
         }
     }
 
-    Err(k6_not_found_message().to_string())
+    let mut message = k6_not_found_message().to_string();
+    if !rejected_candidates.is_empty() {
+        message.push_str(" Rejected candidates: ");
+        message.push_str(&rejected_candidates.join("; "));
+        message.push('.');
+    }
+    Err(message)
+}
+
+#[derive(Debug)]
+enum CandidateError {
+    Missing,
+    Unusable(String),
+}
+
+impl fmt::Display for CandidateError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CandidateError::Missing => formatter.write_str("file does not exist"),
+            CandidateError::Unusable(reason) => formatter.write_str(reason),
+        }
+    }
+}
+
+fn validate_binary_candidate(path: &Path) -> Result<(), CandidateError> {
+    let metadata = fs::metadata(path).map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            match fs::symlink_metadata(path) {
+                Ok(metadata) if metadata.file_type().is_symlink() => CandidateError::Unusable(
+                    "symbolic link target does not exist or cannot be inspected".to_string(),
+                ),
+                _ => CandidateError::Missing,
+            }
+        } else {
+            CandidateError::Unusable(format!("could not inspect file metadata: {error}"))
+        }
+    })?;
+    if !metadata.is_file() {
+        return Err(CandidateError::Unusable(
+            "path is not a regular file".to_string(),
+        ));
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err(CandidateError::Unusable(
+                "file does not have executable permissions".to_string(),
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+fn path_k6_candidates(path_var: &OsStr) -> Vec<PathBuf> {
+    env::split_paths(path_var)
+        // Empty and relative PATH entries resolve through the process working
+        // directory. Do not let an untrusted current directory select k6.
+        .filter(|directory| directory.is_absolute())
+        .map(|directory| directory.join(k6_packaged_binary_name()))
+        .collect()
 }
 
 fn k6_not_found_message() -> &'static str {
@@ -206,4 +270,62 @@ pub(crate) fn write_temp_file(extension: &str, content: &str) -> Result<PathBuf,
     fs::write(&path, content)
         .map_err(|error| format!("Failed to write {}: {error}", path.display()))?;
     Ok(path)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_non_executable_binary_files() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let directory = tempfile::tempdir().expect("temp directory should be created");
+        let binary = directory.path().join("k6");
+        fs::write(&binary, "not executable").expect("test file should be written");
+        fs::set_permissions(&binary, fs::Permissions::from_mode(0o600))
+            .expect("test permissions should be set");
+
+        let error = validate_binary_candidate(&binary)
+            .expect_err("non-executable files must not be selected");
+        assert!(error.to_string().contains("executable permissions"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_broken_binary_symlinks_with_actionable_context() {
+        use std::os::unix::fs::symlink;
+
+        let directory = tempfile::tempdir().expect("temp directory should be created");
+        let binary = directory.path().join("k6");
+        symlink(directory.path().join("missing-k6"), &binary)
+            .expect("test symlink should be created");
+
+        let error = validate_binary_candidate(&binary)
+            .expect_err("a broken binary symlink must not be selected");
+        assert!(error.to_string().contains("symbolic link target"));
+    }
+
+    #[test]
+    fn path_candidates_preserve_order_without_working_directory_fallbacks() {
+        let first = tempfile::tempdir().expect("first temp directory should be created");
+        let second = tempfile::tempdir().expect("second temp directory should be created");
+        let path = env::join_paths([
+            PathBuf::new(),
+            PathBuf::from("."),
+            PathBuf::from("relative-bin"),
+            first.path().to_path_buf(),
+            second.path().to_path_buf(),
+        ])
+        .expect("test PATH should be constructed");
+
+        assert_eq!(
+            path_k6_candidates(&path),
+            vec![
+                first.path().join(k6_packaged_binary_name()),
+                second.path().join(k6_packaged_binary_name()),
+            ]
+        );
+    }
 }

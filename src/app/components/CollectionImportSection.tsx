@@ -30,6 +30,13 @@ export function CollectionImportSection({
   onSelectionChange,
   onRequestWeightChange,
 }: CollectionImportSectionProps) {
+  const importLabel = isLoading
+    ? "Importing collection"
+    : collection
+      ? "Collection loaded"
+      : "Waiting for file";
+  const shouldAnnounceImport = !error && (isLoading || Boolean(collection));
+
   return (
     <section
       className={`panel import-panel workflow-panel source-panel${collection ? " is-complete" : " is-current"}`}
@@ -44,8 +51,13 @@ export function CollectionImportSection({
           </p>
         </div>
 
-        <span className={`section-state-pill${collection ? " is-ready" : ""}`}>
-          {collection ? "Collection loaded" : "Waiting for file"}
+        <span
+          className={`section-state-pill${collection ? " is-ready" : ""}`}
+          role={shouldAnnounceImport ? "status" : undefined}
+          aria-live={shouldAnnounceImport ? "polite" : undefined}
+          aria-atomic={shouldAnnounceImport ? "true" : undefined}
+        >
+          {importLabel}
         </span>
       </div>
 
@@ -90,7 +102,16 @@ export function CollectionImportSection({
         </div>
       </details>
 
-      {error ? <p className="inline-error">{error}</p> : null}
+      {error ? (
+        <p
+          className="inline-error"
+          role="alert"
+          aria-live="assertive"
+          aria-atomic="true"
+        >
+          {error}
+        </p>
+      ) : null}
     </section>
   );
 }

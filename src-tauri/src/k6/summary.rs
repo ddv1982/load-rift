@@ -16,8 +16,11 @@ pub(crate) fn parse_summary(
         .map_err(|error| format!("Failed to parse the k6 summary output: {error}"))?;
     let metrics = normalized_summary_metrics(&summary)
         .ok_or("The k6 summary did not contain a supported metrics payload.".to_string())?;
+    if metrics.is_empty() {
+        return Err("The k6 summary contained an empty metrics payload.".to_string());
+    }
 
-    let total_requests = metric_value(&metrics, "http_reqs", &["count"]);
+    let total_requests = required_http_request_count(&metrics)?;
     let error_rate = error_rate(&metrics);
     let failed_requests = failed_requests(&metrics, total_requests, error_rate);
     let avg_response_time = metric_value(&metrics, "http_req_duration", &["avg"]);
@@ -69,16 +72,13 @@ pub(crate) fn parse_summary(
 
 pub(crate) fn result_from_live_metrics(
     metrics: &LiveMetrics,
-    exit_code: Option<i32>,
+    _exit_code: Option<i32>,
 ) -> TestResult {
-    let status = match exit_code {
-        Some(0) if metrics.failed_requests > 0 => TestResultStatus::Warning,
-        Some(0) => TestResultStatus::Passed,
-        Some(_) | None => TestResultStatus::Failed,
-    };
-
     TestResult {
-        status,
+        // This result is only used when the authoritative summary was unavailable
+        // or invalid. Preserve the observed metrics, but never infer success from
+        // an incomplete source, even when k6 itself exited successfully.
+        status: TestResultStatus::Failed,
         metrics: TestMetrics {
             total_requests: metrics.total_requests,
             failed_requests: metrics.failed_requests,
@@ -90,6 +90,32 @@ pub(crate) fn result_from_live_metrics(
         },
         thresholds: Vec::new(),
     }
+}
+
+fn required_http_request_count(metrics: &SummaryMetricsMap) -> Result<f64, String> {
+    let metric = metrics.get("http_reqs").ok_or_else(|| {
+        "The k6 summary did not contain the required http_reqs metric.".to_string()
+    })?;
+
+    let count = metric
+        .get("values")
+        .and_then(|values| values.get("count"))
+        .or_else(|| metric.get("count"))
+        .ok_or_else(|| {
+            "The k6 summary's required http_reqs metric did not contain a count.".to_string()
+        })?;
+    let count = count
+        .as_f64()
+        .ok_or_else(|| "The k6 summary's required http_reqs count was not a number.".to_string())?;
+
+    if !count.is_finite() || count < 0.0 {
+        return Err(
+            "The k6 summary's required http_reqs count must be a finite, non-negative number."
+                .to_string(),
+        );
+    }
+
+    Ok(count)
 }
 
 pub(crate) fn summary_metrics_map(summary: &Value) -> Option<SummaryMetricsMap> {

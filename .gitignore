@@ -2,7 +2,11 @@ node_modules/
 dist/
 .vite/
 coverage/
+playwright-report/
+test-results/
 target/
+__pycache__/
+*.py[cod]
 .omx/
 src-tauri/bin/*
 !src-tauri/bin/README.md

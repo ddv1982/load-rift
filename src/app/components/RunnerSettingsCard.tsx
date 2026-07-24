@@ -1,4 +1,4 @@
-import { useId } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import type { K6Options } from "../../lib/loadrift/types";
 import type {
   ThresholdInputErrors,
@@ -6,6 +6,8 @@ import type {
 } from "../hooks/useRunnerOptions";
 import type { CurlImportState } from "../types";
 import { SettingsCardHeader } from "./SettingsCardHeader";
+
+const EMPTY_REQUEST_HEADERS: Record<string, string> = {};
 
 interface RunnerSettingsCardProps {
   runnerOptions: K6Options;
@@ -59,9 +61,53 @@ export function RunnerSettingsCard({
   const p95ThresholdErrorId = useId();
   const errorRateThresholdErrorId = useId();
   const curlImportStatusId = useId();
-  const requestHeaders = runnerOptions.requestHeaders ?? {};
-  const requestHeaderEntries = Object.entries(requestHeaders);
+  const requestHeaders = runnerOptions.requestHeaders ?? EMPTY_REQUEST_HEADERS;
+  const requestHeaderRowIdPrefix = useId();
+  const [requestHeaderRows, setRequestHeaderRows] = useState(() =>
+    Object.keys(requestHeaders).map((key, index) => ({
+      key,
+      rowId: `${requestHeaderRowIdPrefix}-request-header-${index + 1}`,
+    })),
+  );
+  const nextRequestHeaderRowId = useRef(requestHeaderRows.length);
+  const [requestHeaderNameErrors, setRequestHeaderNameErrors] = useState<
+    Record<string, string>
+  >({});
+  const requestHeaderEntries = requestHeaderRows.flatMap(({ key, rowId }) =>
+    Object.prototype.hasOwnProperty.call(requestHeaders, key)
+      ? [{ key, value: requestHeaders[key] ?? "", rowId }]
+      : [],
+  );
   const requestBodyOverride = runnerOptions.requestBodyOverride;
+
+  useEffect(() => {
+    const keys = Object.keys(requestHeaders);
+    setRequestHeaderNameErrors((current) =>
+      Object.keys(current).length > 0 ? {} : current,
+    );
+    setRequestHeaderRows((current) => {
+      if (
+        current.length === keys.length &&
+        current.every((row, index) => row.key === keys[index])
+      ) {
+        return current;
+      }
+
+      const currentByKey = new Map(current.map((row) => [row.key, row]));
+      return keys.map((key) => {
+        const existingRow = currentByKey.get(key);
+        if (existingRow) {
+          return existingRow;
+        }
+
+        nextRequestHeaderRowId.current += 1;
+        return {
+          key,
+          rowId: `${requestHeaderRowIdPrefix}-request-header-${nextRequestHeaderRowId.current}`,
+        };
+      });
+    });
+  }, [requestHeaderRowIdPrefix, requestHeaders]);
 
   function handleAddRequestHeader() {
     onRequestHeadersChange({
@@ -71,18 +117,55 @@ export function RunnerSettingsCard({
   }
 
   function handleRequestHeaderKeyChange(previousKey: string, nextKey: string) {
+    const row = requestHeaderRows.find(
+      (candidate) => candidate.key === previousKey,
+    );
+    if (!row) {
+      return;
+    }
+    const { rowId } = row;
+
+    if (!nextKey.trim()) {
+      setRequestHeaderNameErrors((current) => ({
+        ...current,
+        [rowId]: "Header name is required.",
+      }));
+      return;
+    }
+
     const nextHeaders: Record<string, string> = {};
     const nextKeyAlreadyExists = Object.keys(requestHeaders).some(
       (key) =>
         key !== previousKey && key.toLowerCase() === nextKey.toLowerCase(),
     );
 
+    if (nextKeyAlreadyExists) {
+      setRequestHeaderNameErrors((current) => ({
+        ...current,
+        [rowId]: `A request header named "${nextKey}" already exists.`,
+      }));
+      return;
+    }
+
+    setRequestHeaderNameErrors((current) => {
+      if (!(rowId in current)) {
+        return current;
+      }
+
+      const nextErrors = { ...current };
+      delete nextErrors[rowId];
+      return nextErrors;
+    });
+    setRequestHeaderRows((current) =>
+      current.map((candidate) =>
+        candidate.rowId === rowId ? { ...candidate, key: nextKey } : candidate,
+      ),
+    );
+
     for (const [key, value] of Object.entries(requestHeaders)) {
       if (key === previousKey) {
         nextHeaders[nextKey] = value;
-      } else if (
-        !(nextKeyAlreadyExists && key.toLowerCase() === nextKey.toLowerCase())
-      ) {
+      } else {
         nextHeaders[key] = value;
       }
     }
@@ -98,6 +181,24 @@ export function RunnerSettingsCard({
   }
 
   function handleRemoveRequestHeader(keyToRemove: string) {
+    const rowId = requestHeaderRows.find(
+      (candidate) => candidate.key === keyToRemove,
+    )?.rowId;
+    if (rowId) {
+      setRequestHeaderRows((current) =>
+        current.filter((candidate) => candidate.rowId !== rowId),
+      );
+      setRequestHeaderNameErrors((current) => {
+        if (!(rowId in current)) {
+          return current;
+        }
+
+        const nextErrors = { ...current };
+        delete nextErrors[rowId];
+        return nextErrors;
+      });
+    }
+
     const nextHeaders = { ...requestHeaders };
     delete nextHeaders[keyToRemove];
     onRequestHeadersChange(nextHeaders);
@@ -343,46 +444,65 @@ export function RunnerSettingsCard({
 
             {requestHeaderEntries.length > 0 ? (
               <div className="request-headers-table">
-                {requestHeaderEntries.map(([key, value], index) => (
-                  <div className="request-header-row" key={`${key}-${index}`}>
-                    <label className="field">
-                      <span>Header name</span>
-                      <input
-                        type="text"
-                        value={key}
-                        aria-label={`Request header ${index + 1} name`}
-                        onChange={(event) =>
-                          handleRequestHeaderKeyChange(key, event.target.value)
-                        }
-                        placeholder="Customerid"
-                      />
-                    </label>
+                {requestHeaderEntries.map(({ key, value, rowId }, index) => {
+                  const nameError = requestHeaderNameErrors[rowId];
+                  const nameErrorId = `${rowId}-name-error`;
 
-                    <label className="field">
-                      <span>Header value</span>
-                      <input
-                        type={isSensitiveHeaderKey(key) ? "password" : "text"}
-                        value={value}
-                        aria-label={`Request header ${index + 1} value`}
-                        onChange={(event) =>
-                          handleRequestHeaderValueChange(
-                            key,
-                            event.target.value,
-                          )
-                        }
-                        placeholder="Header value"
-                      />
-                    </label>
+                  return (
+                    <div className="request-header-row" key={rowId}>
+                      <label className="field">
+                        <span>Header name</span>
+                        <input
+                          type="text"
+                          value={key}
+                          aria-label={`Request header ${index + 1} name`}
+                          onChange={(event) =>
+                            handleRequestHeaderKeyChange(
+                              key,
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Customerid"
+                          aria-invalid={nameError ? "true" : undefined}
+                          aria-describedby={nameError ? nameErrorId : undefined}
+                        />
+                        {nameError ? (
+                          <p
+                            id={nameErrorId}
+                            className="inline-note is-error"
+                            role="alert"
+                          >
+                            {nameError}
+                          </p>
+                        ) : null}
+                      </label>
 
-                    <button
-                      type="button"
-                      className="ghost request-header-remove"
-                      onClick={() => handleRemoveRequestHeader(key)}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
+                      <label className="field">
+                        <span>Header value</span>
+                        <input
+                          type="password"
+                          value={value}
+                          aria-label={`Request header ${index + 1} value`}
+                          onChange={(event) =>
+                            handleRequestHeaderValueChange(
+                              key,
+                              event.target.value,
+                            )
+                          }
+                          placeholder="Header value"
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        className="ghost request-header-remove"
+                        onClick={() => handleRemoveRequestHeader(key)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
             ) : (
               <p className="inline-note">No runtime headers configured.</p>
@@ -429,20 +549,17 @@ export function RunnerSettingsCard({
 
 function nextHeaderKey(headers: Record<string, string>): string {
   const baseKey = "X-Header";
-  if (!(baseKey in headers)) {
+  const normalizedKeys = new Set(
+    Object.keys(headers).map((key) => key.toLowerCase()),
+  );
+  if (!normalizedKeys.has(baseKey.toLowerCase())) {
     return baseKey;
   }
 
-  for (let index = 2; index < 100; index += 1) {
+  for (let index = 2; ; index += 1) {
     const candidate = `${baseKey}-${index}`;
-    if (!(candidate in headers)) {
+    if (!normalizedKeys.has(candidate.toLowerCase())) {
       return candidate;
     }
   }
-
-  return `${baseKey}-${Date.now()}`;
-}
-
-function isSensitiveHeaderKey(key: string): boolean {
-  return /(authorization|token|secret|api[-_]?key|cookie|password)/i.test(key);
 }

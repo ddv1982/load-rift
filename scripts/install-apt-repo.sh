@@ -7,6 +7,7 @@ setup_sha256_sig_url="${LOAD_RIFT_REPOSITORY_SETUP_SHA256_SIG_URL:-${setup_sha25
 signing_key_url="${LOAD_RIFT_REPOSITORY_SETUP_SIGNING_KEY_URL:-https://ddv1982.github.io/load-rift/apt/load-rift-archive-keyring.pgp}"
 expected_sha256="${LOAD_RIFT_REPOSITORY_SETUP_SHA256:-}"
 expected_signing_fingerprint="${LOAD_RIFT_REPOSITORY_SETUP_SIGNING_KEY_FINGERPRINT:-__LOAD_RIFT_APT_SIGNING_KEY_FINGERPRINT__}"
+unrendered_signing_fingerprint='__LOAD_RIFT_APT_SIGNING_KEY_'"FINGERPRINT__"
 tmp_dir=""
 setup_deb=""
 setup_sha256_file=""
@@ -22,7 +23,7 @@ cleanup() {
 trap cleanup EXIT
 trap 'trap - EXIT; cleanup; exit 130' HUP INT TERM
 
-if [ "$expected_signing_fingerprint" = "__LOAD_RIFT_APT_SIGNING_KEY_FINGERPRINT__" ]; then
+if [ "$expected_signing_fingerprint" = "$unrendered_signing_fingerprint" ]; then
   expected_signing_fingerprint=""
 fi
 expected_signing_fingerprint="$(printf '%s' "$expected_signing_fingerprint" | tr -d '[:space:]' | tr '[:lower:]' '[:upper:]')"
@@ -41,7 +42,7 @@ download_to() {
   output="$2"
   case "$downloader" in
     curl)
-      curl -fsSLo "$output" "$url"
+      curl --fail --silent --show-error --location --output "$output" "$url"
       ;;
     wget)
       wget -qO "$output" "$url"

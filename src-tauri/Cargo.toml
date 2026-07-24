@@ -1,12 +1,12 @@
 [package]
 name = "loadrift"
-version = "0.2.25"
+version = "0.2.26"
 description = "Load Rift Tauri foundation"
 authors = ["Douwe de Vries"]
 license = "MIT"
 repository = "https://github.com/ddv1982/load-rift"
 edition = "2021"
-rust-version = "1.88.0"
+rust-version = "1.97.0"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -15,16 +15,16 @@ name = "loadrift_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2.6.2", features = [] }
+tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
-serde_json = "1.0.149"
-serde = { version = "1.0.228", features = ["derive"] }
-log = "0.4.29"
-hdrhistogram = "7.5.4"
-reqwest = { version = "0.13.3", default-features = false, features = ["blocking", "rustls"] }
-tauri = { version = "2.11.2", features = [] }
-tauri-plugin-dialog = "2.7.1"
-tauri-plugin-log = "2.8.0"
-uuid = { version = "1.23.1", features = ["v4", "v5"] }
+serde_json = "1.0.151"
+serde = { version = "1.0.229", features = ["derive"] }
+log = "0.4.33"
+hdrhistogram = "7.6.0"
+reqwest = { version = "0.13.4", default-features = false, features = ["blocking", "rustls"] }
+tauri = { version = "2.11.5", features = [] }
+tauri-plugin-dialog = "2.7.2"
+tauri-plugin-log = "2.9.0"
+uuid = { version = "1.24.0", features = ["v4", "v5"] }
 tempfile = "3.27.0"

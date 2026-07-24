@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { LoadRiftApi } from "../../lib/loadrift/api";
 import { useLoadRiftApi } from "../../lib/loadrift/context";
 import { appendLogOutput } from "../../lib/loadrift/outputLog";
 import {
@@ -32,6 +33,14 @@ export interface TestHarnessState {
   isRunning: boolean;
 }
 
+interface PendingCommand {
+  id: number;
+  kind: "start" | "stop";
+  apiGeneration: number;
+  authorityGeneration: number;
+  detached: boolean;
+}
+
 function createRunId(startId: number) {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
@@ -58,14 +67,148 @@ const INITIAL_STATE: TestHarnessState = {
 export function useTestHarness() {
   const api = useLoadRiftApi();
   const [state, setState] = useState<TestHarnessState>(INITIAL_STATE);
+  const commandSequenceRef = useRef(0);
   const startSequenceRef = useRef(0);
-  const pendingStartIdRef = useRef<number | null>(null);
+  const pendingCommandRef = useRef<PendingCommand | null>(null);
   const activeRunIdRef = useRef<string | null>(null);
   const terminalErrorRunIdRef = useRef<string | null>(null);
+  const listenerErrorRef = useRef<string | null>(null);
+  const lifecycleGenerationRef = useRef(0);
+  const authorityGenerationRef = useRef(0);
+  const refreshSequenceRef = useRef(0);
+  const pendingRefreshIdRef = useRef<number | null>(null);
+  const mountedRef = useRef(true);
+  const apiRef = useRef(api);
+  const apiGenerationRef = useRef(0);
+  const previousApiRef = useRef(api);
+  if (apiRef.current !== api) {
+    apiRef.current = api;
+    apiGenerationRef.current += 1;
+  }
+
+  useEffect(() => {
+    mountedRef.current = true;
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  const loadCurrentStatus = useCallback(
+    async (
+      statusApi: LoadRiftApi,
+      commandSequence = commandSequenceRef.current,
+    ) => {
+      if (
+        !mountedRef.current ||
+        commandSequenceRef.current !== commandSequence ||
+        (pendingCommandRef.current?.apiGeneration ===
+          apiGenerationRef.current &&
+          apiRef.current === statusApi)
+      ) {
+        return;
+      }
+
+      const refreshId = refreshSequenceRef.current + 1;
+      refreshSequenceRef.current = refreshId;
+      pendingRefreshIdRef.current = refreshId;
+      const lifecycleGeneration = lifecycleGenerationRef.current;
+      const apiGeneration = apiGenerationRef.current;
+
+      setState((previous) => ({
+        ...previous,
+        isBusy: true,
+        error: previous.error ?? listenerErrorRef.current,
+      }));
+
+      const isCurrentRequest = () =>
+        mountedRef.current &&
+        apiRef.current === statusApi &&
+        apiGenerationRef.current === apiGeneration &&
+        refreshSequenceRef.current === refreshId &&
+        lifecycleGenerationRef.current === lifecycleGeneration &&
+        commandSequenceRef.current === commandSequence;
+      const clearPendingRefresh = () => {
+        if (pendingRefreshIdRef.current === refreshId) {
+          pendingRefreshIdRef.current = null;
+        }
+      };
+
+      try {
+        const status = normalizeGetTestStatusResponse(
+          await statusApi.getTestStatus(),
+        );
+        if (!isCurrentRequest()) {
+          clearPendingRefresh();
+          return;
+        }
+
+        clearPendingRefresh();
+        activeRunIdRef.current = status.isRunning ? status.runId : null;
+        terminalErrorRunIdRef.current = null;
+
+        setState((previous) => ({
+          ...previous,
+          status: status.status,
+          metrics: status.metrics ?? DEFAULT_LIVE_METRICS,
+          result: status.result ?? null,
+          finishReason: status.finishReason ?? null,
+          resultSource: status.resultSource ?? null,
+          summaryIssue: status.summaryIssue ?? null,
+          error: status.errorMessage ?? listenerErrorRef.current,
+          runId: status.runId,
+          isStarting: false,
+          isBusy: false,
+          isRunning: status.isRunning,
+        }));
+      } catch (error) {
+        if (!isCurrentRequest()) {
+          clearPendingRefresh();
+          return;
+        }
+
+        clearPendingRefresh();
+        setState((previous) => ({
+          ...previous,
+          isBusy: false,
+          isStarting: false,
+          error: getTauriErrorMessage(
+            error,
+            "Failed to load the current test status.",
+          ),
+        }));
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const unlistenCallbacks: Array<() => void> = [];
     let isActive = true;
+    const apiChanged = previousApiRef.current !== api;
+    previousApiRef.current = api;
+    const pendingCommand = pendingCommandRef.current;
+
+    if (apiChanged) {
+      if (
+        pendingCommand &&
+        pendingCommand.apiGeneration !== apiGenerationRef.current
+      ) {
+        pendingCommand.detached = true;
+        pendingCommandRef.current = null;
+      }
+      void loadCurrentStatus(api, commandSequenceRef.current);
+    }
+
+    function cleanupListeners() {
+      for (const unlisten of unlistenCallbacks.splice(0)) {
+        try {
+          unlisten();
+        } catch {
+          // Continue cleaning up the remaining listeners.
+        }
+      }
+    }
 
     function isCurrentRun(runId: string) {
       return activeRunIdRef.current === runId;
@@ -83,7 +226,7 @@ export function useTestHarness() {
 
         if (
           !activeRunIdRef.current &&
-          pendingStartIdRef.current === null &&
+          pendingCommandRef.current?.kind !== "start" &&
           !terminalErrorRunIdRef.current
         ) {
           return;
@@ -137,7 +280,9 @@ export function useTestHarness() {
             normalizedCompletion.runState === "failed"
               ? normalizedCompletion.runId
               : null;
-          pendingStartIdRef.current = null;
+          pendingCommandRef.current = null;
+          authorityGenerationRef.current += 1;
+          lifecycleGenerationRef.current += 1;
           setState((previous) => ({
             ...previous,
             status: normalizedCompletion.runState,
@@ -146,7 +291,8 @@ export function useTestHarness() {
             finishReason: normalizedCompletion.finishReason,
             resultSource: normalizedCompletion.resultSource,
             summaryIssue: normalizedCompletion.summaryIssue,
-            error: normalizedCompletion.errorMessage,
+            error:
+              normalizedCompletion.errorMessage ?? listenerErrorRef.current,
             runId: normalizedCompletion.runId,
             isStarting: false,
             isBusy: false,
@@ -168,14 +314,21 @@ export function useTestHarness() {
           return;
         }
 
+        const preserveCompletionError =
+          terminalErrorRunIdRef.current === errorEvent.runId;
         activeRunIdRef.current = null;
         terminalErrorRunIdRef.current = null;
-        pendingStartIdRef.current = null;
+        pendingCommandRef.current = null;
+        authorityGenerationRef.current += 1;
+        lifecycleGenerationRef.current += 1;
         setState((previous) => ({
           ...previous,
           status: "failed",
           finishReason: "execution_error",
-          error: previous.error || errorEvent.message,
+          error:
+            preserveCompletionError && previous.error
+              ? previous.error
+              : errorEvent.message,
           runId: errorEvent.runId,
           isStarting: false,
           isBusy: false,
@@ -189,62 +342,77 @@ export function useTestHarness() {
       }
 
       unlistenCallbacks.push(unlistenError);
+      const listenerError = listenerErrorRef.current;
+      listenerErrorRef.current = null;
+      if (listenerError) {
+        setState((previous) =>
+          previous.error === listenerError
+            ? { ...previous, error: null }
+            : previous,
+        );
+      }
     }
 
-    void registerListeners();
+    void registerListeners().catch((error: unknown) => {
+      cleanupListeners();
+      if (!isActive || !mountedRef.current) {
+        return;
+      }
+
+      isActive = false;
+      const listenerError = getTauriErrorMessage(
+        error,
+        "Failed to register k6 event listeners.",
+      );
+      const previousListenerError = listenerErrorRef.current;
+      listenerErrorRef.current = listenerError;
+      setState((previous) => ({
+        ...previous,
+        error:
+          !previous.error || previous.error === previousListenerError
+            ? listenerError
+            : previous.error,
+      }));
+    });
 
     return () => {
       isActive = false;
-      for (const unlisten of unlistenCallbacks) {
-        unlisten();
-      }
+      lifecycleGenerationRef.current += 1;
+      cleanupListeners();
     };
-  }, [api]);
+  }, [api, loadCurrentStatus]);
 
-  const refreshStatus = useCallback(async () => {
-    setState((previous) => ({
-      ...previous,
-      isBusy: true,
-      error: null,
-    }));
-
-    try {
-      const status = normalizeGetTestStatusResponse(await api.getTestStatus());
-      activeRunIdRef.current = status.isRunning ? status.runId : null;
-      terminalErrorRunIdRef.current = null;
-
-      setState((previous) => ({
-        ...previous,
-        status: status.status,
-        metrics: status.metrics ?? DEFAULT_LIVE_METRICS,
-        result: status.result ?? null,
-        finishReason: status.finishReason ?? null,
-        resultSource: status.resultSource ?? null,
-        summaryIssue: status.summaryIssue ?? null,
-        error: status.errorMessage ?? null,
-        runId: status.runId,
-        isStarting: false,
-        isBusy: false,
-        isRunning: status.isRunning,
-      }));
-    } catch (error) {
-      setState((previous) => ({
-        ...previous,
-        isBusy: false,
-        isStarting: false,
-        error: getTauriErrorMessage(
-          error,
-          "Failed to load the current test status.",
-        ),
-      }));
-    }
-  }, [api]);
+  const refreshStatus = useCallback(
+    () => loadCurrentStatus(api),
+    [api, loadCurrentStatus],
+  );
 
   const startTest = useCallback(
     async (options: K6Options) => {
+      if (!mountedRef.current) {
+        return;
+      }
+
+      if (
+        pendingCommandRef.current?.apiGeneration === apiGenerationRef.current
+      ) {
+        return;
+      }
+
       const startId = startSequenceRef.current + 1;
       startSequenceRef.current = startId;
-      pendingStartIdRef.current = startId;
+      const commandSequence = commandSequenceRef.current + 1;
+      commandSequenceRef.current = commandSequence;
+      const command: PendingCommand = {
+        id: commandSequence,
+        kind: "start",
+        apiGeneration: apiGenerationRef.current,
+        authorityGeneration: authorityGenerationRef.current,
+        detached: false,
+      };
+      lifecycleGenerationRef.current += 1;
+      const lifecycleGeneration = lifecycleGenerationRef.current;
+      pendingCommandRef.current = command;
       const runId = createRunId(startId);
       activeRunIdRef.current = runId;
       terminalErrorRunIdRef.current = null;
@@ -256,7 +424,7 @@ export function useTestHarness() {
         finishReason: null,
         resultSource: null,
         summaryIssue: null,
-        error: null,
+        error: listenerErrorRef.current,
         output: "",
         runId,
         isStarting: true,
@@ -269,14 +437,30 @@ export function useTestHarness() {
           await api.startTest({ options, runId }),
           runId,
         );
-        if (pendingStartIdRef.current !== startId) {
+        if (
+          pendingCommandRef.current !== command ||
+          lifecycleGenerationRef.current !== lifecycleGeneration ||
+          commandSequenceRef.current !== commandSequence
+        ) {
+          if (
+            mountedRef.current &&
+            command.authorityGeneration === authorityGenerationRef.current &&
+            (command.detached ||
+              command.apiGeneration !== apiGenerationRef.current)
+          ) {
+            await loadCurrentStatus(apiRef.current, commandSequence);
+          }
+          return;
+        }
+
+        if (!mountedRef.current) {
           return;
         }
 
         const activeRunId = response.runId;
         activeRunIdRef.current = activeRunId;
         terminalErrorRunIdRef.current = null;
-        pendingStartIdRef.current = null;
+        pendingCommandRef.current = null;
         setState((previous) => ({
           ...previous,
           runId: activeRunId,
@@ -286,13 +470,29 @@ export function useTestHarness() {
           isRunning: true,
         }));
       } catch (error) {
-        if (pendingStartIdRef.current !== startId) {
+        if (
+          pendingCommandRef.current !== command ||
+          lifecycleGenerationRef.current !== lifecycleGeneration ||
+          commandSequenceRef.current !== commandSequence
+        ) {
+          if (
+            mountedRef.current &&
+            command.authorityGeneration === authorityGenerationRef.current &&
+            (command.detached ||
+              command.apiGeneration !== apiGenerationRef.current)
+          ) {
+            await loadCurrentStatus(apiRef.current, commandSequence);
+          }
+          return;
+        }
+
+        if (!mountedRef.current) {
           return;
         }
 
         activeRunIdRef.current = null;
         terminalErrorRunIdRef.current = null;
-        pendingStartIdRef.current = null;
+        pendingCommandRef.current = null;
         setState((previous) => ({
           ...previous,
           status: "failed",
@@ -303,22 +503,58 @@ export function useTestHarness() {
         }));
       }
     },
-    [api],
+    [api, loadCurrentStatus],
   );
 
   const stopTest = useCallback(async () => {
+    if (
+      !mountedRef.current ||
+      pendingCommandRef.current?.apiGeneration === apiGenerationRef.current
+    ) {
+      return;
+    }
+
+    const commandSequence = commandSequenceRef.current + 1;
+    commandSequenceRef.current = commandSequence;
+    const command: PendingCommand = {
+      id: commandSequence,
+      kind: "stop",
+      apiGeneration: apiGenerationRef.current,
+      authorityGeneration: authorityGenerationRef.current,
+      detached: false,
+    };
+    const lifecycleGeneration = lifecycleGenerationRef.current;
+    pendingCommandRef.current = command;
     setState((previous) => ({
       ...previous,
       isStarting: false,
       isBusy: true,
-      error: null,
+      error: listenerErrorRef.current,
     }));
 
     try {
       await api.stopTest();
+      if (
+        !mountedRef.current ||
+        pendingCommandRef.current !== command ||
+        lifecycleGenerationRef.current !== lifecycleGeneration ||
+        commandSequenceRef.current !== commandSequence
+      ) {
+        if (
+          mountedRef.current &&
+          command.authorityGeneration === authorityGenerationRef.current &&
+          (command.detached ||
+            command.apiGeneration !== apiGenerationRef.current)
+        ) {
+          await loadCurrentStatus(apiRef.current, commandSequence);
+        }
+        return;
+      }
+
       activeRunIdRef.current = null;
       terminalErrorRunIdRef.current = null;
-      pendingStartIdRef.current = null;
+      pendingCommandRef.current = null;
+      lifecycleGenerationRef.current += 1;
       setState((previous) => ({
         ...previous,
         status: "stopped",
@@ -328,6 +564,24 @@ export function useTestHarness() {
         isRunning: false,
       }));
     } catch (error) {
+      if (
+        !mountedRef.current ||
+        pendingCommandRef.current !== command ||
+        lifecycleGenerationRef.current !== lifecycleGeneration ||
+        commandSequenceRef.current !== commandSequence
+      ) {
+        if (
+          mountedRef.current &&
+          command.authorityGeneration === authorityGenerationRef.current &&
+          (command.detached ||
+            command.apiGeneration !== apiGenerationRef.current)
+        ) {
+          await loadCurrentStatus(apiRef.current, commandSequence);
+        }
+        return;
+      }
+
+      pendingCommandRef.current = null;
       setState((previous) => ({
         ...previous,
         isStarting: false,
@@ -335,14 +589,23 @@ export function useTestHarness() {
         error: getTauriErrorMessage(error, "Failed to stop the k6 test."),
       }));
     }
-  }, [api]);
+  }, [api, loadCurrentStatus]);
 
   const clearTestState = useCallback(() => {
+    if (!mountedRef.current) {
+      return;
+    }
+
     startSequenceRef.current += 1;
+    commandSequenceRef.current += 1;
+    authorityGenerationRef.current += 1;
+    lifecycleGenerationRef.current += 1;
+    refreshSequenceRef.current += 1;
     activeRunIdRef.current = null;
     terminalErrorRunIdRef.current = null;
-    pendingStartIdRef.current = null;
-    setState(INITIAL_STATE);
+    pendingCommandRef.current = null;
+    pendingRefreshIdRef.current = null;
+    setState({ ...INITIAL_STATE, error: listenerErrorRef.current });
   }, []);
 
   return {

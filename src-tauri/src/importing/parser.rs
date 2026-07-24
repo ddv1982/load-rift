@@ -43,7 +43,7 @@ pub(crate) fn parse_collection(content: &str) -> Result<ParsedCollection, String
     let mut folder_path = Vec::new();
     let mut fingerprint_counts = BTreeMap::new();
     for item in items {
-        collect_item(item, &mut parsed, &mut folder_path, &mut fingerprint_counts);
+        collect_item(item, &mut parsed, &mut folder_path, &mut fingerprint_counts)?;
     }
 
     if parsed.requests.is_empty() {
@@ -88,7 +88,7 @@ fn collect_item(
     parsed: &mut ParsedCollection,
     folder_path: &mut Vec<String>,
     fingerprint_counts: &mut BTreeMap<String, usize>,
-) {
+) -> Result<(), String> {
     if let Some(children) = item.get("item").and_then(Value::as_array) {
         parsed.folder_count += 1;
         let folder_name = item
@@ -98,15 +98,15 @@ fn collect_item(
             .map(ToOwned::to_owned)
             .unwrap_or_else(|| format!("Folder {}", parsed.folder_count));
         folder_path.push(folder_name);
-        for child in children {
-            collect_item(child, parsed, folder_path, fingerprint_counts);
-        }
+        let result = children
+            .iter()
+            .try_for_each(|child| collect_item(child, parsed, folder_path, fingerprint_counts));
         folder_path.pop();
-        return;
+        return result;
     }
 
     let Some(request) = item.get("request") else {
-        return;
+        return Ok(());
     };
 
     let method = request
@@ -115,27 +115,43 @@ fn collect_item(
         .unwrap_or("GET")
         .to_uppercase();
     let (url, url_encoded_variable_occurrences) = parse_url(request.get("url"));
-    parsed
-        .runtime_variable_keys
-        .extend(extract_template_keys(&url));
-    let headers = parse_headers(request.get("header"));
-    for value in headers.values() {
-        parsed
-            .runtime_variable_keys
-            .extend(extract_template_keys(value));
-    }
-    let (body, encode_body_variable_values) = parse_body(request.get("body"));
-    if let Some(body) = body.as_deref() {
-        parsed
-            .runtime_variable_keys
-            .extend(extract_template_keys(body));
-    }
     let name = item
         .get("name")
         .and_then(Value::as_str)
         .filter(|value| !value.trim().is_empty())
         .map(ToOwned::to_owned)
         .unwrap_or_else(|| format!("{method} {url}"));
+    parsed
+        .runtime_variable_keys
+        .extend(extract_template_keys(&url));
+    let mut headers = parse_headers(request.get("header"));
+    for value in headers.values() {
+        parsed
+            .runtime_variable_keys
+            .extend(extract_template_keys(value));
+    }
+    let (body, encode_body_variable_values) = parse_body(request.get("body"), &name)?;
+    let is_urlencoded_body = body.is_some()
+        && request
+            .get("body")
+            .and_then(|body| body.get("mode"))
+            .and_then(Value::as_str)
+            == Some("urlencoded");
+    if is_urlencoded_body
+        && !headers
+            .keys()
+            .any(|key| key.eq_ignore_ascii_case("content-type"))
+    {
+        headers.insert(
+            "Content-Type".to_string(),
+            "application/x-www-form-urlencoded".to_string(),
+        );
+    }
+    if let Some(body) = body.as_deref() {
+        parsed
+            .runtime_variable_keys
+            .extend(extract_template_keys(body));
+    }
 
     let request_id = build_request_id(
         folder_path,
@@ -157,6 +173,7 @@ fn collect_item(
         url_encoded_variable_occurrences,
         encode_body_variable_values,
     });
+    Ok(())
 }
 
 fn build_request_id(
@@ -381,80 +398,100 @@ fn parse_headers(headers: Option<&Value>) -> BTreeMap<String, String> {
     parsed
 }
 
-fn parse_body(body: Option<&Value>) -> (Option<String>, bool) {
+fn parse_body(body: Option<&Value>, request_name: &str) -> Result<(Option<String>, bool), String> {
     let Some(body) = body else {
-        return (None, false);
+        return Ok((None, false));
     };
     let disabled = body
         .get("disabled")
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if disabled {
-        return (None, false);
+        return Ok((None, false));
     }
 
     match body.get("mode").and_then(Value::as_str) {
-        Some("raw") => (body.get("raw").and_then(value_to_string), false),
+        Some("raw") => {
+            let raw = body.get("raw").and_then(value_to_string).ok_or_else(|| {
+                format!(
+                    "Request '{request_name}' body mode 'raw' requires a non-null 'raw' payload."
+                )
+            })?;
+            Ok((Some(raw), false))
+        }
         Some("urlencoded") => {
             let Some(entries) = body.get("urlencoded").and_then(Value::as_array) else {
-                return (None, false);
+                return Err(format!(
+                    "Request '{request_name}' body mode 'urlencoded' requires 'urlencoded' to be an array."
+                ));
             };
-            let encoded = entries
-                .iter()
-                .filter(|entry| {
-                    !entry
-                        .get("disabled")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false)
-                })
-                .filter_map(|entry| {
-                    let key = entry.get("key").and_then(Value::as_str)?;
-                    let value = entry
-                        .get("value")
-                        .and_then(value_to_string)
-                        .unwrap_or_default();
-                    Some(format!(
-                        "{}={}",
-                        percent_encode_component(key),
-                        percent_encode_component(&value)
-                    ))
-                })
-                .collect::<Vec<_>>()
-                .join("&");
-            (Some(encoded), true)
+            let mut encoded_entries = Vec::with_capacity(entries.len());
+            for (index, entry) in entries.iter().enumerate() {
+                if entry
+                    .get("disabled")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    continue;
+                }
+                if entry.get("type").and_then(Value::as_str) == Some("file") {
+                    return Err(format!(
+                        "Request '{request_name}' body mode 'urlencoded' contains an unsupported file part at entry {index}."
+                    ));
+                }
+                let key = entry.get("key").and_then(Value::as_str).ok_or_else(|| {
+                    format!(
+                        "Request '{request_name}' body mode 'urlencoded' has a malformed entry at index {index}: expected a string 'key'."
+                    )
+                })?;
+                let value = entry
+                    .get("value")
+                    .and_then(value_to_string)
+                    .unwrap_or_default();
+                encoded_entries.push(format!(
+                    "{}={}",
+                    percent_encode_component(key),
+                    percent_encode_component(&value)
+                ));
+            }
+            Ok((Some(encoded_entries.join("&")), true))
         }
         Some("formdata") => {
             let Some(entries) = body.get("formdata").and_then(Value::as_array) else {
-                return (None, false);
+                return Err(format!(
+                    "Request '{request_name}' body mode 'formdata' requires 'formdata' to be an array."
+                ));
             };
-            let encoded = entries
-                .iter()
-                .filter(|entry| {
-                    !entry
-                        .get("disabled")
-                        .and_then(Value::as_bool)
-                        .unwrap_or(false)
-                })
-                .filter(|entry| {
-                    entry.get("type").and_then(Value::as_str).unwrap_or("text") != "file"
-                })
-                .filter_map(|entry| {
-                    let key = entry.get("key").and_then(Value::as_str)?;
-                    let value = entry
-                        .get("value")
-                        .and_then(value_to_string)
-                        .unwrap_or_default();
-                    Some(format!(
-                        "{}={}",
-                        percent_encode_component(key),
-                        percent_encode_component(&value)
-                    ))
-                })
-                .collect::<Vec<_>>()
-                .join("&");
-            (Some(encoded), true)
+            if let Some((index, _)) = entries.iter().enumerate().find(|(_, entry)| {
+                !entry
+                    .get("disabled")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                    && entry.get("type").and_then(Value::as_str) == Some("file")
+            }) {
+                return Err(format!(
+                    "Request '{request_name}' body mode 'formdata' contains an unsupported file part at entry {index}."
+                ));
+            }
+            Err(format!(
+                "Request '{request_name}' body mode 'formdata' is unsupported because multipart form-data semantics and content type cannot be preserved."
+            ))
         }
-        _ => (None, false),
+        Some("file") => Err(format!(
+            "Request '{request_name}' body mode 'file' is unsupported because file bodies cannot be preserved."
+        )),
+        Some("graphql") => Err(format!(
+            "Request '{request_name}' body mode 'graphql' is unsupported."
+        )),
+        Some(mode) if mode.contains("multipart") => Err(format!(
+            "Request '{request_name}' body mode '{mode}' is unsupported because multipart semantics and content type cannot be preserved."
+        )),
+        Some(mode) => Err(format!(
+            "Request '{request_name}' has unsupported body mode '{mode}'; supported body modes are 'raw' and 'urlencoded'."
+        )),
+        None => Err(format!(
+            "Request '{request_name}' has an enabled body without a valid string mode; supported body modes are 'raw' and 'urlencoded'."
+        )),
     }
 }
 

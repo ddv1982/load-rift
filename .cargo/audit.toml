@@ -1,0 +1,5 @@
+[advisories]
+# Linux Tauri 2 currently reaches glib 0.18.5 through GTK3/WebKitGTK. Remove
+# this exception when that upstream stack moves to a fixed glib release.
+ignore = ["RUSTSEC-2024-0429"]
+informational_warnings = ["unmaintained", "unsound"]

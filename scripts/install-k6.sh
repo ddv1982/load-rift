@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BIN_DIR="$ROOT_DIR/src-tauri/bin"
-DEFAULT_K6_VERSION="2.0.0"
+DEFAULT_K6_VERSION="2.1.0"
 K6_VERSION="${K6_VERSION:-$DEFAULT_K6_VERSION}"
 K6_SHA256="${K6_SHA256:-}"
 
@@ -33,30 +33,51 @@ verify_sha256() {
   fi
 }
 
+verify_k6_version() {
+  local candidate="$1"
+  local output=""
+
+  if ! output="$("$candidate" version 2>&1)"; then
+    echo "Failed to execute the installed k6 binary at ${candidate}." >&2
+    return 1
+  fi
+
+  case "$output" in
+    *" v${K6_VERSION} "*)
+      echo "Verified ${output}"
+      ;;
+    *)
+      echo "Installed k6 binary did not report expected version v${K6_VERSION}." >&2
+      echo "Actual: ${output}" >&2
+      return 1
+      ;;
+  esac
+}
+
 case "${uname_s}-${uname_m}" in
   Linux-x86_64)
     asset_suffix="linux-amd64"
     archive_ext="tar.gz"
     tauri_target_triple="x86_64-unknown-linux-gnu"
-    default_sha256="2ae87d976f6cdba17185bdd980d8819a3a98e9092c6f0638cd58272ecefc8b90"
+    default_sha256="295d961ebfca306f295f1133068dcd403a8171c87f387928f5f30b0fbcff858a"
     ;;
   Linux-aarch64|Linux-arm64)
     asset_suffix="linux-arm64"
     archive_ext="tar.gz"
     tauri_target_triple="aarch64-unknown-linux-gnu"
-    default_sha256="397d338c0c50821994aa51a630e511c599c2e903d00f7fa6c55a82258e7a84e6"
+    default_sha256="191fa8d89512a4e5083f3fabcb4c3828af9f5b9eee016de8443f6473c029ffb5"
     ;;
   Darwin-x86_64)
     asset_suffix="macos-amd64"
     archive_ext="zip"
     tauri_target_triple="x86_64-apple-darwin"
-    default_sha256="287f3b0ab9f936f20c37c649f220842385a7961ead84d695d7b5192268c61b3f"
+    default_sha256="a600f44ad411ad5f5f7d178405d9956dac34c43563341396f1017ae7f79221a9"
     ;;
   Darwin-arm64|Darwin-aarch64)
     asset_suffix="macos-arm64"
     archive_ext="zip"
     tauri_target_triple="aarch64-apple-darwin"
-    default_sha256="9a725f3faf8fc9de70f0bd86fb9783e6fb02f822492862846375ec0d8f2b35f7"
+    default_sha256="7388e449816fdb98afe65f349f3983304ba5e14f73b6bee0d7f96c4e3e6b8942"
     ;;
   *)
     echo "Skipping automatic k6 install for unsupported platform ${uname_s}-${uname_m}." >&2
@@ -81,12 +102,22 @@ else
 fi
 
 if [[ -x "$binary_path" ]] && [[ -f "$version_file" ]] && [[ "$(<"$version_file")" == "$K6_VERSION" ]]; then
-  echo "k6 v${K6_VERSION} already installed at ${binary_path}"
-  exit 0
+  if verify_k6_version "$binary_path"; then
+    echo "k6 v${K6_VERSION} already installed at ${binary_path}"
+    exit 0
+  fi
+  echo "Replacing cached k6 binary after version verification failed." >&2
+  rm -f "$binary_path" "$version_file"
 fi
 
 tmp_dir="$(mktemp -d)"
-trap 'rm -rf "$tmp_dir"' EXIT
+staged_binary="$BIN_DIR/.k6-${tauri_target_triple}.tmp.$$"
+staged_version_file="${version_file}.tmp.$$"
+cleanup() {
+  rm -rf "$tmp_dir"
+  rm -f "$staged_binary" "$staged_version_file"
+}
+trap cleanup EXIT
 
 mkdir -p "$BIN_DIR"
 
@@ -113,8 +144,12 @@ if [[ -z "$extracted_binary" ]]; then
   exit 1
 fi
 
-cp "$extracted_binary" "$binary_path"
-chmod +x "$binary_path"
-printf '%s' "$K6_VERSION" > "$version_file"
+chmod +x "$extracted_binary"
+verify_k6_version "$extracted_binary"
+cp "$extracted_binary" "$staged_binary"
+chmod +x "$staged_binary"
+printf '%s' "$K6_VERSION" > "$staged_version_file"
+mv -f "$staged_binary" "$binary_path"
+mv -f "$staged_version_file" "$version_file"
 
 echo "Installed k6 v${K6_VERSION} to ${binary_path}"

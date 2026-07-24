@@ -9,27 +9,50 @@ import {
   K6_OUTPUT_EVENT,
 } from "../loadrift/api";
 import type {
-  CollectionInfo,
   K6Options,
   RunErrorEvent,
   RunMetricsEvent,
-  SmokeTestResponse,
   TestCompletion,
-  ValidateTestConfigurationResponse,
 } from "../loadrift/types";
 import {
+  normalizeCollectionInfo,
   normalizeGetTestStatusResponse,
   normalizeRunErrorEvent,
   normalizeRunMetricsEvent,
+  normalizeSmokeTestResponse,
   normalizeStartTestResponse,
   normalizeTestCompletion,
+  normalizeValidateTestConfigurationResponse,
 } from "../loadrift/types";
 
-function command<TResponse>(
+function command(
   name: string,
   args?: Record<string, unknown>,
-): Promise<TResponse> {
-  return invoke<TResponse>(name, args);
+): Promise<unknown> {
+  return invoke<unknown>(name, args);
+}
+
+function normalizeExportReportResponse(
+  value: unknown,
+): ExportReportResponse | null {
+  if (value === null) {
+    return null;
+  }
+
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !("savePath" in value) ||
+    typeof value.savePath !== "string" ||
+    value.savePath.trim().length === 0
+  ) {
+    throw new TypeError(
+      "Invalid report export response from the native runtime.",
+    );
+  }
+
+  return { savePath: value.savePath };
 }
 
 async function listenScoped<TPayload>(
@@ -46,40 +69,37 @@ async function listenScoped<TPayload>(
 export function createTauriLoadRiftApi(): LoadRiftApi {
   return {
     selectAndImportCollection() {
-      return command<CollectionInfo | null>("select_and_import_collection");
-    },
-    validateTestConfiguration(input: { options: K6Options }) {
-      return command<ValidateTestConfigurationResponse>(
-        "validate_test_configuration",
-        {
-          request: input,
-        },
+      return command("select_and_import_collection").then(
+        normalizeCollectionInfo,
       );
     },
-    smokeTestRequests(input: { options: K6Options }) {
-      return command<SmokeTestResponse>("smoke_test_requests", {
+    validateTestConfiguration(input: { options: K6Options }) {
+      return command("validate_test_configuration", {
         request: input,
-      });
+      }).then(normalizeValidateTestConfigurationResponse);
+    },
+    smokeTestRequests(input: { options: K6Options }) {
+      return command("smoke_test_requests", {
+        request: input,
+      }).then(normalizeSmokeTestResponse);
     },
     startTest(input: { options: K6Options; runId?: string }) {
-      return command<unknown>("start_test", {
+      return command("start_test", {
         request: input,
       }).then((response) =>
         normalizeStartTestResponse(response, input.runId ?? ""),
       );
     },
     stopTest() {
-      return command<void>("stop_test");
+      return command("stop_test").then(() => undefined);
     },
     selectAndExportReport(input: { defaultPath: string }) {
-      return command<ExportReportResponse | null>("select_and_export_report", {
+      return command("select_and_export_report", {
         request: input,
-      });
+      }).then(normalizeExportReportResponse);
     },
     getTestStatus() {
-      return command<unknown>("get_test_status").then(
-        normalizeGetTestStatusResponse,
-      );
+      return command("get_test_status").then(normalizeGetTestStatusResponse);
     },
     onK6Output(callback: (payload: string) => void) {
       return listenScoped<unknown>(K6_OUTPUT_EVENT, (payload) => {

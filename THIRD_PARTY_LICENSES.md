@@ -10,15 +10,15 @@ current top-level production dependency inventory used by the app.
 License: GNU Affero General Public License v3.0 only (AGPL-3.0-only)
 Project website: https://grafana.com/oss/k6/
 Upstream repository: https://github.com/grafana/k6
-Bundled version: v2.0.0
-Bundled release: https://github.com/grafana/k6/releases/tag/v2.0.0
-Corresponding source tree: https://github.com/grafana/k6/tree/v2.0.0
-Corresponding source archive: https://github.com/grafana/k6/archive/refs/tags/v2.0.0.tar.gz
+Bundled version: v2.1.0
+Bundled release: https://github.com/grafana/k6/releases/tag/v2.1.0
+Corresponding source tree: https://github.com/grafana/k6/tree/v2.1.0
+Corresponding source archive: https://github.com/grafana/k6/archive/refs/tags/v2.1.0.tar.gz
 Bundled release assets:
-- `k6-v2.0.0-linux-amd64.tar.gz`
-- `k6-v2.0.0-linux-arm64.tar.gz`
-- `k6-v2.0.0-macos-amd64.zip`
-- `k6-v2.0.0-macos-arm64.zip`
+- `k6-v2.1.0-linux-amd64.tar.gz`
+- `k6-v2.1.0-linux-arm64.tar.gz`
+- `k6-v2.1.0-macos-amd64.zip`
+- `k6-v2.1.0-macos-arm64.zip`
 
 Load Rift bundles unmodified official k6 binaries for supported Linux and
 macOS packaging targets. Those binaries are downloaded from official Grafana
@@ -41,19 +41,19 @@ licensed:
 | Ecosystem | Package | Version | License |
 | --- | --- | --- | --- |
 | npm | `@tauri-apps/api` | 2.11.1 | Apache-2.0 OR MIT |
-| npm | `react` | 19.2.7 | MIT |
-| npm | `react-dom` | 19.2.7 | MIT |
-| Cargo | `hdrhistogram` | 7.5.4 | MIT/Apache-2.0 |
-| Cargo | `log` | 0.4.29 | MIT OR Apache-2.0 |
-| Cargo | `reqwest` | 0.13.3 | MIT OR Apache-2.0 |
-| Cargo | `serde` | 1.0.228 | MIT OR Apache-2.0 |
-| Cargo | `serde_json` | 1.0.149 | MIT OR Apache-2.0 |
-| Cargo | `tauri` | 2.11.2 | Apache-2.0 OR MIT |
-| Cargo | `tauri-plugin-dialog` | 2.7.1 | Apache-2.0 OR MIT |
-| Cargo | `tauri-plugin-log` | 2.8.0 | Apache-2.0 OR MIT |
+| npm | `react` | 19.2.8 | MIT |
+| npm | `react-dom` | 19.2.8 | MIT |
+| Cargo | `hdrhistogram` | 7.6.0 | MIT/Apache-2.0 |
+| Cargo | `log` | 0.4.33 | MIT OR Apache-2.0 |
+| Cargo | `reqwest` | 0.13.4 | MIT OR Apache-2.0 |
+| Cargo | `serde` | 1.0.229 | MIT OR Apache-2.0 |
+| Cargo | `serde_json` | 1.0.151 | MIT OR Apache-2.0 |
+| Cargo | `tauri` | 2.11.5 | Apache-2.0 OR MIT |
+| Cargo | `tauri-plugin-dialog` | 2.7.2 | Apache-2.0 OR MIT |
+| Cargo | `tauri-plugin-log` | 2.9.0 | Apache-2.0 OR MIT |
 | Cargo | `tempfile` | 3.27.0 | MIT OR Apache-2.0 |
-| Cargo | `uuid` | 1.23.1 | Apache-2.0 OR MIT |
-| Cargo build | `tauri-build` | 2.6.2 | Apache-2.0 OR MIT |
+| Cargo | `uuid` | 1.24.0 | Apache-2.0 OR MIT |
+| Cargo build | `tauri-build` | 2.6.3 | Apache-2.0 OR MIT |
 
 Before a release, regenerate or review the transitive dependency inventory from
 the committed lockfiles. Useful source commands are:
@@ -71,8 +71,8 @@ When publishing packaged app binaries outside this repository, include this
 notice next to the download or release entry:
 
 ```text
-This package bundles Grafana k6 v2.0.0, licensed under AGPL-3.0-only.
-Corresponding source: https://github.com/grafana/k6/tree/v2.0.0
-Source archive: https://github.com/grafana/k6/archive/refs/tags/v2.0.0.tar.gz
+This package bundles Grafana k6 v2.1.0, licensed under AGPL-3.0-only.
+Corresponding source: https://github.com/grafana/k6/tree/v2.1.0
+Source archive: https://github.com/grafana/k6/archive/refs/tags/v2.1.0.tar.gz
 Additional bundled licensing notices are included in the package.
 ```

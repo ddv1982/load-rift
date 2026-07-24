@@ -4,7 +4,6 @@ mod smoke;
 use tauri::{AppHandle, State};
 use tauri_plugin_dialog::DialogExt;
 
-use crate::importing::resolve_test_requests;
 use crate::models::{
     GetTestStatusResponse, K6Options, SmokeTestResponse, StartTestResponse,
     ValidateTestConfigurationResponse,
@@ -67,7 +66,13 @@ pub async fn start_test(
         return Err(error);
     }
 
-    let script = logic::finalize_test_start_reservation(state.inner(), &script, &run_id)?;
+    let script = match logic::finalize_test_start_reservation(state.inner(), &script, &run_id) {
+        Ok(script) => script,
+        Err(error) => {
+            logic::release_failed_start(state.inner(), &run_id);
+            return Err(error);
+        }
+    };
 
     if let Err(error) = crate::k6::start_k6_process(
         app,
@@ -85,16 +90,19 @@ pub async fn start_test(
 
 #[tauri::command]
 pub async fn stop_test(state: State<'_, SharedAppState>) -> Result<(), String> {
-    let run_id = crate::k6::stop_k6_process(state.inner())?;
-    logic::wait_for_test_stop(state.inner())?;
-    if let Ok(mut app_state) = state.inner().lock() {
-        if app_state.latest_run_id.as_deref() == Some(&run_id) && !app_state.test_is_busy() {
-            app_state.test_status = crate::models::TestStatus::Stopped;
-        }
+    let logic::TestStopRequest::Requested {
+        run_id,
+        process_error,
+    } = logic::request_test_stop(state.inner())?
+    else {
         return Ok(());
+    };
+
+    if let Err(wait_error) = logic::wait_for_test_stop(state.inner(), &run_id) {
+        return Err(process_error.unwrap_or(wait_error));
     }
 
-    Err("Failed to update the shared Tauri app state.".to_string())
+    logic::finalize_test_stop(state.inner(), &run_id)
 }
 
 #[tauri::command]
@@ -102,12 +110,21 @@ pub async fn smoke_test_requests(
     state: State<'_, SharedAppState>,
     request: SmokeTestRequest,
 ) -> Result<SmokeTestResponse, String> {
-    let runtime_collection = logic::runtime_collection_for_smoke_test(state.inner())?;
-    let resolved_requests = resolve_test_requests(&runtime_collection, &request.options)?;
+    let (resolved_requests, reservation) =
+        logic::reserve_and_resolve_smoke_test(state.inner(), &request.options)?;
 
-    tauri::async_runtime::spawn_blocking(move || smoke::run_smoke_test(resolved_requests))
-        .await
-        .map_err(|error| format!("Smoke test task failed unexpectedly: {error}"))?
+    tauri::async_runtime::spawn_blocking(move || {
+        run_reserved_smoke_test(resolved_requests, reservation)
+    })
+    .await
+    .map_err(|error| format!("Smoke test task failed unexpectedly: {error}"))?
+}
+
+fn run_reserved_smoke_test(
+    resolved_requests: Vec<crate::importing::ResolvedRuntimeRequest>,
+    _reservation: logic::SmokeTestReservation,
+) -> Result<SmokeTestResponse, String> {
+    smoke::run_smoke_test(resolved_requests)
 }
 
 #[tauri::command]

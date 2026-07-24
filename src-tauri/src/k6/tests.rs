@@ -199,6 +199,14 @@ fn completion_status_reports_success_threshold_failure_and_execution_error() {
     assert_eq!(completed.finish_reason, "completed");
     assert!(!completed.threshold_failure_exit);
 
+    let exit_zero_failed_verdict = process::completion_status(true, Some(0), &failed_result);
+    assert!(matches!(
+        exit_zero_failed_verdict.run_state,
+        TestStatus::Completed
+    ));
+    assert_eq!(exit_zero_failed_verdict.finish_reason, "completed");
+    assert!(!exit_zero_failed_verdict.threshold_failure_exit);
+
     let threshold_failed = process::completion_status(false, Some(99), &failed_result);
     assert!(matches!(threshold_failed.run_state, TestStatus::Completed));
     assert_eq!(threshold_failed.finish_reason, "thresholds_failed");
@@ -515,6 +523,11 @@ fn parse_summary_supports_legacy_summary_export_shape() {
 fn parse_summary_reads_threshold_targets_after_comparison_operators() {
     let summary_json = r#"{
       "metrics": {
+        "http_reqs": {
+          "type": "counter",
+          "contains": "default",
+          "values": { "count": 0 }
+        },
         "http_req_duration": {
           "type": "trend",
           "contains": "time",
@@ -1013,13 +1026,20 @@ fn completion_record_preserves_primary_error_for_fallback_result() {
         "The moduleSpecifier \"/tmp/loadrift-x/script.js\" couldn't be found on local disk.";
     let summary_issue =
         "k6 finished without a readable summary file at /tmp/loadrift-x/summary.json";
+    let fallback_metrics = LiveMetrics {
+        total_requests: 17,
+        failed_requests: 2,
+        avg_response_time: 125,
+        ..LiveMetrics::default()
+    };
+    let fallback_result = summary::result_from_live_metrics(&fallback_metrics, Some(1));
 
     let stored = process::store_completion(
         &state,
         "run-1",
         process::CompletionRecord {
-            metrics: LiveMetrics::default(),
-            result: sample_result(TestResultStatus::Warning),
+            metrics: fallback_metrics,
+            result: fallback_result,
             run_state: TestStatus::Failed,
             finish_reason: "execution_error".to_string(),
             summary_json: None,
@@ -1044,6 +1064,20 @@ fn completion_record_preserves_primary_error_for_fallback_result() {
     assert_eq!(
         app_state.latest_summary_issue.as_deref(),
         Some(summary_issue)
+    );
+    assert!(matches!(
+        app_state
+            .latest_result
+            .as_ref()
+            .map(|result| &result.status),
+        Some(TestResultStatus::Failed)
+    ));
+    assert_eq!(
+        app_state
+            .latest_metrics
+            .as_ref()
+            .map(|metrics| metrics.total_requests),
+        Some(17)
     );
 }
 
@@ -1208,7 +1242,21 @@ fn fallback_result_from_live_metrics_preserves_exportable_totals() {
     assert_eq!(result.metrics.max_response_time, 890);
     assert_eq!(result.metrics.requests_per_second, 6.2);
     assert!(result.thresholds.is_empty());
-    assert!(matches!(result.status, TestResultStatus::Warning));
+    assert!(matches!(result.status, TestResultStatus::Failed));
+}
+
+#[test]
+fn exit_zero_live_metrics_fallback_fails_closed_even_without_request_failures() {
+    let metrics = LiveMetrics {
+        total_requests: 48,
+        failed_requests: 0,
+        ..LiveMetrics::default()
+    };
+
+    let result = summary::result_from_live_metrics(&metrics, Some(0));
+
+    assert_eq!(result.metrics.total_requests, 48);
+    assert!(matches!(result.status, TestResultStatus::Failed));
 }
 
 #[test]
@@ -1223,6 +1271,77 @@ fn fallback_result_from_live_metrics_marks_unknown_exit_as_failed() {
     let result = summary::result_from_live_metrics(&LiveMetrics::default(), None);
 
     assert!(matches!(result.status, TestResultStatus::Failed));
+}
+
+#[test]
+fn parse_summary_rejects_empty_or_malformed_json() {
+    for summary_json in ["", "{not-json"] {
+        let error = summary::parse_summary(summary_json, 1)
+            .expect_err("empty or malformed summary JSON must fail closed");
+
+        assert!(error.contains("Failed to parse the k6 summary output"));
+    }
+}
+
+#[test]
+fn parse_summary_rejects_empty_metrics() {
+    let error =
+        summary::parse_summary(r#"{"metrics":{}}"#, 1).expect_err("empty metrics must fail closed");
+
+    assert!(error.contains("empty metrics payload"));
+}
+
+#[test]
+fn parse_summary_rejects_structurally_unsupported_payloads() {
+    for summary_json in ["null", "[]", r#"{"status":"ok"}"#, r#"{"metrics":"none"}"#] {
+        let error = summary::parse_summary(summary_json, 1)
+            .expect_err("unsupported summary structures must fail closed");
+        assert!(error.contains("supported metrics payload"));
+    }
+}
+
+#[test]
+fn parse_summary_rejects_missing_http_request_count() {
+    for summary_json in [
+        r#"{"metrics":{"http_req_duration":{"values":{"avg":10}}}}"#,
+        r#"{"metrics":{"http_reqs":{"values":{"rate":2}}}}"#,
+    ] {
+        let error = summary::parse_summary(summary_json, 1)
+            .expect_err("a missing required request count must fail closed");
+        assert!(error.contains("http_reqs"));
+    }
+}
+
+#[test]
+fn parse_summary_rejects_malformed_http_request_count() {
+    for count in [
+        serde_json::json!("0"),
+        serde_json::json!(null),
+        serde_json::json!(-1),
+    ] {
+        let summary_json = serde_json::json!({
+            "metrics": {
+                "http_reqs": {
+                    "values": { "count": count }
+                }
+            }
+        })
+        .to_string();
+
+        let error = summary::parse_summary(&summary_json, 1)
+            .expect_err("a malformed required request count must fail closed");
+        assert!(error.contains("http_reqs"));
+    }
+}
+
+#[test]
+fn parse_summary_accepts_legitimate_zero_http_request_count() {
+    let (result, metrics) =
+        summary::parse_summary(r#"{"metrics":{"http_reqs":{"values":{"count":0}}}}"#, 1)
+            .expect("a numeric zero request count is a valid observed count");
+
+    assert_eq!(metrics.total_requests, 0);
+    assert!(matches!(result.status, TestResultStatus::Passed));
 }
 
 #[test]
@@ -1353,7 +1472,7 @@ export default function () {
     assert_eq!(
         http_reqs.get("count").and_then(Value::as_u64),
         Some(1),
-        "bundled k6 v2.0.0 should export legacy flat counter fields",
+        "bundled k6 v2.1.0 should export legacy flat counter fields",
     );
     assert!(
         !http_reqs.contains_key("values"),

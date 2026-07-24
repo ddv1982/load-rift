@@ -20,8 +20,8 @@ pub(crate) use binary_resolution::{target_triple_for, temp_file_path, write_temp
 pub(crate) use diagnostics::{
     temp_artifact_diagnostics_output_for_test, temp_artifact_diagnostics_user_output_for_test,
 };
+pub use launch::start_k6_process;
 pub(crate) use launch::{analyze_advanced_options_json, validate_advanced_options_json};
-pub use launch::{start_k6_process, stop_k6_process};
 #[cfg(test)]
 pub(crate) use live_metrics::LiveMetricsAggregator;
 #[cfg(test)]

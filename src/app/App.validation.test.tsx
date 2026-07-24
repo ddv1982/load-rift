@@ -422,6 +422,182 @@ describe("App validation lifecycle", () => {
     );
   });
 
+  it("keeps a cURL-populated header row focused and masked through continuous name typing", () => {
+    renderApp(createApiMock());
+
+    applyCurlSnippet(POSTMAN_REQUEST_DETAILS_CURL_SNIPPET);
+
+    const nameInput = screen.getByLabelText(
+      "Request header 1 name",
+    ) as HTMLInputElement;
+    const valueInput = screen.getByLabelText(
+      "Request header 1 value",
+    ) as HTMLInputElement;
+    const originalValue = valueInput.value;
+
+    expect(valueInput).toHaveAttribute("type", "password");
+    nameInput.focus();
+
+    fireEvent.change(nameInput, { target: { value: "" } });
+
+    expect(nameInput).toHaveValue("Customerid");
+    expect(document.activeElement).toBe(nameInput);
+    expect(valueInput).toHaveAttribute("type", "password");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Header name is required.",
+    );
+
+    for (const nextName of ["A", "Au", "Auth", "Author", "Authorization"]) {
+      fireEvent.change(nameInput, { target: { value: nextName } });
+
+      expect(screen.getByLabelText("Request header 1 name")).toBe(nameInput);
+      expect(document.activeElement).toBe(nameInput);
+      expect(screen.getByLabelText("Request header 1 value")).toBe(valueInput);
+      expect(valueInput).toHaveAttribute("type", "password");
+      expect(valueInput).toHaveValue(originalValue);
+    }
+
+    fireEvent.change(nameInput, { target: { value: "authorization" } });
+
+    expect(screen.getByLabelText("Request header 1 name")).toBe(nameInput);
+    expect(document.activeElement).toBe(nameInput);
+    expect(valueInput).toHaveAttribute("type", "password");
+    expect(valueInput).toHaveValue(originalValue);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("rejects case-insensitive duplicate header names without mutating either row and clears the error after a valid edit", async () => {
+    const api = createApiMock();
+    renderApp(api);
+
+    applyCurlSnippet(POSTMAN_REQUEST_DETAILS_CURL_SNIPPET);
+
+    const firstName = screen.getByLabelText(
+      "Request header 1 name",
+    ) as HTMLInputElement;
+    const firstValue = screen.getByLabelText(
+      "Request header 1 value",
+    ) as HTMLInputElement;
+    const secondName = screen.getByLabelText(
+      "Request header 2 name",
+    ) as HTMLInputElement;
+    const secondValue = screen.getByLabelText(
+      "Request header 2 value",
+    ) as HTMLInputElement;
+    const firstOriginalValue = firstValue.value;
+    const secondOriginalValue = secondValue.value;
+
+    fireEvent.change(firstName, { target: { value: "Authorization" } });
+    fireEvent.change(secondName, { target: { value: "authorization" } });
+
+    expect(firstName).toHaveValue("Authorization");
+    expect(firstValue).toHaveValue(firstOriginalValue);
+    expect(secondName).toHaveValue("Modulename");
+    expect(secondValue).toHaveValue(secondOriginalValue);
+    expect(firstValue).toHaveAttribute("type", "password");
+    expect(secondValue).toHaveAttribute("type", "password");
+    expect(secondName).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      'A request header named "authorization" already exists.',
+    );
+
+    await advanceValidationTimer();
+
+    const lastValidationCall = vi.mocked(api.validateTestConfiguration).mock
+      .lastCall;
+    expect(lastValidationCall?.[0].options.requestHeaders).toMatchObject({
+      Authorization: firstOriginalValue,
+      Modulename: secondOriginalValue,
+    });
+
+    fireEvent.change(secondName, { target: { value: "X-Module" } });
+
+    expect(secondName).toHaveValue("X-Module");
+    expect(secondValue).toHaveValue(secondOriginalValue);
+    expect(secondName).not.toHaveAttribute("aria-invalid");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("clears a rejected header-name error when cURL replaces the header map", () => {
+    renderApp(createApiMock());
+
+    applyCurlSnippet(POSTMAN_REQUEST_DETAILS_CURL_SNIPPET);
+    fireEvent.change(screen.getByLabelText("Request header 2 name"), {
+      target: { value: "customerid" },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      'A request header named "customerid" already exists.',
+    );
+
+    applyCurlSnippet(FIRST_HEADER_CURL_SNIPPET);
+
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByDisplayValue("X-Trace")).toBeInTheDocument();
+    expect(screen.queryByDisplayValue("Modulename")).not.toBeInTheDocument();
+  });
+
+  it("keeps generic and secret header values password-masked and generates case-insensitively unique names", () => {
+    renderApp(createApiMock());
+
+    applyCurlSnippet(POSTMAN_REQUEST_DETAILS_CURL_SNIPPET);
+
+    const firstName = screen.getByLabelText("Request header 1 name");
+    fireEvent.change(firstName, { target: { value: "x-header" } });
+
+    const valueInputsBeforeAdd = [1, 2, 3, 4].map((index) =>
+      screen.getByLabelText(`Request header ${index} value`),
+    );
+    for (const valueInput of valueInputsBeforeAdd) {
+      expect(valueInput).toHaveAttribute("type", "password");
+    }
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Header" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Header" }));
+
+    expect(screen.getByDisplayValue("x-header")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("X-Header-2")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("X-Header-3")).toBeInTheDocument();
+    expect(screen.getByLabelText("Request header 5 value")).toHaveAttribute(
+      "type",
+      "password",
+    );
+    expect(screen.getByLabelText("Request header 6 value")).toHaveAttribute(
+      "type",
+      "password",
+    );
+  });
+
+  it("preserves adjacent cURL header row identity and values across add and remove", () => {
+    renderApp(createApiMock());
+
+    applyCurlSnippet(POSTMAN_REQUEST_DETAILS_CURL_SNIPPET);
+
+    const thirdName = screen.getByLabelText(
+      "Request header 3 name",
+    ) as HTMLInputElement;
+    const thirdValue = screen.getByLabelText(
+      "Request header 3 value",
+    ) as HTMLInputElement;
+    const thirdOriginalName = thirdName.value;
+    const thirdOriginalValue = thirdValue.value;
+
+    fireEvent.click(screen.getByRole("button", { name: "Add Header" }));
+
+    expect(screen.getByLabelText("Request header 3 name")).toBe(thirdName);
+    expect(screen.getByLabelText("Request header 3 value")).toBe(thirdValue);
+
+    thirdName.focus();
+    fireEvent.click(screen.getAllByRole("button", { name: "Remove" })[1]!);
+
+    expect(screen.getByLabelText("Request header 2 name")).toBe(thirdName);
+    expect(screen.getByLabelText("Request header 2 value")).toBe(thirdValue);
+    expect(document.activeElement).toBe(thirdName);
+    expect(thirdName).toHaveValue(thirdOriginalName);
+    expect(thirdValue).toHaveValue(thirdOriginalValue);
+    expect(thirdValue).toHaveAttribute("type", "password");
+    expect(screen.queryByDisplayValue("Modulename")).not.toBeInTheDocument();
+  });
+
   it("allows manual base URL edits for host-style variables without persisting mirrored overrides", async () => {
     const api = createApiMock();
 
@@ -929,9 +1105,7 @@ describe("App validation lifecycle", () => {
 
     applyCurlSnippet(BASE_URL_ONLY_CURL_SNIPPET);
 
-    expect(
-      screen.queryByText("Request body override"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Request body override")).not.toBeInTheDocument();
 
     await advanceValidationTimer();
 
@@ -985,6 +1159,22 @@ describe("App validation lifecycle", () => {
       appHookTestState.importHookState.selectAndImport,
     ).not.toHaveBeenCalled();
     expect(appHookTestState.importHookState.reset).not.toHaveBeenCalled();
+  });
+
+  it("disables the stop action while a stop command is pending", () => {
+    appHookTestState.testHookState.state = {
+      ...appHookTestState.testHookState.state,
+      status: "running",
+      isBusy: true,
+      isRunning: true,
+    };
+
+    renderApp(createApiMock());
+
+    const stopButton = getRunAction("Stop");
+    expect(stopButton).toBeDisabled();
+    fireEvent.click(stopButton);
+    expect(appHookTestState.testHookState.stopTest).not.toHaveBeenCalled();
   });
 
   it("prompts for a report destination from the latest result card before exporting", async () => {
