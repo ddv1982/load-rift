@@ -53,14 +53,22 @@ describe("useCollectionImport", () => {
 
   it("keeps the current collection when the native import dialog is cancelled", async () => {
     const api = createApiMock({
-      selectAndImportCollection: vi.fn(async () => null),
+      selectAndImportCollection: vi
+        .fn()
+        .mockResolvedValueOnce(importedCollection)
+        .mockRejectedValueOnce(new Error("Previous import failure"))
+        .mockResolvedValueOnce(null),
     });
     const { result } = renderHook(() => useCollectionImport(), {
       wrapper: createWrapper(api),
     });
 
-    act(() => {
-      result.current.reportError("Previous picker failure");
+    await act(async () => {
+      await result.current.selectAndImport();
+    });
+
+    await act(async () => {
+      await result.current.selectAndImport();
     });
 
     await act(async () => {
@@ -70,7 +78,7 @@ describe("useCollectionImport", () => {
     expect(result.current.state).toEqual({
       isLoading: false,
       error: null,
-      collection: null,
+      collection: importedCollection,
     });
   });
 
@@ -217,36 +225,6 @@ describe("useCollectionImport", () => {
     expect(result.current.state).toEqual({
       isLoading: false,
       error: null,
-      collection: null,
-    });
-  });
-
-  it("ignores stale imports after reportError", async () => {
-    const importRequest = deferred<CollectionInfo>();
-    const api = createApiMock({
-      selectAndImportCollection: vi.fn(() => importRequest.promise),
-    });
-    const { result } = renderHook(() => useCollectionImport(), {
-      wrapper: createWrapper(api),
-    });
-
-    await act(async () => {
-      void result.current.selectAndImport();
-      await Promise.resolve();
-    });
-
-    act(() => {
-      result.current.reportError("Picker failed");
-    });
-
-    await act(async () => {
-      importRequest.resolve(importedCollection);
-      await importRequest.promise;
-    });
-
-    expect(result.current.state).toEqual({
-      isLoading: false,
-      error: "Picker failed",
       collection: null,
     });
   });

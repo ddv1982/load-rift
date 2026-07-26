@@ -1,6 +1,6 @@
 {
   "name": "loadrift",
-  "version": "0.2.27",
+  "version": "0.2.28",
   "license": "MIT",
   "private": true,
   "repository": {
@@ -12,6 +12,7 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\" \"tests/**/*.{ts,tsx}\" \"*.{ts,json,js}\" \".github/workflows/*.yml\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\" \"tests/**/*.{ts,tsx}\" \"*.{ts,json,js}\" \".github/workflows/*.yml\"",
     "lint": "eslint src tests vite.config.ts playwright.config.ts",
     "preview": "vite preview",
     "install:k6": "bash scripts/install-k6.sh",
@@ -30,7 +31,7 @@
     "rust:clippy": "cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --all-features --locked -- -D warnings",
     "audit:npm": "npm audit --audit-level=high",
     "rust:audit": "cargo audit --file src-tauri/Cargo.lock --deny unsound",
-    "verify": "npm run typecheck && npm run lint && npm run audit:npm && npm run test:coverage && npm run test:apt && npm run test:installer && npm run test:supply-chain && npm run evidence:supply-chain && npm run test:workflow-smoke && npm run build && npm run rust:fmt && npm run rust:clippy && npm run rust:audit && cargo test --manifest-path src-tauri/Cargo.toml --locked && cargo check --manifest-path src-tauri/Cargo.toml --locked",
+    "verify": "npm run format:check && npm run typecheck && npm run lint && npm run audit:npm && npm run test:coverage && npm run test:apt && npm run test:installer && npm run test:supply-chain && npm run evidence:supply-chain && npm run test:workflow-smoke && npm run build && npm run rust:fmt && npm run rust:clippy && npm run rust:audit && cargo test --manifest-path src-tauri/Cargo.toml --locked && cargo check --manifest-path src-tauri/Cargo.toml --locked",
     "tauri": "tauri"
   },
   "dependencies": {

@@ -328,6 +328,36 @@ describe("useTestHarness", () => {
     expect(result.current.state.isBusy).toBe(false);
   });
 
+  it.each(["resolves", "rejects"] as const)(
+    "ignores a pending start that %s after unmount",
+    async (outcome) => {
+      const startRequest = deferred<StartTestResponse>();
+      const { api } = createApiMock({
+        startTest: vi.fn(() => startRequest.promise),
+      });
+      const { result, unmount } = renderHook(() => useTestHarness(), {
+        wrapper: createWrapper(api),
+      });
+
+      let startPromise!: Promise<void>;
+      await act(async () => {
+        startPromise = result.current.startTest(startOptions);
+        await Promise.resolve();
+      });
+
+      vi.mocked(api.getTestStatus).mockClear();
+      unmount();
+      if (outcome === "resolves") {
+        startRequest.resolve({ runId: "unmounted-run" });
+      } else {
+        startRequest.reject(new Error("start failed after unmount"));
+      }
+
+      await expect(startPromise).resolves.toBeUndefined();
+      expect(api.getTestStatus).not.toHaveBeenCalled();
+    },
+  );
+
   it("ignores a duplicate stop while the current stop is pending", async () => {
     const stopRequest = deferred<void>();
     const stopTest = vi
@@ -372,6 +402,40 @@ describe("useTestHarness", () => {
     expect(result.current.state.isRunning).toBe(false);
     expect(result.current.state.isBusy).toBe(false);
   });
+
+  it.each(["resolves", "rejects"] as const)(
+    "ignores a pending stop that %s after unmount",
+    async (outcome) => {
+      const stopRequest = deferred<void>();
+      const { api } = createApiMock({
+        stopTest: vi.fn(() => stopRequest.promise),
+      });
+      const { result, unmount } = renderHook(() => useTestHarness(), {
+        wrapper: createWrapper(api),
+      });
+
+      await act(async () => {
+        await result.current.startTest(startOptions);
+      });
+
+      let stopPromise!: Promise<void>;
+      await act(async () => {
+        stopPromise = result.current.stopTest();
+        await Promise.resolve();
+      });
+
+      vi.mocked(api.getTestStatus).mockClear();
+      unmount();
+      if (outcome === "resolves") {
+        stopRequest.resolve();
+      } else {
+        stopRequest.reject(new Error("stop failed after unmount"));
+      }
+
+      await expect(stopPromise).resolves.toBeUndefined();
+      expect(api.getTestStatus).not.toHaveBeenCalled();
+    },
+  );
 
   it("allows a stop retry after the current stop rejects", async () => {
     const stopTest = vi

@@ -150,7 +150,6 @@ export function createImportHookState(
       collection,
     },
     selectAndImport: vi.fn(),
-    reportError: vi.fn(),
     reset: vi.fn(),
   };
 }

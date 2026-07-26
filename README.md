@@ -24,7 +24,7 @@ This repository currently contains the first working Tauri vertical slice:
 - Rust 1.97.0+ and Cargo
 - Tauri system dependencies
 
-On this machine, `cargo check` succeeded against the current Linux GTK/WebKit stack.
+Use the [canonical validation workflow](#validation) to check the installed frontend and Tauri toolchains.
 
 ## Install
 
@@ -160,6 +160,7 @@ build workflow.
 
 - `npm run dev`: starts the Vite frontend only
 - `npm run format`: formats frontend source, root config, and CI workflow files with Prettier
+- `npm run format:check`: checks those files with Prettier without modifying them
 - `npm run lint`: runs ESLint
 - `npm run typecheck`: runs TypeScript checks
 - `npm run test:coverage`: runs Vitest with V8 coverage, including uncovered files under `src/`
@@ -174,7 +175,7 @@ build workflow.
 - `npm run rust:clippy`: runs Clippy for all targets and features with warnings denied
 - `npm run audit:npm`: blocks high and critical npm advisories
 - `npm run rust:audit`: blocks Rust vulnerabilities and unsound advisories under `.cargo/audit.toml`
-- `npm run verify`: runs typecheck, lint, both dependency audits, thresholded frontend coverage, APT and supply-chain policy tests, workflow smoke, frontend build, Rust fmt, Clippy, tests, and check
+- `npm run verify`: runs the formatting check, typecheck, lint, both dependency audits, thresholded frontend coverage, APT and supply-chain policy tests, workflow smoke, frontend build, Rust fmt, Clippy, tests, and check
 - `npm run build`: builds the frontend into `dist/`
 - `npm run install:k6`: downloads the project-local k6 binary into `src-tauri/bin/`
 - `npm run tauri dev`: runs the desktop app in dev mode

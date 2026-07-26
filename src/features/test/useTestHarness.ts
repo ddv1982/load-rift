@@ -387,6 +387,33 @@ export function useTestHarness() {
     [api, loadCurrentStatus],
   );
 
+  const reconcileStaleCommand = useCallback(
+    async (
+      command: PendingCommand,
+      lifecycleGeneration: number,
+      commandSequence: number,
+    ) => {
+      if (
+        mountedRef.current &&
+        pendingCommandRef.current === command &&
+        lifecycleGenerationRef.current === lifecycleGeneration &&
+        commandSequenceRef.current === commandSequence
+      ) {
+        return false;
+      }
+
+      if (
+        mountedRef.current &&
+        command.authorityGeneration === authorityGenerationRef.current &&
+        (command.detached || command.apiGeneration !== apiGenerationRef.current)
+      ) {
+        await loadCurrentStatus(apiRef.current, commandSequence);
+      }
+      return true;
+    },
+    [loadCurrentStatus],
+  );
+
   const startTest = useCallback(
     async (options: K6Options) => {
       if (!mountedRef.current) {
@@ -438,22 +465,12 @@ export function useTestHarness() {
           runId,
         );
         if (
-          pendingCommandRef.current !== command ||
-          lifecycleGenerationRef.current !== lifecycleGeneration ||
-          commandSequenceRef.current !== commandSequence
+          await reconcileStaleCommand(
+            command,
+            lifecycleGeneration,
+            commandSequence,
+          )
         ) {
-          if (
-            mountedRef.current &&
-            command.authorityGeneration === authorityGenerationRef.current &&
-            (command.detached ||
-              command.apiGeneration !== apiGenerationRef.current)
-          ) {
-            await loadCurrentStatus(apiRef.current, commandSequence);
-          }
-          return;
-        }
-
-        if (!mountedRef.current) {
           return;
         }
 
@@ -471,22 +488,12 @@ export function useTestHarness() {
         }));
       } catch (error) {
         if (
-          pendingCommandRef.current !== command ||
-          lifecycleGenerationRef.current !== lifecycleGeneration ||
-          commandSequenceRef.current !== commandSequence
+          await reconcileStaleCommand(
+            command,
+            lifecycleGeneration,
+            commandSequence,
+          )
         ) {
-          if (
-            mountedRef.current &&
-            command.authorityGeneration === authorityGenerationRef.current &&
-            (command.detached ||
-              command.apiGeneration !== apiGenerationRef.current)
-          ) {
-            await loadCurrentStatus(apiRef.current, commandSequence);
-          }
-          return;
-        }
-
-        if (!mountedRef.current) {
           return;
         }
 
@@ -503,7 +510,7 @@ export function useTestHarness() {
         }));
       }
     },
-    [api, loadCurrentStatus],
+    [api, reconcileStaleCommand],
   );
 
   const stopTest = useCallback(async () => {
@@ -535,19 +542,12 @@ export function useTestHarness() {
     try {
       await api.stopTest();
       if (
-        !mountedRef.current ||
-        pendingCommandRef.current !== command ||
-        lifecycleGenerationRef.current !== lifecycleGeneration ||
-        commandSequenceRef.current !== commandSequence
+        await reconcileStaleCommand(
+          command,
+          lifecycleGeneration,
+          commandSequence,
+        )
       ) {
-        if (
-          mountedRef.current &&
-          command.authorityGeneration === authorityGenerationRef.current &&
-          (command.detached ||
-            command.apiGeneration !== apiGenerationRef.current)
-        ) {
-          await loadCurrentStatus(apiRef.current, commandSequence);
-        }
         return;
       }
 
@@ -565,19 +565,12 @@ export function useTestHarness() {
       }));
     } catch (error) {
       if (
-        !mountedRef.current ||
-        pendingCommandRef.current !== command ||
-        lifecycleGenerationRef.current !== lifecycleGeneration ||
-        commandSequenceRef.current !== commandSequence
+        await reconcileStaleCommand(
+          command,
+          lifecycleGeneration,
+          commandSequence,
+        )
       ) {
-        if (
-          mountedRef.current &&
-          command.authorityGeneration === authorityGenerationRef.current &&
-          (command.detached ||
-            command.apiGeneration !== apiGenerationRef.current)
-        ) {
-          await loadCurrentStatus(apiRef.current, commandSequence);
-        }
         return;
       }
 
@@ -589,7 +582,7 @@ export function useTestHarness() {
         error: getTauriErrorMessage(error, "Failed to stop the k6 test."),
       }));
     }
-  }, [api, loadCurrentStatus]);
+  }, [api, reconcileStaleCommand]);
 
   const clearTestState = useCallback(() => {
     if (!mountedRef.current) {

@@ -71,15 +71,6 @@ export function useCollectionImport() {
     await runImport(() => api.selectAndImportCollection());
   }, [api, runImport]);
 
-  const reportError = useCallback((message: string) => {
-    importRequestIdRef.current += 1;
-    setState((previous) => ({
-      ...previous,
-      isLoading: false,
-      error: message,
-    }));
-  }, []);
-
   const reset = useCallback(() => {
     importRequestIdRef.current += 1;
     setState({
@@ -92,7 +83,6 @@ export function useCollectionImport() {
   return {
     state,
     selectAndImport,
-    reportError,
     reset,
   };
 }
