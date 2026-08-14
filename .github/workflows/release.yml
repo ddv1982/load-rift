@@ -118,7 +118,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri
           key: ubuntu-24.04-${{ runner.arch }}
@@ -297,7 +297,7 @@ jobs:
           targets: ${{ matrix.rust_target }}
 
       - name: Setup Rust cache
-        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
+        uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
           workspaces: src-tauri
           key: ${{ matrix.platform }}-${{ runner.arch }}-${{ matrix.rust_target }}
