@@ -1848,7 +1848,7 @@ checksum = "92daf443525c4cce67b150400bc2316076100ce0b3686209eb8cf3c31612e6f0"
 
 [[package]]
 name = "loadrift"
-version = "0.2.28"
+version = "0.2.29"
 dependencies = [
  "hdrhistogram",
  "log",

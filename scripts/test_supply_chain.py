@@ -108,7 +108,19 @@ class SupplyChainPolicyTests(unittest.TestCase):
         )
         self.assertEqual(
             package_lock["packages"]["node_modules/brace-expansion"]["version"],
-            "5.0.8",
+            "5.0.9",
+        )
+        self.assertEqual(
+            package_lock["packages"]["node_modules/browserslist"]["version"],
+            "4.28.9",
+        )
+        self.assertEqual(
+            package_lock["packages"]["node_modules/nanoid"]["version"],
+            "3.3.18",
+        )
+        self.assertEqual(
+            package_lock["packages"]["node_modules/undici"]["version"],
+            "7.29.1",
         )
         cargo_lock = (ROOT / "src-tauri" / "Cargo.lock").read_text(encoding="utf-8")
         self.assertRegex(
