@@ -22,6 +22,18 @@ class SupplyChainPolicyTests(unittest.TestCase):
                 for reference in references:
                     self.assertRegex(reference, r"^[0-9a-f]{40}$")
 
+    def test_apt_metadata_refresh_workflow_keeps_valid_until_current(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "refresh-apt.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("schedule:", workflow)
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertIn("scripts/build_apt_repository.py", workflow)
+        self.assertIn("Load.Rift_*_amd64.deb", workflow)
+        self.assertIn("actions/deploy-pages@", workflow)
+        self.assertIn("name: github-pages", workflow)
+        self.assertNotIn("environment: release", workflow)
+
     def test_canonical_and_hosted_gates_cover_audits_coverage_and_policy(self) -> None:
         package = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
         verify = package["scripts"]["verify"]
